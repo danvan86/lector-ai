@@ -15,6 +15,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 - Gradle multi-module setup (Kotlin DSL) with `core` and `cli`
 - CLI that prints its version
 - CI workflow running `./gradlew build`
+- Quality gates in `build`: ktlint, detekt, Kover coverage
 
 **Done when:** `./gradlew build` is green locally and in CI.
 
@@ -22,17 +23,19 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Goal:** the tool can tell you whether a dependency update breaks the build, and where.
 
-- Data model: `DependencyChange`, `Diagnostic`
-- `EcosystemAdapter` interface with a first JVM/Maven implementation: `detect`, `verify`
-- Parse compiler and test failures into `Diagnostic`s
-- CLI: `verify <repo>` prints a readable report
+- Data model: `Diagnostic`, `Verification`
+- `EcosystemAdapter` interface with a first JVM/Maven implementation: `detect`, `verify`, `runTests`
+- Parse compiler and test failures into `Diagnostic`s (javac and kotlinc, surefire/failsafe reports)
+- Attribution: compile errors always count; failing tests are rerun once (flaky) and compared with the base commit (pre-existing)
+- CLI: `verify <repo> [--base <ref>]` prints a readable report
 
-**Done when:** a broken fixture repo produces the correct list of diagnostics.
+**Done when:** a broken fixture repo produces the correct list of diagnostics, and a pre-existing test failure is reported but not attributed to the update.
 
 ## M2 – Recipe index and OpenRewrite run ⬜
 
 **Goal:** the right recipe is found and applied automatically, without an LLM.
 
+- Data model: `DependencyChange`
 - Build the index from recipe metadata: `(package, target version) → recipe`
 - Pick the most specific recipe that doesn't overshoot the target version
 - Run the recipe through the Maven plugin without editing `pom.xml`
@@ -40,9 +43,9 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** a Spring Boot fixture repo gets the right upgrade recipe, and it's applied and verified.
 
-## M3 – Fix loop (local only) ⬜
+## M3 – Fix loop (CLI only, no CI yet) ⬜
 
-**Goal:** the LLM fixes remaining errors, for now only on the command line.
+**Goal:** the LLM fixes remaining errors. Driven through the CLI directly, not yet wired into a pipeline; CI integration lands in M5.
 
 - Ollama client with structured output (JSON schema)
 - Grounding: API signatures of the new version (`javap`), release notes, code around the error
@@ -57,6 +60,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Goal:** the LLM can't make the build green by deleting code.
 
+- `LanguageSupport` for JVM: tree-sitter grammar plus queries for methods, tests, assertions, suppressions
 - tree-sitter symbol comparison (no deleted methods)
 - Test protection: no deleted or skipped tests, no removed assertions, test count stays the same
 - Block stubs (`return null`, empty bodies) and new suppressions
@@ -69,6 +73,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 **Goal:** a Renovate PR is fixed automatically in the pipeline.
 
 - Renovate source adapter: read `DependencyChange` and release notes from the PR
+- `GitHost` port with a GitHub adapter (`git` module)
 - Git output: separate commits (recipe, one per AI fix), in-place on the Renovate branch
 - PR comment with a summary and any remaining errors; `ai-assisted` label
 - GitHub Action and container image (Ollama sidecar, weights baked in)
@@ -82,7 +87,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 **Goal:** measure instead of guessing.
 
 - Collection of real repos with known upgrades
-- Metrics: green rate after recipe vs. after fix loop, test-pass rate, guardrail rejections, runtime
+- Metrics: green rate after recipe vs. after fix loop, remaining failures caused by the update, guardrail rejections, runtime
 - Runs on demand; results go into a short report
 
 **Done when:** we have first numbers for JVM/Maven and know whether the 90/10 assumption holds.
