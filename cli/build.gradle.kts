@@ -10,11 +10,13 @@ dependencies {
     runtimeOnly(libs.slf4j.simple)
 }
 
+// Clikt's terminal detection loads JNA. Without this flag, JDK 25 warns about it on every run.
+val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
+
 application {
     applicationName = "lector"
     mainClass = "gmbh.vanella.lector.cli.MainKt"
-    // Clikt's terminal detection loads JNA. Without this flag, JDK 25 warns about it on every run.
-    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+    applicationDefaultJvmArgs = listOf(enableNativeAccess)
 }
 
 // The Gradle `version` is the only source of the tool's version. The CLI reads it from this generated resource.
@@ -31,6 +33,7 @@ sourceSets.main {
 // The end-to-end tests run the installed distribution, the same way the pipeline does.
 tasks.test {
     dependsOn(tasks.installDist)
+    jvmArgs(enableNativeAccess)
     systemProperty("lector.version", project.version.toString())
     systemProperty(
         "lector.bin",

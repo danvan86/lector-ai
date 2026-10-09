@@ -8,7 +8,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 ---
 
-## M0 – Project skeleton ⬜
+## M0 – Project skeleton ✅
 
 **Goal:** an empty project that builds and runs in CI.
 

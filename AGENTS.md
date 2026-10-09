@@ -44,7 +44,10 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew ktlintFormat     # fix most ktlint violations
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
+./gradlew :cli:installDist # start script at cli/build/install/lector/bin/lector
 ```
+
+The build uses a JDK 25 toolchain; Gradle downloads it if it's missing.
 
 ## Architecture rules
 
