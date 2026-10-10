@@ -38,8 +38,9 @@ tasks.withType<Test>().configureEach {
 }
 
 // Unit tests run in-process. Tests tagged `e2e` run the installed distribution, the same way the pipeline does.
+// Tests tagged `integration` run real Maven and need network access, so they are opt-in and not part of `check`.
 tasks.test {
-    useJUnitPlatform { excludeTags("e2e") }
+    useJUnitPlatform { excludeTags("e2e", "integration") }
 }
 
 val endToEndTest =
@@ -66,4 +67,24 @@ val endToEndTest =
 
 tasks.check {
     dependsOn(endToEndTest)
+}
+
+tasks.register<Test>("integrationTest") {
+    description = "Runs verify with real Maven on a fixture repository. Needs Maven and network access."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("integration") }
+}
+
+// Kover would make `check` depend on every test task. The integration test stays opt-in.
+kover {
+    currentProject {
+        instrumentation {
+            disabledForTestTasks.add("integrationTest")
+        }
+    }
 }
