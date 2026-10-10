@@ -17,6 +17,8 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 ## Quality gates
 
+Final check from a clean state, each on its own: `ktlintCheck`, `detektMain detektTest`, `test`, `:cli:endToEndTest`, `koverVerify`, `:cli:integrationTest`, and `clean build --rerun-tasks --no-build-cache` all exit with 0. 90 unit tests (`core` 23, `ecosystems:jvm` 38, `cli` 29), 6 end-to-end tests, 1 integration test. Kover: 100 % lines and branches in every module (`MainKt` excluded).
+
 Each gate was checked by adding a violation to the new code, running `./gradlew build --continue`, and reverting:
 
 | Gate | Probe | Result |
@@ -68,3 +70,8 @@ Without the `disabledForTestTasks` setting in `cli/build.gradle.kts`, Kover pull
 - **A run that breaks the build proves nothing about tests**: if the rerun has a build problem, all tests count as still failing; if the base commit doesn't build, they stay unattributed.
 - **A failed Maven run without a parsable error** becomes a build error with the end of the output, so it can never look green.
 - **Exit codes**: tool errors (unsupported repository, missing paths, invalid `--base`, Maven not found) exit with 2. Clikt's own usage errors (unknown option, invalid `--format`) still exit with 1, as in M0, which overlaps with "caused by the update". Open for a decision.
+
+## Open
+
+- CI on GitHub runs once the branch is pushed. Not verified yet.
+- Exit code for Clikt usage errors (`1`, overlaps with "caused by the update"): keep, or map to `2`?
