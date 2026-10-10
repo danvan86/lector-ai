@@ -2,3 +2,7 @@
 plugins {
     id("lector.kotlin-conventions")
 }
+
+dependencies {
+    implementation(libs.slf4j.api)
+}

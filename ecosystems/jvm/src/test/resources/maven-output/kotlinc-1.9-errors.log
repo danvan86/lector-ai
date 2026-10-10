@@ -1,0 +1,33 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -----------------< com.example:kotlin-compile-errors >------------------
+[INFO] Building kotlin-compile-errors 1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ kotlin-compile-errors ---
+[INFO] Deleting /work/repo/target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ kotlin-compile-errors ---
+[INFO] skip non existing resourceDirectory /work/repo/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.13.0:compile (default-compile) @ kotlin-compile-errors ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- kotlin:1.9.25:compile (compile) @ kotlin-compile-errors ---
+[ERROR] /work/repo/src/main/kotlin/com/example/Greeter.kt: (4, 56) Unresolved reference: capitalized
+[ERROR] /work/repo/src/main/kotlin/com/example/Greeter.kt: (6, 43) Type mismatch: inferred type is String but Int was expected
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.jetbrains.kotlin:kotlin-maven-plugin:1.9.25:compile (compile) on project kotlin-compile-errors: Compilation failure: Compilation failure: 
+[ERROR] /work/repo/src/main/kotlin/com/example/Greeter.kt:[4,56] Unresolved reference: capitalized
+[ERROR] /work/repo/src/main/kotlin/com/example/Greeter.kt:[6,43] Type mismatch: inferred type is String but Int was expected
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

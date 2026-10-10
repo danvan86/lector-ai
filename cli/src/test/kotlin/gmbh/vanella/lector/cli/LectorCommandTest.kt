@@ -4,7 +4,6 @@ import com.github.ajalt.clikt.testing.test
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 
 class LectorCommandTest {
     private val command = LectorCommand(version = "1.2.3")
@@ -29,28 +28,28 @@ class LectorCommandTest {
     }
 
     @Test
-    fun `help lists no subcommands`() {
-        val result = command.test("--help")
+    fun `execute prints the version and doesn't exit with an error`() {
+        val run = command.executeInProcess("--version")
 
-        assertFalse(result.stdout.contains("Commands:"))
-        assertEquals(0, result.statusCode)
+        assertEquals(Execution(0, "1.2.3\n", ""), run)
     }
 
     @Test
-    fun `unknown option fails with 1 and an error on stderr`() {
-        val result = command.test("--bogus")
+    fun `execute exits with 2 on an unknown option, because 1 means caused by the update`() {
+        val run = command.executeInProcess("--bogus")
 
-        assertEquals("", result.stdout)
-        assertContains(result.stderr, "no such option --bogus")
-        assertEquals(1, result.statusCode)
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "Usage: lector")
+        assertContains(run.stderr, "no such option --bogus")
+        assertEquals(2, run.exitCode)
     }
 
     @Test
-    fun `unexpected argument fails with 1 and an error on stderr`() {
-        val result = command.test("foo")
+    fun `execute exits with 2 on an unexpected argument`() {
+        val run = command.executeInProcess("foo")
 
-        assertEquals("", result.stdout)
-        assertContains(result.stderr, "got unexpected extra argument (foo)")
-        assertEquals(1, result.statusCode)
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "got unexpected extra argument (foo)")
+        assertEquals(2, run.exitCode)
     }
 }

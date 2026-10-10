@@ -1,8 +1,11 @@
 package gmbh.vanella.lector.cli
 
 import org.junit.jupiter.api.Tag
+import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import kotlin.io.path.createFile
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -33,12 +36,23 @@ class LectorEndToEndTest {
     }
 
     @Test
-    fun `unknown option prints the error to stderr and exits with 1`() {
+    fun `unknown option prints the error to stderr and exits with 2`() {
         val run = lector("--bogus")
 
         assertEquals("", run.stdout)
         assertContains(run.stderr, "no such option --bogus")
-        assertEquals(1, run.exitCode)
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `verify with invalid usage exits with 2`(
+        @TempDir repo: Path,
+    ) {
+        val run = lector("verify", repo.toString(), "--format", "xml")
+
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "invalid value for --format")
+        assertEquals(2, run.exitCode)
     }
 
     @Test
@@ -47,6 +61,30 @@ class LectorEndToEndTest {
 
         assertEquals("$version\n", run.stdout)
         assertContains(run.stderr, "Starting lector $version")
+    }
+
+    @Test
+    fun `verify of a repository without a supported ecosystem exits with 2`(
+        @TempDir repo: Path,
+    ) {
+        val run = lector("verify", repo.toString())
+
+        assertEquals("", run.stdout)
+        assertEquals("Error: No supported ecosystem in $repo. Supported: Maven (pom.xml at the root).\n", run.stderr)
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `verify with an invalid base ref exits with 2 before Maven runs`(
+        @TempDir repo: Path,
+    ) {
+        repo.resolve("pom.xml").createFile()
+
+        val run = lector("verify", repo.toString(), "--base", "no-such-ref", "--format", "json")
+
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "Error: Base ref no-such-ref is not a commit in $repo")
+        assertEquals(2, run.exitCode)
     }
 
     private data class Run(

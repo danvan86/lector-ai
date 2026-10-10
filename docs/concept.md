@@ -118,7 +118,7 @@ If an adapter turns into mostly glue around another runtime (e.g. the TypeScript
 | Type | Fields | Purpose |
 |---|---|---|
 | `DependencyChange` | `ecosystem, package, fromVersion, toVersion, updateType` | Neutral description of a dependency update |
-| `Diagnostic` | `file, line, column, code, message, severity, tool` | Normalized compiler, type-checker, and validator output. SARIF is the preferred exchange format. |
+| `Diagnostic` | `file, line, column, code, message, severity, tool, test` | Normalized compiler, type-checker, validator, and test output. `file`, `line`, `column`, and `code` are empty when the tool doesn't report them; `test` names the failing test and is empty for everything else. SARIF is the preferred exchange format. |
 | `Edit` | `file, search, replace` | Language-neutral, verifiable code change |
 | `Verification` | `causedByUpdate, preExisting, flaky, unattributed` (each `Diagnostic[]`) | Result of verify plus attribution (section 5). Only `causedByUpdate` is the tool's job. |
 
@@ -181,8 +181,8 @@ Interface outline:
 ```
 EcosystemAdapter
   detect(repo)                       → bool
-  verify()                           → Diagnostic[]   (build + tests/validation)
-  runTests(tests)                    → Diagnostic[]   (only the given tests: rerun, baseline)
+  verify(repo)                       → Diagnostic[]   (build + tests/validation)
+  runTests(repo, tests: Diagnostic[])→ Diagnostic[]   (only the tests of these failures: rerun, baseline)
   ground(change, diagnostics)        → Context        (API surface, docs)
   editableScope()                    → Glob[]         (excludes generated code)
   language                           → LanguageSupport (tree-sitter grammar + queries)

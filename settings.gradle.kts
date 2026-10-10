@@ -12,4 +12,4 @@ dependencyResolutionManagement {
     }
 }
 
-include("core", "cli")
+include("core", "cli", "ecosystems:jvm")
