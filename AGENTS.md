@@ -98,6 +98,7 @@ These come from the concept. Don't break them without updating the concept first
 
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. Use the module as scope, e.g. `feat(recipes): build index from BOM`.
 - One logical change per commit.
+- Never commit or push on `main`. Each milestone gets its own branch (`<prefix>/<feature>`) and PR; in Conductor, its own workspace. The hook in `.claude/hooks/` blocks commits and pushes on `main` and on a detached HEAD.
 
 ## Docs stay in sync
 
