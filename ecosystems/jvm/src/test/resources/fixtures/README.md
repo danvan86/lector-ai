@@ -10,6 +10,16 @@ Small Maven projects for the parser tests. Each one breaks in one way.
 | `missing-parent` | a parent POM version that doesn't exist | `maven-output/missing-parent.log` |
 | `failing-tests` | a surefire test in `lib` and a failsafe test in `app` | `maven-output/test-failures.log`, and the XML reports under `*/target/*-reports/` |
 
+The effective POMs come from `help:effective-pom` (maven-help-plugin 3.5.2):
+
+| Captured output | From |
+|---|---|
+| `maven-output/effective-pom-spring-boot.xml` | the head of `cli`'s `spring-boot-upgrade` fixture (Spring Boot parent 3.4.1) |
+| `maven-output/effective-pom-multi-module.xml` | `failing-tests` |
+
+They are cut down: only the first two entries of each `dependencyManagement` and `pluginManagement` are kept, and
+`properties`, `repositories`, `pluginRepositories`, and `reporting` are removed.
+
 ## How the output was captured
 
 Maven 3.9.12, JDK 25, English locale, run on a copy of the fixture:

@@ -12,6 +12,7 @@ maven-artifact = "3.9.16"
 # The recipe index is generated from this BOM at build time. The plugin version must be the one the BOM names.
 rewrite-recipe-bom = "3.37.0"
 rewrite-maven-plugin = "6.46.1"
+maven-help-plugin = "3.5.2"
 
 [libraries]
 clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
@@ -23,6 +24,10 @@ maven-artifact = { module = "org.apache.maven:maven-artifact", version.ref = "ma
 # OpenRewrite: only on the build-time classpath of the index generator, never at run time.
 rewrite-recipe-bom = { module = "org.openrewrite.recipe:rewrite-recipe-bom", version.ref = "rewrite-recipe-bom" }
 rewrite-core = { module = "org.openrewrite:rewrite-core" }
+
+# Maven plugins the JVM adapter calls by coordinates in the user's build. Declared here so Dependabot updates them.
+rewrite-maven-plugin = { module = "org.openrewrite.maven:rewrite-maven-plugin", version.ref = "rewrite-maven-plugin" }
+maven-help-plugin = { module = "org.apache.maven.plugins:maven-help-plugin", version.ref = "maven-help-plugin" }
 # The BOM pins every JUnit artifact, including the ones kotlin-test-junit5 brings in.
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
