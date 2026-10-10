@@ -1,6 +1,6 @@
 # Architecture – Project skeleton
 
-Milestone: [M0](../features.md#m0--project-skeleton-) · Spec: [`m0-project-skeleton/spec.md`](../../specs/open/m0-project-skeleton/spec.md) · Review: [`review.md`](../../specs/open/m0-project-skeleton/review.md)
+Milestone: [M0](../features.md#m0--project-skeleton-) · Spec: [`m0-project-skeleton/spec.md`](../../specs/done/m0-project-skeleton/spec.md) · Review: [`review.md`](../../specs/done/m0-project-skeleton/review.md)
 
 > **Summary for agents**
 >

@@ -6,6 +6,7 @@ One folder per milestone from [`docs/features.md`](../docs/features.md).
 specs/
   open/{feature}/brainstorming.md   questions and options, answered in rounds
   open/{feature}/spec.md            what to build and why, written once the brainstorming is closed
+  done/{feature}/                   shipped features, moved here by the PR that ships them
 ```
 
 ## How a brainstorming file works
@@ -20,7 +21,7 @@ specs/
 
 | Feature | File |
 |---|---|
-| M0 – Project skeleton | [brainstorming](open/m0-project-skeleton/brainstorming.md) · [spec](open/m0-project-skeleton/spec.md) |
+| M0 – Project skeleton | [brainstorming](done/m0-project-skeleton/brainstorming.md) · [spec](done/m0-project-skeleton/spec.md) |
 | M1 – Verify and report | [brainstorming](open/m1-verify-and-report/brainstorming.md) · [spec](open/m1-verify-and-report/spec.md) |
 | M2 – Recipe index and OpenRewrite run | [brainstorming](open/m2-recipe-index/brainstorming.md) · [spec](open/m2-recipe-index/spec.md) |
 | M3 – Fix loop | [brainstorming](open/m3-fix-loop/brainstorming.md) · [spec](open/m3-fix-loop/spec.md) |
