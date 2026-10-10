@@ -12,7 +12,7 @@ specs/
 
 - Each round asks the questions that block implementation.
 - Every question has options. The **recommended option is preselected** with `[x]`.
-- To choose another option, move the `x`. Add anything under **Notes**, including an answer that isn't listed.
+- The agent asks each round's questions in chat and writes the answers into the file, free-text answers under **Notes**.
 - When a round is answered, the choices go into **Decisions** at the bottom of the file, and the next round is added if anything is still open.
 - No code is written until the brainstorming for a feature is closed.
 

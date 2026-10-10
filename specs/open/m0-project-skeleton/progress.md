@@ -1,6 +1,6 @@
 # Progress – M0 Project skeleton
 
-Spec: [`specs/open/m0-project-skeleton/spec.md`](specs/open/m0-project-skeleton/spec.md)
+Spec: [`spec.md`](spec.md)
 
 Status: ⬜ open · 🟨 in progress · ✅ done
 
@@ -13,10 +13,11 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 5 | CI workflow, Dependabot, Apache 2.0 license | ✅ |
 | 6 | Quality gates verified (ktlint, detekt, Kover fail the build) | ✅ |
 | 7 | Docs in sync (`features.md`, `AGENTS.md`) | ✅ |
+| 8 | Review and fixes ([`review.md`](review.md)) | ✅ |
 
 ## Quality gates
 
-`./gradlew build` is green: 8 tests (unit + end-to-end), ktlint, detekt (`detektMain`, `detektTest`), Kover (`cli`: 82 % lines).
+`./gradlew build` is green: 9 unit tests (`test`), 4 end-to-end tests (`endToEndTest`), ktlint (modules, root scripts, `buildSrc`), detekt (`detektMain`, `detektTest`), Kover (`cli`: 100 % lines and branches, `MainKt` excluded).
 
 Each gate was checked by adding a violation, running `./gradlew build`, and reverting:
 

@@ -39,8 +39,9 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ## Commands
 
 ```
-./gradlew build            # compile, test, lint, coverage check
-./gradlew test             # tests only
+./gradlew build            # compile, unit + end-to-end tests, lint, coverage check
+./gradlew test             # unit tests only (fast, no distribution)
+./gradlew :cli:endToEndTest # end-to-end tests against the installed start script
 ./gradlew ktlintFormat     # fix most ktlint violations
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
@@ -66,6 +67,9 @@ These come from the concept. Don't break them without updating the concept first
 - **SOLID, DRY, KISS, applied pragmatically.** Prefer the simplest thing that works. Extract an abstraction on the second real use, not the first. Interfaces exist where the concept defines an extension point (adapters), not everywhere.
 - Small, focused classes and functions. Name things after domain terms from the concept (`DependencyChange`, `Diagnostic`, `Edit`, `EcosystemAdapter`).
 - Prefer immutable data classes and pure functions. Keep I/O (processes, HTTP, Git) at the edges.
+- Every external process gets a timeout, and its stdout and stderr are drained (or redirected to files). Otherwise a full pipe or a stuck process hangs the run.
+- Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
+- All versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Dependabot can only update what's declared.
 - No new dependency without a short reason in the PR description.
 - English for code, comments, docs, and commits.
 
@@ -74,16 +78,19 @@ These come from the concept. Don't break them without updating the concept first
 `./gradlew build` fails on any finding. The gates are strict by default and relaxed only where a real case needs it.
 
 - **ktlint** owns formatting (`ktlint_official`, configured in `.editorconfig`). Run `ktlintFormat` instead of formatting by hand.
-- **detekt** owns code smells and likely bugs. Defaults plus the deviations in `config/detekt/detekt.yml`. Notable project rules: no `print`/`println` (stdout is the report channel; use Clikt `echo` and SLF4J), no process exit outside `main`, no `else` on sealed types.
-- **Kover** requires ≥ 80 % line and ≥ 70 % branch coverage per module. Bounds only go up.
+- **detekt** owns code smells and likely bugs. Defaults plus the deviations in `config/detekt/detekt.yml`. Notable project rules: no `print`/`println`, also not via `System.out` (stdout is the report channel; use Clikt `echo` and SLF4J), no process exit outside `main`, no `else` on sealed types.
+- **Kover** requires 100 % line and branch coverage per module. The only exclusion is the `main` entry point (`MainKt`): it exits the process, so only the end-to-end tests run it.
 - Fix the code first. If a rule is wrong for this project, change it in the config with a one-line reason. A single justified exception may use `@Suppress("RuleName")` with a comment that says why.
-- Never add baselines, `ignoreFailures`, or coverage exclusions.
+- Never add baselines, `ignoreFailures`, or further coverage exclusions.
+- Don't shape the design around coverage. Code that can't run in-process (`main`) stays a one-liner in its own file; logic moves into a testable function because it belongs there, not to raise the number.
 
 ## Testing
 
 - **Test-first:** write or update the test before the logic.
 - Unit tests for core logic. Adapters are tested against small **fixture repos** under `src/test/resources/fixtures/`.
 - No real LLM in unit tests: use a fake `LlmClient`. Tests against a real Ollama are tagged and opt-in.
+- Test the failure paths, not only the happy path: invalid input, missing or malformed resources. For the CLI, assert exit code, stdout, and stderr on every path, because they are the contract with the pipeline.
+- End-to-end tests run the installed start script as a separate process. They are tagged `e2e` and run in `endToEndTest`, not in `test`.
 - A change is done when `./gradlew build` passes.
 
 ## Commits and PRs
