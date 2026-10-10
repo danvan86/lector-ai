@@ -7,6 +7,9 @@ import gmbh.vanella.lector.core.RecipeMatch
 import gmbh.vanella.lector.core.RecipeSelection
 import gmbh.vanella.lector.core.VersionScheme
 
+/** The resource the build generates, see `generateRecipeIndex` in `recipes/build.gradle.kts`. */
+const val INDEX_RESOURCE = "recipe-index.json"
+
 /**
  * The recipe index that ships with the tool. Every version question goes to the change's [VersionScheme]: the index
  * itself knows no version syntax.
@@ -41,7 +44,7 @@ class BundledRecipeIndex(
 
     companion object {
         /** Reads the index from the classpath. Fails if it is missing or malformed: the build always generates it. */
-        fun load(resource: String): BundledRecipeIndex {
+        fun load(resource: String = INDEX_RESOURCE): BundledRecipeIndex {
             val stream =
                 checkNotNull(BundledRecipeIndex::class.java.getResourceAsStream(resource)) {
                     "Recipe index $resource is missing from the classpath"

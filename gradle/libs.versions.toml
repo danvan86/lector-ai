@@ -9,6 +9,9 @@ slf4j = "2.0.20"
 junit = "6.1.3"
 kotlinx-serialization = "1.11.0"
 maven-artifact = "3.9.16"
+# The recipe index is generated from this BOM at build time. The plugin version must be the one the BOM names.
+rewrite-recipe-bom = "3.37.0"
+rewrite-maven-plugin = "6.46.1"
 
 [libraries]
 clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
@@ -17,6 +20,9 @@ slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 # Maven's own version ordering (`ComparableVersion`), for the Maven version scheme.
 maven-artifact = { module = "org.apache.maven:maven-artifact", version.ref = "maven-artifact" }
+# OpenRewrite: only on the build-time classpath of the index generator, never at run time.
+rewrite-recipe-bom = { module = "org.openrewrite.recipe:rewrite-recipe-bom", version.ref = "rewrite-recipe-bom" }
+rewrite-core = { module = "org.openrewrite:rewrite-core" }
 # The BOM pins every JUnit artifact, including the ones kotlin-test-junit5 brings in.
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
