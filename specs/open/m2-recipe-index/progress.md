@@ -13,6 +13,6 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 5 | `core`: migration flow with downgrade rules, Git working tree (clean check, capture, reset) | ✅ |
 | 6 | `ecosystems:jvm`: resolved versions and recipe runner (`runNoFork`) | ✅ |
 | 7 | `cli`: `migrate` command, recipe section in text and JSON report, end-to-end tests | ✅ |
-| 8 | Tagged integration test: Spring Boot 3.3 → 3.4 fixture | ⬜ |
+| 8 | Tagged integration test: Spring Boot 3.3 → 3.4 fixture | ✅ |
 | 9 | Quality gates verified | ⬜ |
 | 10 | Docs in sync | ⬜ |
