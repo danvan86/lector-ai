@@ -43,7 +43,8 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew build            # compile, unit + end-to-end tests, lint, coverage check
 ./gradlew test             # unit tests only (fast, no distribution)
 ./gradlew :cli:endToEndTest # end-to-end tests against the installed start script
-./gradlew :cli:integrationTest # opt-in: verify with real Maven on a fixture (needs mvn and network)
+./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven on fixtures (needs mvn and network)
+./gradlew :recipes:generateRecipeIndex # recipe index and license report, under recipes/build/generated/recipe-index/
 ./gradlew ktlintFormat     # fix most ktlint violations
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
