@@ -87,9 +87,9 @@ flowchart TB
 | `verify`, stage 1 | `clean test-compile` |
 | `verify`, stage 2, only if stage 1 has no diagnostics | `verify` |
 | `runTests` with only surefire tests | `clean test -Dtest=<classes> -Dsurefire.failIfNoSpecifiedTests=false` |
-| `runTests` with failsafe tests | `clean verify` with `-Dit.test=<classes> -Dit.failIfNoSpecifiedTests=false`, plus the `-Dtest` pair if there are surefire tests too |
+| `runTests` with failsafe tests | `clean verify -Dtest=<classes> -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=<classes> -Dit.failIfNoSpecifiedTests=false`. Without surefire tests, `-Dtest=lector.NoUnitTests`, a filter that matches no class |
 
-`runTests` reruns whole test classes (fully qualified), because surefire can't select every method by name (parameterized tests). After every run, the adapter parses the console output and the test reports. A run that exits non-zero without any parsed diagnostic becomes one `maven` diagnostic with the last 20 lines of output, so a failure never looks green. Each Maven run has a one-hour timeout (`MAVEN_TIMEOUT`).
+`runTests` reruns whole test classes (fully qualified), because surefire can't select every method by name (parameterized tests). Surefire always gets a filter: `verify` runs surefire before failsafe, and without one it would run every unit test, on the base commit too, and a failing unit test would stop failsafe in its module. After every run, the adapter parses the console output and the test reports. A run that exits non-zero without any parsed diagnostic becomes one `maven` diagnostic with the last 20 lines of output, so a failure never looks green. Each Maven run has a one-hour timeout (`MAVEN_TIMEOUT`).
 
 ### Parsers
 
@@ -99,7 +99,7 @@ flowchart TB
 | Console | `Failed to execute goal …` plus its `[ERROR]` lines up to `-> [Help`, an empty line, or the next failure | `maven`, no location. Skipped when it only summarizes compile errors or says `There are test failures.` |
 | Console | `The project … has N errors` and its problems (unresolvable parent POM) | `maven`, no location, one per problem |
 | `<module>/target/surefire-reports/TEST-*.xml`, `failsafe-reports` | `<testcase>` with `<failure>` or `<error>`; `<skipped>`, `<flakyFailure>` aren't failures | `surefire` / `failsafe`, `code` = exception type, `test` = `class#method`, file and line from the first stack frame in the test class, found under `<module>/src/<set>/<lang>/<package>/` |
-| An unreadable report (malformed, or with a DOCTYPE) | — | `maven` build error, so no failure gets lost |
+| An unreadable report (malformed, with a DOCTYPE, or can't be opened) | — | `maven` build error, so no failure gets lost |
 
 Only `[ERROR]` lines count; warnings are ignored. Paths outside the repository stay absolute. Message text comes from the tools in the runner's locale.
 
@@ -115,7 +115,8 @@ Only `[ERROR]` lines count; warnings are ignored. Paths outside the repository s
 | No adapter detects the repository | empty | `Error: No supported ecosystem in <repo>. Supported: Maven (pom.xml at the root).` | `2` |
 | `--base` is not a commit (checked before the build) | empty | `Error: Base ref <ref> is not a commit in <repo>…` | `2` |
 | Maven or Git can't start or times out | empty | `Error: Cannot run …` / `… did not finish within …` | `2` |
-| Invalid usage (unknown option, `--format xml`) | empty | Clikt usage error | `1` (Clikt default, see limits) |
+| Any other exception while verifying | empty | `Error: Unexpected failure: <exception>` | `2` |
+| Invalid usage (unknown option, extra argument, missing `<repo>`, `--format xml`) | empty | Usage and `Error: …` | `2` |
 
 Logs are SLF4J on stderr; every process logs `Running <command> in <dir>` at info, and its output at debug.
 
@@ -145,9 +146,9 @@ sequenceDiagram
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
-| Unit | `test` | Attribution with a fake adapter and a fake base; parsers on captured output; adapter command lines with a fake process runner; the command through Clikt's `test()` | `AttributionTest`, `MavenConsoleTest`, `TestReportsTest`, `MavenAdapterTest`, `VerifyCommandTest`, `ReportsTest` |
+| Unit | `test` | Attribution with a fake adapter and a fake base; parsers on captured output; adapter command lines with a fake process runner; the command through Clikt's `test()` and `executeInProcess()` | `AttributionTest`, `MavenConsoleTest`, `TestReportsTest`, `MavenAdapterTest`, `VerifyCommandTest`, `ReportsTest` |
 | Unit, real processes | `test` | `runProcess` with `sh`, `GitBaseCommit` on a temporary Git repository, `MavenAdapter` with a fake `mvnw` script | `ProcessesTest`, `GitBaseCommitTest` |
-| End-to-end | `endToEndTest` (in `check`) | The start script: `verify` exits `2` for an unsupported repository and for an invalid `--base` | `LectorEndToEndTest` |
+| End-to-end | `endToEndTest` (in `check`) | The start script: `verify` exits `2` for invalid usage, for an unsupported repository, and for an invalid `--base` | `LectorEndToEndTest` |
 | Integration | `:cli:integrationTest` (opt-in, not in `check`) | Real Maven on a base/head repository: the head bumps commons-lang3 3.12.0 → 3.18.0. One test breaks, one fails on both commits. Checks the lists, exit `1`, one worktree left, clean `git status`. Needs `mvn` and network. | `VerifyIntegrationTest` |
 
 Fixtures: `ecosystems/jvm/src/test/resources/fixtures/` (Maven projects that break in one way each, plus captured reports in `failing-tests/*/target/`), `ecosystems/jvm/src/test/resources/maven-output/` (captured console logs; how they were made is in `fixtures/README.md`), and `cli/src/test/resources/fixtures/dependency-update/` (`base/` and the `head/` overlay). Tests tagged `integration` are excluded from `test`; Kover's instrumentation is disabled for `integrationTest`, otherwise Kover would make `check` depend on it.
@@ -159,9 +160,7 @@ Fixtures: `ecosystems/jvm/src/test/resources/fixtures/` (Maven projects that bre
 | `Diagnostic.test` field | Attribution reruns and matches tests by name. It names the test; it doesn't classify. | — |
 | `runTests` takes diagnostics, reruns whole classes | Maven must know surefire from failsafe; surefire can't select parameterized methods by name. | When a second ecosystem needs `runTests` |
 | `clean` before compile and reruns | Removes stale test reports from earlier runs. Costs a recompile per rerun. | M3, if the fix loop needs faster cycles |
-| A failsafe rerun also runs all unit tests | Surefire has no skip of its own that leaves failsafe running. Only the requested tests are evaluated. | — |
 | Source files found only in the standard layout | `src/<set>/<lang>/<package>/<File>`. Otherwise a test failure has no location. | When a fixture needs it |
 | Only errors, no warnings | An old warning would otherwise fail the job. | With baseline comparison of warnings |
 | Messages in the runner's locale | Maven, javac, and kotlinc print localized text. The parsers only use locale-independent markers. | M5, container image |
 | Unix paths only | The parsers expect absolute `/…` paths. CI runs Linux. | If Windows runners are needed |
-| Usage errors exit with `1` | Clikt's default, from M0. Overlaps with "caused by the update". | Open decision |
