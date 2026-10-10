@@ -19,9 +19,6 @@ import java.nio.file.Path
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
-/** Exit code when the tool itself fails: no supported ecosystem, Maven not found, an invalid base ref. */
-private const val TOOL_ERROR = 2
-
 /**
  * `lector verify <repo>`: builds and tests the repository, attributes every problem, and prints the report.
  * Exits with 1 only if the update caused a problem. Pre-existing, flaky, and unattributed failures are reported with 0.
@@ -41,15 +38,22 @@ internal class VerifyCommand(
 
     override fun help(context: Context) = "Tells whether a dependency update broke the build or the tests, and where."
 
+    // Exit 1 means "caused by the update". Anything else that goes wrong is the tool's failure, so it must exit with 2.
+    @Suppress("TooGenericExceptionCaught")
     override fun run() {
         val verification =
             try {
                 verify()
-            } catch (e: ToolError) {
-                throw CliktError("Error: ${e.message}", e, statusCode = TOOL_ERROR)
+            } catch (e: Exception) {
+                throw toolError(e)
             }
         echo(if (format == "json") JsonReport.render(verification) else TextReport.render(verification))
         if (verification.causedByUpdate.isNotEmpty()) throw ProgramResult(1)
+    }
+
+    private fun toolError(e: Exception): CliktError {
+        val message = if (e is ToolError) e.message else "Unexpected failure: $e"
+        return CliktError("Error: $message", e, statusCode = TOOL_ERROR)
     }
 
     private fun verify(): Verification {

@@ -1,11 +1,13 @@
 package gmbh.vanella.lector.cli
 
+import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.testing.test
 import gmbh.vanella.lector.core.BaseCommit
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.ToolError
+import gmbh.vanella.lector.core.Verification
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -32,13 +34,7 @@ class VerifyCommandTest {
     fun `a clean repository exits with 0 and prints the text report`() {
         val result = command(FakeAdapter()).test(repo.toString())
 
-        assertEquals(
-            TextReport.render(
-                gmbh.vanella.lector.core
-                    .Verification(),
-            ) + "\n",
-            result.stdout,
-        )
+        assertEquals(TextReport.render(Verification()) + "\n", result.stdout)
         assertEquals("", result.stderr)
         assertEquals(0, result.statusCode)
     }
@@ -144,13 +140,45 @@ class VerifyCommandTest {
     }
 
     @Test
-    fun `an unknown format is a usage error`() {
-        val result = command(FakeAdapter()).test("$repo --format xml")
+    fun `an unexpected failure is a tool error with exit 2, not a problem caused by the update`() {
+        val adapter = FakeAdapter(failure = IllegalStateException("report parser crashed"))
+
+        val result = command(adapter).test(repo.toString())
 
         assertEquals("", result.stdout)
-        assertContains(result.stderr, "invalid value for --format")
-        assertTrue(result.statusCode != 0)
+        assertEquals("Error: Unexpected failure: java.lang.IllegalStateException: report parser crashed\n", result.stderr)
+        assertEquals(2, result.statusCode)
     }
+
+    @Test
+    fun `an unknown format is a usage error with exit 2`() {
+        val run = lector(FakeAdapter()).executeInProcess("verify", repo.toString(), "--format", "xml")
+
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "Usage: lector verify")
+        assertContains(run.stderr, "invalid value for --format")
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `a missing repository argument is a usage error with exit 2`() {
+        val run = lector(FakeAdapter()).executeInProcess("verify")
+
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "missing argument <repo>")
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `run through the root command, a problem caused by the update still exits with 1`() {
+        val run = lector(FakeAdapter(verify = listOf(compileError))).executeInProcess("verify", repo.toString())
+
+        assertContains(run.stdout, "Caused by the update (1)")
+        assertEquals("", run.stderr)
+        assertEquals(1, run.exitCode)
+    }
+
+    private fun lector(adapter: FakeAdapter) = LectorCommand("1.2.3").subcommands(command(adapter))
 
     private fun command(adapter: FakeAdapter) =
         VerifyCommand(
@@ -169,7 +197,7 @@ class VerifyCommandTest {
         private val verify: List<Diagnostic> = emptyList(),
         private val headRerun: List<Diagnostic> = emptyList(),
         private val baseRun: List<Diagnostic> = emptyList(),
-        private val failure: ToolError? = null,
+        private val failure: RuntimeException? = null,
     ) : EcosystemAdapter {
         var verifyCalls = 0
 

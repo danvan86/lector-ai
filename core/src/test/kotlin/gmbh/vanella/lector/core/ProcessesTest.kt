@@ -2,10 +2,13 @@ package gmbh.vanella.lector.core
 
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
+import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -52,5 +55,15 @@ class ProcessesTest {
 
         assertEquals("sleep did not finish within 200ms", error.message)
         assertTrue(elapsed < 10.seconds, "took $elapsed")
+    }
+
+    @Test
+    fun `a process that runs too long is killed with its children`() {
+        assertFailsWith<ToolError> { runProcess(listOf("sh", "-c", "sleep 30 & echo $! > child.pid; wait"), dir, 500.milliseconds) }
+
+        val pid = dir.resolve("child.pid").readText().trim()
+        val child = ProcessHandle.of(pid.toLong())
+        child.ifPresent { it.onExit().get(5, TimeUnit.SECONDS) }
+        assertFalse(child.map { it.isAlive }.orElse(false), "the child process is still running")
     }
 }

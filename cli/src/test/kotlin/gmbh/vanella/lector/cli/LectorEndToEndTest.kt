@@ -36,12 +36,23 @@ class LectorEndToEndTest {
     }
 
     @Test
-    fun `unknown option prints the error to stderr and exits with 1`() {
+    fun `unknown option prints the error to stderr and exits with 2`() {
         val run = lector("--bogus")
 
         assertEquals("", run.stdout)
         assertContains(run.stderr, "no such option --bogus")
-        assertEquals(1, run.exitCode)
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `verify with invalid usage exits with 2`(
+        @TempDir repo: Path,
+    ) {
+        val run = lector("verify", repo.toString(), "--format", "xml")
+
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "invalid value for --format")
+        assertEquals(2, run.exitCode)
     }
 
     @Test

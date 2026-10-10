@@ -197,6 +197,18 @@ class TestReportsTest {
     }
 
     @Test
+    fun `a report that can't be opened is a build error too`() {
+        val report = repo.resolve("target/surefire-reports").createDirectories().resolve("TEST-com.example.FooTest.xml")
+        report.writeText("<testsuite/>")
+        report.toFile().setReadable(false)
+
+        val problem = TestReports.parse(repo).single()
+
+        assertEquals(null, problem.test)
+        assertContains(problem.message, "Can't read test report target/surefire-reports/TEST-com.example.FooTest.xml")
+    }
+
+    @Test
     fun `a report with a DOCTYPE is not read`() {
         repo.resolve("target/surefire-reports").createDirectories().resolve("TEST-com.example.FooTest.xml").writeText(
             """<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><testsuite>&e;</testsuite>""",

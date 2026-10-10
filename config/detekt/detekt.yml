@@ -29,6 +29,14 @@ style:
         value: 'java.io.PrintStream.print'
       - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
         value: 'java.io.PrintStream.println'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'java.io.PrintStream.printf'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'java.io.PrintStream.format'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'java.io.PrintStream.append'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'java.io.PrintStream.write'
   # Formatting rules that ktlint already enforces.
   MaxLineLength:
     active: false

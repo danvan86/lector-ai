@@ -12,6 +12,9 @@ import kotlin.time.Duration.Companion.hours
 private val MAVEN_TIMEOUT = 1.hours
 private const val OUTPUT_TAIL_LINES = 20
 
+// A surefire filter that matches no test class.
+private const val NO_UNIT_TESTS = "lector.NoUnitTests"
+
 /**
  * Builds and tests Maven projects. Runs the project's wrapper (`./mvnw`) if it has one, otherwise `mvn` from the
  * environment, with the JDK that `JAVA_HOME` points to and the environment's Maven settings, or [settings] if given.
@@ -34,8 +37,11 @@ class MavenAdapter(
 
     /**
      * Reruns the classes of the given tests: unit tests with surefire (up to `test`), integration tests with failsafe
-     * (up to `verify`, which runs the unit tests too). Whole classes, because surefire can't select every test method by
-     * name (parameterized tests, for example).
+     * (up to `verify`). Whole classes, because surefire can't select every test method by name (parameterized tests, for
+     * example).
+     *
+     * `verify` runs surefire too. Without a filter it would run every unit test, and a failing one would stop failsafe in
+     * its module. So surefire always gets a filter, one that matches no class if no unit test is given.
      */
     override fun runTests(
         repo: Path,
@@ -46,10 +52,8 @@ class MavenAdapter(
             buildList {
                 add("clean")
                 add(if (integrationTests.isEmpty()) "test" else "verify")
-                if (unitTests.isNotEmpty()) {
-                    add("-Dtest=${testClasses(unitTests)}")
-                    add("-Dsurefire.failIfNoSpecifiedTests=false")
-                }
+                add("-Dtest=${testClasses(unitTests).ifEmpty { NO_UNIT_TESTS }}")
+                add("-Dsurefire.failIfNoSpecifiedTests=false")
                 if (integrationTests.isNotEmpty()) {
                     add("-Dit.test=${testClasses(integrationTests)}")
                     add("-Dit.failIfNoSpecifiedTests=false")

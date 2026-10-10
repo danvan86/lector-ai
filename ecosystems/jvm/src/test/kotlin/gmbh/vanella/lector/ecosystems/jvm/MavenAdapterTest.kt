@@ -168,11 +168,23 @@ class MavenAdapterTest {
     }
 
     @Test
-    fun `runs only integration tests when only integration tests are given`() {
+    fun `runs no unit tests when only integration tests are given`() {
         adapter().runTests(repo, listOf(testFailure("com.example.AppIT#b", tool = "failsafe")))
 
         assertEquals(
-            listOf(listOf("mvn", "-B", "-fae", "clean", "verify", "-Dit.test=com.example.AppIT", "-Dit.failIfNoSpecifiedTests=false")),
+            listOf(
+                listOf(
+                    "mvn",
+                    "-B",
+                    "-fae",
+                    "clean",
+                    "verify",
+                    "-Dtest=lector.NoUnitTests",
+                    "-Dsurefire.failIfNoSpecifiedTests=false",
+                    "-Dit.test=com.example.AppIT",
+                    "-Dit.failIfNoSpecifiedTests=false",
+                ),
+            ),
             runs,
         )
     }

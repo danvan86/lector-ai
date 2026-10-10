@@ -5,6 +5,7 @@ import gmbh.vanella.lector.core.Severity
 import org.w3c.dom.Element
 import org.xml.sax.SAXException
 import org.xml.sax.helpers.DefaultHandler
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.xml.parsers.DocumentBuilderFactory
@@ -40,19 +41,23 @@ internal object TestReports {
         report: String,
         module: Path,
         tool: String,
-    ): List<Diagnostic> {
-        val document =
-            try {
-                documentBuilder().parse(repo.resolve(report).toFile())
-            } catch (e: SAXException) {
-                val message = "Can't read test report $report: ${e.message}"
-                return listOf(Diagnostic(null, null, null, null, message, Severity.ERROR, "maven"))
-            }
-        val testcases = document.getElementsByTagName("testcase")
-        return (0 until testcases.length)
-            .map { testcases.item(it) as Element }
-            .mapNotNull { failure(repo, module, tool, it) }
-    }
+    ): List<Diagnostic> =
+        try {
+            val testcases = documentBuilder().parse(repo.resolve(report).toFile()).getElementsByTagName("testcase")
+            (0 until testcases.length)
+                .map { testcases.item(it) as Element }
+                .mapNotNull { failure(repo, module, tool, it) }
+        } catch (e: SAXException) {
+            listOf(unreadable(report, e))
+        } catch (e: IOException) {
+            listOf(unreadable(report, e))
+        }
+
+    // A report that can't be read may hold a failure, so it must not look green.
+    private fun unreadable(
+        report: String,
+        e: Exception,
+    ) = Diagnostic(null, null, null, null, "Can't read test report $report: ${e.message}", Severity.ERROR, "maven")
 
     private fun failure(
         repo: Path,
