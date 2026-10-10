@@ -1,0 +1,40 @@
+# detekt starts from its default config (buildUponDefaultConfig = true).
+# This file lists only the deviations, each with its reason.
+# ktlint owns formatting; detekt owns code smells and likely bugs. A violation is reported by one tool, not two.
+# Before relaxing a rule, fix the code. If the rule is wrong for this project, change it here with a reason.
+
+config:
+  # Every finding fails the build. There is no baseline file.
+  warningsAsErrors: true
+
+potential-bugs:
+  # Exit codes are part of the CLI contract. Only the entry point decides them.
+  ExitOutsideMain:
+    active: true
+  # An `else` branch on a sealed type silently swallows variants added later (e.g. a new Diagnostic kind).
+  ElseCaseInsteadOfExhaustiveWhen:
+    active: true
+
+style:
+  # stdout carries the command's output (reports, JSON) and is read by the pipeline.
+  # Write output through Clikt's `echo`, logs through SLF4J (stderr).
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'kotlin.io.print'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'kotlin.io.println'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'java.io.PrintStream.print'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'java.io.PrintStream.println'
+  # Formatting rules that ktlint already enforces.
+  MaxLineLength:
+    active: false
+  ModifierOrder:
+    active: false
+  NewLineAtEndOfFile:
+    active: false
+  WildcardImport:
+    active: false
