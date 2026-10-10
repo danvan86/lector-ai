@@ -4,7 +4,7 @@ import java.nio.file.Path
 
 /** The extension point every ecosystem implements, one adapter per build tool. It grows when a milestone needs more. */
 interface EcosystemAdapter {
-    /** The package namespace this adapter's packages live in, e.g. `maven`. */
+    /** The package namespace this adapter's packages live in, e.g. `npm` or `pypi`. One per namespace, not per build tool. */
     val ecosystem: String
 
     val versionScheme: VersionScheme

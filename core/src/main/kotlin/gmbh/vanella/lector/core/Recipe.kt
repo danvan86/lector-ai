@@ -4,7 +4,7 @@ import java.nio.file.Path
 
 /**
  * A recipe the index knows. [artifact] is an opaque string that tells the ecosystem's recipe runner what to fetch
- * (for Maven, the coordinates with version). [license] is the license of that artifact.
+ * (e.g. coordinates with a version). [license] is the license of that artifact.
  */
 data class Recipe(
     val name: String,

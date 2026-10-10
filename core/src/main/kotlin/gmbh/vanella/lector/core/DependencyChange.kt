@@ -3,7 +3,7 @@ package gmbh.vanella.lector.core
 /**
  * One dependency update, the same for every ecosystem and every bot.
  *
- * - [ecosystem] is the package namespace (`maven` for every JVM build, later `npm`, `pypi`), not the build tool.
+ * - [ecosystem] is the package namespace (`npm`, `pypi`, one for all JVM builds), not the build tool.
  * - [package] is an opaque string. Only the ecosystem's adapter knows its shape.
  * - [updateType] is derived from the versions by the ecosystem's [VersionScheme].
  */
