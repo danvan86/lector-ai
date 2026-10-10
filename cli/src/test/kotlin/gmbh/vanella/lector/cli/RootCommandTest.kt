@@ -18,11 +18,12 @@ class RootCommandTest {
     }
 
     @Test
-    fun `help lists the verify command`() {
+    fun `help lists the verify and migrate commands`() {
         val result = rootCommand("1.2.3").test("--help")
 
         assertContains(result.stdout, "Commands:")
         assertContains(result.stdout, "verify")
+        assertContains(result.stdout, "migrate")
         assertEquals(0, result.statusCode)
     }
 
@@ -34,6 +35,18 @@ class RootCommandTest {
 
         // Detection passes, so verify gets as far as the base ref, which fails before Maven runs.
         val result = rootCommand("1.2.3").test("verify $repo --base no-such-ref")
+
+        assertContains(result.stderr, "Error: Base ref no-such-ref is not a commit in $repo")
+        assertEquals(2, result.statusCode)
+    }
+
+    @Test
+    fun `migrate detects Maven repositories`(
+        @TempDir repo: Path,
+    ) {
+        repo.resolve("pom.xml").createFile()
+
+        val result = rootCommand("1.2.3").test("migrate $repo --package g:a --from 1.0 --to 2.0 --base no-such-ref")
 
         assertContains(result.stderr, "Error: Base ref no-such-ref is not a commit in $repo")
         assertEquals(2, result.statusCode)

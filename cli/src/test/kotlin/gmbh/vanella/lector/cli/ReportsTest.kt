@@ -110,7 +110,7 @@ class ReportsTest {
 
     @Test
     fun `json report has the four lists and every field, nulls included`() {
-        val json = JsonReport.render(Verification(causedByUpdate = listOf(buildError), unattributed = listOf(oldBug)))
+        val json = JsonReport.json(Verification(causedByUpdate = listOf(buildError), unattributed = listOf(oldBug))).toString()
 
         assertEquals(
             Json.parseToJsonElement(
@@ -135,6 +135,13 @@ class ReportsTest {
 
     @Test
     fun `json report is one line`() {
-        assertEquals(1, JsonReport.render(Verification(causedByUpdate = listOf(compileError))).lines().size)
+        assertEquals(
+            1,
+            JsonReport
+                .json(Verification(causedByUpdate = listOf(compileError)))
+                .toString()
+                .lines()
+                .size,
+        )
     }
 }
