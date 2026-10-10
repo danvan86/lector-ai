@@ -10,6 +10,7 @@ A CI tool that takes a dependency-update PR (Renovate, Dependabot, or any other)
 
 - Full concept: [`docs/concept.md`](docs/concept.md)
 - Milestones: [`docs/features.md`](docs/features.md)
+- Architecture as built: [`docs/architecture/`](docs/architecture/README.md)
 
 ## Tech stack
 
@@ -102,3 +103,4 @@ These come from the concept. Don't break them without updating the concept first
 
 - A change to architecture or scope updates [`docs/concept.md`](docs/concept.md).
 - Finishing or reshaping a milestone updates [`docs/features.md`](docs/features.md).
+- A change to how the system is built (modules, build, CLI contract, tests, CI) updates [`docs/architecture/`](docs/architecture/README.md).
