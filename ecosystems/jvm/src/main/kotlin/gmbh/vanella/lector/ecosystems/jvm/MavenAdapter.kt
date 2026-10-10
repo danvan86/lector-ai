@@ -28,6 +28,11 @@ class MavenAdapter(
         runProcess(command, workDir, MAVEN_TIMEOUT)
     },
 ) : EcosystemAdapter {
+    override val ecosystem = "maven"
+    override val versionScheme = MavenVersionScheme
+    override val recipeRunner = null
+    override val resolvedVersions = null
+
     override fun detect(repo: Path) = repo.resolve("pom.xml").isRegularFile()
 
     override fun verify(repo: Path): List<Diagnostic> {

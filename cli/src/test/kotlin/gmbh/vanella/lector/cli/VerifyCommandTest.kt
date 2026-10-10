@@ -8,6 +8,7 @@ import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.Verification
+import gmbh.vanella.lector.ecosystems.jvm.MavenVersionScheme
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -188,7 +189,9 @@ class VerifyCommandTest {
             },
             baseCommit = { _, ref ->
                 basesResolved += ref
-                BaseCommit { block -> block(repo.resolve("base")) }
+                object : BaseCommit {
+                    override fun <T> checkout(block: (Path) -> T) = block(repo.resolve("base"))
+                }
             },
         )
 
@@ -200,6 +203,11 @@ class VerifyCommandTest {
         private val failure: RuntimeException? = null,
     ) : EcosystemAdapter {
         var verifyCalls = 0
+
+        override val ecosystem = "maven"
+        override val versionScheme = MavenVersionScheme
+        override val recipeRunner = null
+        override val resolvedVersions = null
 
         override fun detect(repo: Path) = detects
 

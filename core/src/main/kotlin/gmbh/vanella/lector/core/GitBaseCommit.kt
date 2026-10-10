@@ -17,7 +17,7 @@ class GitBaseCommit private constructor(
     private val commit: String,
 ) : BaseCommit {
     @OptIn(ExperimentalPathApi::class)
-    override fun checkout(block: (Path) -> List<Diagnostic>): List<Diagnostic> {
+    override fun <T> checkout(block: (Path) -> T): T {
         val dir = Files.createTempDirectory("lector-base")
         val worktree = dir.resolve("base")
         try {

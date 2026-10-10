@@ -1,0 +1,156 @@
+package gmbh.vanella.lector.core
+
+import org.slf4j.LoggerFactory
+import java.nio.file.Path
+
+private val logger = LoggerFactory.getLogger("gmbh.vanella.lector.core.RecipeStep")
+
+/** A package whose resolved version differs between two states. Null means the package isn't there. */
+data class VersionChange(
+    val `package`: String,
+    val before: String?,
+    val after: String?,
+)
+
+/** What the recipe step did. Every outcome but [Applied] leaves the working tree as it was. */
+sealed interface RecipeOutcome {
+    data class Applied(
+        val changedFiles: List<String>,
+        val versionChanges: List<VersionChange>,
+    ) : RecipeOutcome
+
+    data object NotAnUpgrade : RecipeOutcome
+
+    data class PrOutdated(
+        val baseVersion: String,
+        val toVersion: String,
+    ) : RecipeOutcome
+
+    data object NoMatch : RecipeOutcome
+
+    data object NoRecipeRunner : RecipeOutcome
+
+    data class VersionsUnreadable(
+        val reason: String,
+    ) : RecipeOutcome
+
+    data class RunFailed(
+        val reason: String,
+    ) : RecipeOutcome
+
+    data class DowngradeDetected(
+        val downgrades: List<VersionChange>,
+    ) : RecipeOutcome
+}
+
+data class RecipeResult(
+    val selection: RecipeSelection,
+    val outcome: RecipeOutcome,
+)
+
+/**
+ * Finds the recipe for [change] and applies it to [repo] in place, unless that could move a dependency back
+ * (concept section 4):
+ *
+ * 1. A change that isn't an upgrade runs no recipe.
+ * 2. With a [base]: if the base already resolves the package higher than the change's target, the PR is outdated.
+ * 3. If any package resolves lower after the recipe than before, the recipe's result is discarded.
+ *
+ * Without readable versions none of this can be proven, so no recipe runs. A failed or discarded run resets the
+ * working tree, which must be clean before the call. The recipe is optional: no outcome here is an error.
+ */
+fun applyRecipe(
+    change: DependencyChange,
+    adapter: EcosystemAdapter,
+    index: RecipeIndex,
+    repo: Path,
+    base: BaseCommit?,
+): RecipeResult {
+    val versions = adapter.versionScheme
+    if (versions.compare(change.toVersion, change.fromVersion) <= 0) return RecipeResult(RecipeSelection.NONE, RecipeOutcome.NotAnUpgrade)
+    if (base != null) {
+        val outdated = outdated(change, adapter, base)
+        if (outdated != null) return RecipeResult(RecipeSelection.NONE, outdated)
+    }
+    val selection = index.find(change, versions)
+    logger.info("Recipe for {}: {}, alternatives: {}", change, selection.chosen, selection.alternatives)
+    return RecipeResult(selection, run(selection, adapter, repo))
+}
+
+/** Rule 2: the outcome that stops the recipe, or null if the PR is not outdated. */
+private fun outdated(
+    change: DependencyChange,
+    adapter: EcosystemAdapter,
+    base: BaseCommit,
+): RecipeOutcome? {
+    val baseVersions = readVersions(adapter, base::checkout) { return it }
+    val baseVersion = baseVersions[change.`package`] ?: return null
+    return if (adapter.versionScheme.compare(baseVersion, change.toVersion) > 0) {
+        RecipeOutcome.PrOutdated(baseVersion, change.toVersion)
+    } else {
+        null
+    }
+}
+
+private fun run(
+    selection: RecipeSelection,
+    adapter: EcosystemAdapter,
+    repo: Path,
+): RecipeOutcome {
+    val recipe = (selection.chosen ?: return RecipeOutcome.NoMatch).recipe
+    val runner = adapter.recipeRunner ?: return RecipeOutcome.NoRecipeRunner
+    val before = readVersions(adapter, { it(repo) }) { return it }
+    val run =
+        try {
+            runner.run(repo, recipe)
+        } catch (e: ToolError) {
+            RecipeRun.Failed(e.message)
+        }
+    val outcome =
+        when (run) {
+            is RecipeRun.Failed -> RecipeOutcome.RunFailed(run.reason)
+            RecipeRun.Applied -> checkVersions(adapter, repo, before)
+        }
+    if (outcome !is RecipeOutcome.Applied) {
+        logger.warn("Recipe {} discarded: {}", recipe.name, outcome)
+        GitWorkingTree.reset(repo)
+    }
+    return outcome
+}
+
+/** Rule 3: keeps the recipe's result only if no package went down. */
+private fun checkVersions(
+    adapter: EcosystemAdapter,
+    repo: Path,
+    before: Map<String, String>,
+): RecipeOutcome {
+    val after = readVersions(adapter, { it(repo) }) { return it }
+    val changes =
+        (before.keys + after.keys)
+            .sorted()
+            .map { VersionChange(it, before[it], after[it]) }
+            .filter { it.before != it.after }
+    val downgrades =
+        changes.filter { it.before != null && it.after != null && adapter.versionScheme.compare(it.after, it.before) < 0 }
+    if (downgrades.isNotEmpty()) return RecipeOutcome.DowngradeDetected(downgrades)
+    return RecipeOutcome.Applied(GitWorkingTree.changedFiles(repo), changes)
+}
+
+/**
+ * Reads the resolved versions in the directory that [where] hands out. If they can't be read, calls [unreadable], which
+ * must leave the caller.
+ */
+private inline fun readVersions(
+    adapter: EcosystemAdapter,
+    where: ((Path) -> Map<String, String>) -> Map<String, String>,
+    unreadable: (RecipeOutcome.VersionsUnreadable) -> Nothing,
+): Map<String, String> {
+    val resolved =
+        adapter.resolvedVersions
+            ?: unreadable(RecipeOutcome.VersionsUnreadable("${adapter.ecosystem} can't read resolved versions"))
+    return try {
+        where(resolved::read)
+    } catch (e: ToolError) {
+        unreadable(RecipeOutcome.VersionsUnreadable(e.message))
+    }
+}

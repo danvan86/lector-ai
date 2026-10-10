@@ -6,4 +6,5 @@ plugins {
 dependencies {
     implementation(project(":core"))
     implementation(libs.slf4j.api)
+    implementation(libs.maven.artifact)
 }

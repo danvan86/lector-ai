@@ -16,6 +16,9 @@ potential-bugs:
     active: true
 
 style:
+  # The migration steps are chains of checks that each may stop the run. Early exits keep them flat.
+  ReturnCount:
+    excludeGuardClauses: true
   # stdout carries the command's output (reports, JSON) and is read by the pipeline.
   # Write output through Clikt's `echo`, logs through SLF4J (stderr).
   ForbiddenMethodCall:

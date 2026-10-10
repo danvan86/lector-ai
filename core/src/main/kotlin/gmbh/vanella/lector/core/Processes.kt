@@ -13,7 +13,7 @@ private val logger = LoggerFactory.getLogger("gmbh.vanella.lector.core.Processes
 
 /** A failure of the tool, not of the repository: a missing program, a timeout, an invalid argument. */
 class ToolError(
-    message: String,
+    override val message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
 

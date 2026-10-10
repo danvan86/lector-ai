@@ -36,10 +36,10 @@ class GitBaseCommitTest {
                 checkout = dir
                 assertEquals("base", dir.resolve("version.txt").readText())
                 assertEquals(2, worktrees())
-                emptyList()
+                "built"
             }
 
-        assertEquals(emptyList(), result)
+        assertEquals("built", result)
         assertEquals("head", repo.resolve("version.txt").readText())
         assertEquals(1, worktrees())
         assertFalse(checkout!!.exists())
@@ -48,7 +48,7 @@ class GitBaseCommitTest {
     @Test
     fun `the worktree is removed when the block fails`() {
         assertFailsWith<IllegalStateException> {
-            GitBaseCommit.resolve(repo, "HEAD~1").checkout { error("build crashed") }
+            GitBaseCommit.resolve(repo, "HEAD~1").checkout<Unit> { error("build crashed") }
         }
 
         assertEquals(1, worktrees())
@@ -74,7 +74,7 @@ class GitBaseCommitTest {
     ) {
         val error = assertFailsWith<ToolError> { GitBaseCommit.resolve(noGit, "HEAD") }
 
-        assertContains(error.message.orEmpty(), "Base ref HEAD is not a commit in $noGit: fatal: not a git repository")
+        assertContains(error.message, "Base ref HEAD is not a commit in $noGit: fatal: not a git repository")
     }
 
     @Test
@@ -83,11 +83,10 @@ class GitBaseCommitTest {
             assertFailsWith<ToolError> {
                 GitBaseCommit.resolve(repo, "HEAD~1").checkout { dir ->
                     git("worktree", "lock", dir.toString())
-                    emptyList()
                 }
             }
 
-        assertContains(error.message.orEmpty(), "git worktree remove failed")
+        assertContains(error.message, "git worktree remove failed")
     }
 
     private fun worktrees() = git("worktree", "list").lines().count { it.isNotBlank() }

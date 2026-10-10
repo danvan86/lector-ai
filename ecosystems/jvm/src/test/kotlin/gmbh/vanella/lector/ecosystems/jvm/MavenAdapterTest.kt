@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MavenAdapterTest {
@@ -21,6 +22,16 @@ class MavenAdapterTest {
 
     private val root by lazy { repo.toRealPath() }
     private val runs = mutableListOf<List<String>>()
+
+    @Test
+    fun `speaks for the maven ecosystem, with Maven's version order, and runs no recipes yet`() {
+        val adapter = MavenAdapter()
+
+        assertEquals("maven", adapter.ecosystem)
+        assertEquals(MavenVersionScheme, adapter.versionScheme)
+        assertNull(adapter.recipeRunner)
+        assertNull(adapter.resolvedVersions)
+    }
 
     @Test
     fun `detects a repository with a pom_xml at the root`() {
