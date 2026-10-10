@@ -4,7 +4,7 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.NoOpCliktCommand
 import com.github.ajalt.clikt.parameters.options.versionOption
 
-/** The `lector` root command. Subcommands (`verify`, …) arrive with later milestones. */
+/** The `lector` root command. Its subcommands are wired in [rootCommand]. */
 class LectorCommand(
     version: String,
 ) : NoOpCliktCommand(name = "lector") {

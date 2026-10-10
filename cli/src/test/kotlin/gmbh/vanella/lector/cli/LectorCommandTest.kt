@@ -4,7 +4,6 @@ import com.github.ajalt.clikt.testing.test
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 
 class LectorCommandTest {
     private val command = LectorCommand(version = "1.2.3")
@@ -25,14 +24,6 @@ class LectorCommandTest {
         assertContains(result.stdout, "Usage: lector")
         assertContains(result.stdout, "--version")
         assertEquals("", result.stderr)
-        assertEquals(0, result.statusCode)
-    }
-
-    @Test
-    fun `help lists no subcommands`() {
-        val result = command.test("--help")
-
-        assertFalse(result.stdout.contains("Commands:"))
         assertEquals(0, result.statusCode)
     }
 

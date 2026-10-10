@@ -5,7 +5,9 @@ plugins {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":ecosystems:jvm"))
     implementation(libs.clikt)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.slf4j.api)
     runtimeOnly(libs.slf4j.simple)
 }
