@@ -25,6 +25,10 @@ style:
         value: 'kotlin.io.print'
       - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
         value: 'kotlin.io.println'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'java.io.PrintStream.print'
+      - reason: 'stdout is reserved for command output. Use Clikt `echo` for output and SLF4J for logs.'
+        value: 'java.io.PrintStream.println'
   # Formatting rules that ktlint already enforces.
   MaxLineLength:
     active: false

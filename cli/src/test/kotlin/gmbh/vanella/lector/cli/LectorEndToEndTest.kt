@@ -1,10 +1,15 @@
 package gmbh.vanella.lector.cli
 
+import org.junit.jupiter.api.Tag
+import java.io.File
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** Runs the installed `lector` start script as a separate process, the way the pipeline calls it. */
+@Tag("e2e")
 class LectorEndToEndTest {
     private val version = System.getProperty("lector.version")
 
@@ -18,11 +23,22 @@ class LectorEndToEndTest {
     }
 
     @Test
-    fun `no arguments prints the help`() {
+    fun `no arguments prints the help to stdout and exits with 0`() {
         val run = lector()
 
         assertContains(run.stdout, "Usage: lector")
         assertContains(run.stdout, "--version")
+        assertEquals("", run.stderr)
+        assertEquals(0, run.exitCode)
+    }
+
+    @Test
+    fun `unknown option prints the error to stderr and exits with 1`() {
+        val run = lector("--bogus")
+
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "no such option --bogus")
+        assertEquals(1, run.exitCode)
     }
 
     @Test
@@ -39,18 +55,28 @@ class LectorEndToEndTest {
         val stderr: String,
     )
 
+    // Both streams go to files, so a full pipe buffer can't block the process. The timeout keeps a hanging run from blocking the build.
     private fun lector(
         vararg args: String,
         javaOpts: String = "",
     ): Run {
+        val stdout = File.createTempFile("lector", ".out").apply { deleteOnExit() }
+        val stderr = File.createTempFile("lector", ".err").apply { deleteOnExit() }
         val process =
             ProcessBuilder(System.getProperty("lector.bin"), *args)
+                .redirectOutput(stdout)
+                .redirectError(stderr)
                 .apply {
                     environment()["JAVA_HOME"] = System.getProperty("java.home")
                     environment()["JAVA_OPTS"] = javaOpts
                 }.start()
-        val stdout = process.inputStream.bufferedReader().readText()
-        val stderr = process.errorStream.bufferedReader().readText()
-        return Run(process.waitFor(), stdout, stderr)
+        val exited = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        if (!exited) process.destroyForcibly()
+        assertTrue(exited, "lector did not exit within $TIMEOUT_SECONDS seconds")
+        return Run(process.exitValue(), stdout.readText(), stderr.readText())
+    }
+
+    private companion object {
+        const val TIMEOUT_SECONDS = 30L
     }
 }

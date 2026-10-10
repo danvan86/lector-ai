@@ -17,6 +17,7 @@ kotlin {
 }
 
 dependencies {
+    testImplementation(platform(libs.findLibrary("junit-bom").get()))
     testImplementation(kotlin("test"))
     testRuntimeOnly(libs.findLibrary("junit-platform-launcher").get())
 }
@@ -39,12 +40,24 @@ tasks.check {
     dependsOn("detektMain", "detektTest")
 }
 
+// The plain task runs without type resolution and only repeats the findings of the tasks above.
+tasks.named("detekt") {
+    enabled = false
+}
+
+// Every line and branch must be covered. The one exclusion is the `main` entry point: it exits the process,
+// so it can't run in-process. The end-to-end tests run it.
 kover {
     reports {
+        filters {
+            excludes {
+                classes("*.MainKt")
+            }
+        }
         verify {
             rule {
-                minBound(80, CoverageUnit.LINE)
-                minBound(70, CoverageUnit.BRANCH)
+                minBound(100, CoverageUnit.LINE)
+                minBound(100, CoverageUnit.BRANCH)
             }
         }
     }

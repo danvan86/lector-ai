@@ -30,16 +30,38 @@ sourceSets.main {
     resources.srcDir(files(versionResources).builtBy(generateVersionResource))
 }
 
-// The end-to-end tests run the installed distribution, the same way the pipeline does.
-tasks.test {
-    dependsOn(tasks.installDist)
+tasks.withType<Test>().configureEach {
     jvmArgs(enableNativeAccess)
     systemProperty("lector.version", project.version.toString())
-    systemProperty(
-        "lector.bin",
-        layout.buildDirectory
-            .file("install/lector/bin/lector")
-            .get()
-            .asFile.path,
-    )
+}
+
+// Unit tests run in-process. Tests tagged `e2e` run the installed distribution, the same way the pipeline does.
+tasks.test {
+    useJUnitPlatform { excludeTags("e2e") }
+}
+
+val endToEndTest =
+    tasks.register<Test>("endToEndTest") {
+        description = "Runs the installed lector start script."
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        testClassesDirs =
+            sourceSets.test
+                .get()
+                .output.classesDirs
+        classpath = sourceSets.test.get().runtimeClasspath
+        useJUnitPlatform { includeTags("e2e") }
+        shouldRunAfter(tasks.test)
+        dependsOn(tasks.installDist)
+        systemProperty(
+            "lector.bin",
+            tasks.installDist
+                .get()
+                .destinationDir
+                .resolve("bin/${application.applicationName}")
+                .path,
+        )
+    }
+
+tasks.check {
+    dependsOn(endToEndTest)
 }
