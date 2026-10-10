@@ -13,7 +13,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 5 | `cli`: `verify` command, text and JSON report, exit codes, end-to-end tests | ✅ |
 | 6 | Tagged integration test with real Maven on a base/head fixture | ✅ |
 | 7 | Quality gates verified | ✅ |
-| 8 | Docs in sync | ⬜ |
+| 8 | Docs in sync (`features.md`, `AGENTS.md`, concept 2.3 and 5, `docs/architecture/verify-pipeline.md`, `project-skeleton.md`) | ✅ |
 
 ## Quality gates
 
