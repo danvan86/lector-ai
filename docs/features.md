@@ -19,7 +19,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** `./gradlew build` is green locally and in CI.
 
-## M1 – Verify and report (JVM/Maven, no AI) ⬜
+## M1 – Verify and report (JVM/Maven, no AI) ✅
 
 **Goal:** the tool can tell you whether a dependency update breaks the build, and where.
 

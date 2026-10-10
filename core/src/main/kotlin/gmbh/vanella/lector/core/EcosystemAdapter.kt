@@ -2,7 +2,7 @@ package gmbh.vanella.lector.core
 
 import java.nio.file.Path
 
-/** The extension point every ecosystem implements (Maven, Gradle, npm, …). It grows when a milestone needs more. */
+/** The extension point every ecosystem implements, one adapter per build tool. It grows when a milestone needs more. */
 interface EcosystemAdapter {
     /** Whether this adapter handles the repository. */
     fun detect(repo: Path): Boolean
