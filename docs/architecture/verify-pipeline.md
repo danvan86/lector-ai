@@ -1,6 +1,6 @@
 # Architecture – Verify pipeline
 
-Milestone: [M1](../features.md#m1--verify-and-report-jvmmaven-no-ai-) · Spec: [`m1-verify-and-report/spec.md`](../../specs/open/m1-verify-and-report/spec.md) · Progress: [`progress.md`](../../specs/open/m1-verify-and-report/progress.md)
+Milestone: [M1](../features.md#m1--verify-and-report-jvmmaven-no-ai-) · Spec: [`m1-verify-and-report/spec.md`](../../specs/done/m1-verify-and-report/spec.md) · Progress: [`progress.md`](../../specs/done/m1-verify-and-report/progress.md)
 
 > **Summary for agents**
 >

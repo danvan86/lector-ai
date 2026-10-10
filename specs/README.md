@@ -22,7 +22,7 @@ specs/
 | Feature | File |
 |---|---|
 | M0 – Project skeleton | [brainstorming](done/m0-project-skeleton/brainstorming.md) · [spec](done/m0-project-skeleton/spec.md) |
-| M1 – Verify and report | [brainstorming](open/m1-verify-and-report/brainstorming.md) · [spec](open/m1-verify-and-report/spec.md) |
+| M1 – Verify and report | [brainstorming](done/m1-verify-and-report/brainstorming.md) · [spec](done/m1-verify-and-report/spec.md) |
 | M2 – Recipe index and OpenRewrite run | [brainstorming](open/m2-recipe-index/brainstorming.md) · [spec](open/m2-recipe-index/spec.md) |
 | M3 – Fix loop | [brainstorming](open/m3-fix-loop/brainstorming.md) · [spec](open/m3-fix-loop/spec.md) |
 | M4 – Guardrails | [brainstorming](open/m4-guardrails/brainstorming.md) · [spec](open/m4-guardrails/spec.md) |
