@@ -7,7 +7,7 @@ Milestone: [M1](../features.md#m1--verify-and-report-jvmmaven-no-ai-) · Spec: [
 > - `lector verify <repo>` builds and tests a repository through an `EcosystemAdapter`, then `attribute()` in `core` sorts every `Diagnostic` into the four lists of a `Verification`: caused by the update, pre-existing, flaky, unattributed.
 > - The contract: the report goes to stdout (text, or one line of JSON with `--format json`), logs go to stderr. Exit `0` when nothing is caused by the update, `1` when something is, `2` on a tool error.
 > - `core` knows no build tool: it holds the data model, the port, attribution, the process runner, and the Git worktree for the base commit. Everything Maven-specific is in `ecosystems:jvm`. Only `cli` (`RootCommand.kt`) knows `MavenAdapter`.
-> - A new ecosystem is a new `ecosystems:*` module that implements `EcosystemAdapter` (`detect`, `verify`, `runTests`, plus `ecosystem` and `versionScheme` and the optional recipe capabilities since M2, see [Recipe migration](recipe-migration.md)), registered in the adapter list in `rootCommand()`. Its parsers are tested on output captured from real runs.
+> - A new ecosystem is a new `ecosystems:*` module that implements `EcosystemAdapter` (`detect`, `verify`, `runTests`, plus `ecosystem` and `versionScheme` and the optional recipe capabilities since M2, see [Recipe migration](recipe-migration.md), and `ground`, `clusterKey`, `isBuildFile` since M3, see [Fix loop](fix-loop.md)), registered in the adapter list in `rootCommand()`. Its parsers are tested on output captured from real runs.
 > - Easiest rule to break: test failures carry `Diagnostic.test`, everything else has `test == null`, and attribution relies on it. A run with any `test == null` diagnostic says nothing about the tests. Never skip or filter tests in `verify`; `-Dtest` belongs in `runTests` only.
 
 ## Overview
@@ -31,7 +31,7 @@ flowchart LR
 |---|---|---|
 | `core` | `Diagnostic.kt` | `Diagnostic(file, line, column, code, message, severity, tool, test)`. `file` is relative to the repository root with `/`. `file`, `line`, `column`, `code`, and `test` are nullable. `Severity` has only `ERROR`: warnings aren't collected. |
 | | `Verification.kt` | The four lists. No classification lives on `Diagnostic`. |
-| | `EcosystemAdapter.kt` | The port: `detect(repo)`, `verify(repo)`, `runTests(repo, tests: List<Diagnostic>)`. M2 added the members for recipes. |
+| | `EcosystemAdapter.kt` | The port: `detect(repo)`, `verify(repo)`, `runTests(repo, tests: List<Diagnostic>)`. M2 added the members for recipes, M3 those for the fix loop. |
 | | `Attribution.kt` | `attribute(adapter, repo, base)` and the `BaseCommit` fun interface. |
 | | `Processes.kt` | `runProcess(command, workDir, timeout)` and `ToolError`. |
 | | `GitBaseCommit.kt` | `GitBaseCommit.resolve(repo, ref)` and `checkout { }` in a temporary worktree. |
@@ -39,7 +39,7 @@ flowchart LR
 | | `MavenConsole.kt` | Console output → javac and kotlinc errors, failed goals, unreadable POMs. |
 | | `TestReports.kt` | surefire and failsafe XML reports → test failures, parsed with the shared `xmlDocumentBuilder()` (`XmlDocumentBuilder.kt`). |
 | `cli` | `VerifyCommand.kt` | The `verify` subcommand: attribution and report. |
-| | `RepositoryCommand.kt` | Shared with `migrate`: `<repo>`, `--base`, `--format`, `--maven-settings`, validation, adapter detection, exit code. |
+| | `RepositoryCommand.kt` | Shared with `migrate` and `heal`: `<repo>`, `--base`, `--format`, `--maven-settings`, validation, adapter detection, exit code. |
 | | `Reports.kt` | `TextReport` and `JsonReport`. |
 | | `RootCommand.kt` | Wires `VerifyCommand` (and `MigrateCommand`) with `MavenAdapter`. |
 
