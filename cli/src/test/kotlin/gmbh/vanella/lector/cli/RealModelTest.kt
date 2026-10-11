@@ -49,6 +49,7 @@ class RealModelTest {
                 rootCommand("test").test("heal $repo $args --ollama-url ${ollama.endpoint} --model $model --format json")
             }
 
+        assertTrue(result.stdout.isNotBlank(), "heal ended with exit ${result.statusCode}: ${result.stderr}")
         val json = Json.parseToJsonElement(result.stdout).jsonObject
         assertEquals(
             "noMatch",
