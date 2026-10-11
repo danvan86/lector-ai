@@ -32,15 +32,52 @@ object GitWorkingTree {
         git(repo, "clean", "-d", "--force", "--quiet")
     }
 
+    /** The files Git tracks, relative to the repository root, sorted. */
+    fun trackedFiles(repo: Path): List<String> =
+        git(repo, "ls-files", "-z")
+            .split('\u0000')
+            .filter { it.isNotEmpty() }
+            .sorted()
+
+    /**
+     * Commits the changes to [files] (relative to the repository root, new and deleted ones included) with the tool's
+     * identity and returns the commit. Anything else in the working tree, like build output, stays out of it. The
+     * repository's hooks don't run, and nothing is signed: a CI run can't answer a prompt.
+     */
+    fun commit(
+        repo: Path,
+        message: String,
+        files: List<String>,
+    ): String {
+        if (files.isNotEmpty()) git(repo, listOf("add", "--all", "--") + files)
+        git(repo, IDENTITY + listOf("commit", "--quiet", "--no-verify", "--allow-empty", "-m", message))
+        return git(repo, "rev-parse", "HEAD").trim()
+    }
+
+    /** The changes [commit] made, as a unified diff. */
+    fun diff(
+        repo: Path,
+        commit: String,
+    ): String = git(repo, "show", "--format=", "--no-color", commit)
+
+    // The tool's identity for local commits. M5 swaps it for the GitHub App's.
+    private val IDENTITY = listOf("-c", "user.name=lector", "-c", "user.email=lector@localhost", "-c", "commit.gpgsign=false")
+
     // `XY path`: two status letters and a space.
     private const val STATUS_PREFIX = 3
 
     private fun git(
         repo: Path,
         vararg args: String,
+    ) = git(repo, args.asList())
+
+    private fun git(
+        repo: Path,
+        args: List<String>,
     ): String {
-        val result = runProcess(listOf("git", *args), repo, GIT_TIMEOUT)
-        if (result.exitCode != 0) throw ToolError("git ${args.first()} failed in $repo: ${result.output.trim()}")
+        val result = runProcess(listOf("git") + args, repo, GIT_TIMEOUT)
+        val command = args.first { !it.startsWith("-") && '=' !in it }
+        if (result.exitCode != 0) throw ToolError("git $command failed in $repo: ${result.output.trim()}")
         return result.output
     }
 }

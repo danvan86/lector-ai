@@ -15,5 +15,6 @@ internal fun rootCommand(version: String): LectorCommand {
     return LectorCommand(version).subcommands(
         VerifyCommand(adapters),
         MigrateCommand(adapters, index = { BundledRecipeIndex.load() }),
+        HealCommand(adapters, index = { BundledRecipeIndex.load() }),
     )
 }

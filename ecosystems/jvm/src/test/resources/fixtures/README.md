@@ -6,6 +6,7 @@ Small Maven projects for the parser tests. Each one breaks in one way.
 |---|---|---|
 | `java-compile-errors` | javac errors in two independent modules (main and test code) | `maven-output/javac-errors.log` |
 | `kotlin-compile-errors` | kotlinc errors (Kotlin 2.x; 1.9 with `-Dkotlin.version=1.9.25`) | `maven-output/kotlinc-errors.log`, `kotlinc-1.9-errors.log`, `kotlinc-crash.log` (Kotlin 1.9 on JDK 25) |
+| `missing-package` | an import from a package that doesn't exist, and a symbol from it | `maven-output/javac-missing-package.log` |
 | `missing-dependency` | a dependency version that doesn't exist | `maven-output/dependency-resolution.log` |
 | `missing-parent` | a parent POM version that doesn't exist | `maven-output/missing-parent.log` |
 | `failing-tests` | a surefire test in `lib` and a failsafe test in `app` | `maven-output/test-failures.log`, and the XML reports under `*/target/*-reports/` |

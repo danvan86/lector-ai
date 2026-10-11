@@ -125,16 +125,27 @@ private fun checkVersions(
     before: Map<String, String>,
 ): RecipeOutcome {
     val after = readVersions(adapter, { it(repo) }) { return it }
-    val changes =
-        (before.keys + after.keys)
-            .sorted()
-            .map { VersionChange(it, before[it], after[it]) }
-            .filter { it.before != it.after }
-    val downgrades =
-        changes.filter { it.before != null && it.after != null && adapter.versionScheme.compare(it.after, it.before) < 0 }
+    val changes = versionChanges(before, after)
+    val downgrades = downgrades(changes, adapter.versionScheme)
     if (downgrades.isNotEmpty()) return RecipeOutcome.DowngradeDetected(downgrades)
     return RecipeOutcome.Applied(GitWorkingTree.changedFiles(repo), changes)
 }
+
+/** Every package whose version differs between [before] and [after], sorted by package. */
+internal fun versionChanges(
+    before: Map<String, String>,
+    after: Map<String, String>,
+): List<VersionChange> =
+    (before.keys + after.keys)
+        .sorted()
+        .map { VersionChange(it, before[it], after[it]) }
+        .filter { it.before != it.after }
+
+/** The changes that move a package that is there before and after to a lower version. */
+internal fun downgrades(
+    changes: List<VersionChange>,
+    versions: VersionScheme,
+): List<VersionChange> = changes.filter { it.before != null && it.after != null && versions.compare(it.after, it.before) < 0 }
 
 /**
  * Reads the resolved versions in the directory that [where] hands out. If they can't be read, calls [unreadable], which

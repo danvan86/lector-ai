@@ -1,5 +1,6 @@
 package gmbh.vanella.lector.ecosystems.jvm
 
+import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.ProcessResult
@@ -28,14 +29,19 @@ private const val NO_UNIT_TESTS = "lector.NoUnitTests"
  *
  * Maven runs in two stages, both in batch mode with fail-at-end, so every module reports its problems: first
  * `test-compile`, and only if that is clean, `verify`.
+ *
+ * Grounding reads the JARs in [localRepository]. A `localRepository` set in the Maven settings is not followed.
  */
 class MavenAdapter(
     private val settings: Path? = null,
     plugins: MavenPlugins = MavenPlugins.load(),
+    localRepository: Path = Path.of(System.getProperty("user.home"), ".m2", "repository"),
     private val run: (command: List<String>, workDir: Path) -> ProcessResult = { command, workDir ->
         runProcess(command, workDir, MAVEN_TIMEOUT)
     },
 ) : EcosystemAdapter {
+    private val grounding = JavapGrounding(localRepository)
+
     override val ecosystem = "maven"
     override val versionScheme = MavenVersionScheme
 
@@ -104,6 +110,16 @@ class MavenAdapter(
             }
         return maven(repo.toRealPath(), goals)
     }
+
+    override fun ground(
+        repo: Path,
+        change: DependencyChange,
+        diagnostics: List<Diagnostic>,
+    ) = grounding.ground(repo, change, diagnostics)
+
+    override fun clusterKey(diagnostic: Diagnostic) = ClusterKeys.of(diagnostic)
+
+    override fun isBuildFile(file: String) = file == "pom.xml" || file.endsWith("/pom.xml")
 
     /** Runs Maven and collects the problems from its output and the test reports. */
     private fun maven(

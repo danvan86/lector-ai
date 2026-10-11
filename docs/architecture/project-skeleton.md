@@ -4,11 +4,11 @@ Milestone: [M0](../features.md#m0--project-skeleton-) · Spec: [`m0-project-skel
 
 > **Summary for agents**
 >
-> - Four modules: `core` (data model and ports, depends on nothing), `recipes` (recipe index, depends on `core`), `ecosystems:jvm` (Maven adapter, depends on `core`), and `cli` (the `lector` command, depends on all three). Every module applies the convention plugin `lector.kotlin-conventions` from `buildSrc`. Every version is in `gradle/libs.versions.toml`.
+> - Five modules: `core` (data model and ports, depends on nothing), `recipes` (recipe index, depends on `core`), `llm` (Ollama client, depends on `core`), `ecosystems:jvm` (Maven adapter, depends on `core`), and `cli` (the `lector` command, depends on all four). Every module applies the convention plugin `lector.kotlin-conventions` from `buildSrc`. Every version is in `gradle/libs.versions.toml`.
 > - `./gradlew build` is the single gate: compile, unit tests, end-to-end tests, ktlint, detekt, Kover. It fails on any finding.
 > - The CLI contract: stdout carries only command output, logs go to stderr through SLF4J, and `LectorCommand.execute()` sets the exit code (`0` for success, help, and version; `2` for invalid usage, because `1` means "caused by the update").
 > - The version is defined once, in `gradle.properties`. The build writes it into a resource, and `AppVersion` reads it at runtime.
-> - `RootCommand.kt` is the composition root. `rootCommand()` builds the command tree and wires the adapters into the subcommands (`verify` since M1, see [Verify pipeline](verify-pipeline.md); `migrate` since M2, see [Recipe migration](recipe-migration.md)).
+> - `RootCommand.kt` is the composition root. `rootCommand()` builds the command tree and wires the adapters into the subcommands (`verify` since M1, see [Verify pipeline](verify-pipeline.md); `migrate` since M2, see [Recipe migration](recipe-migration.md); `heal` since M3, see [Fix loop](fix-loop.md)).
 > - A new module: add it to `settings.gradle.kts`, apply `id("lector.kotlin-conventions")`, depend only on `core`, and register it in `cli`. A new subcommand: add it in `rootCommand()`, with unit tests for every exit path and an `e2e` test for the start script.
 
 ## Overview
@@ -36,13 +36,14 @@ flowchart LR
 
 | Module | Contents | Depends on |
 |---|---|---|
-| `core` | Data model, ports, attribution, process runner (M1). Will also hold the pipeline, fix loop, and guardrails. | Nothing, by construction: its build file has no `project(…)` dependency. |
+| `core` | Data model, ports, attribution, process runner (M1), recipe step (M2), fix loop (M3). Will also hold the pipeline and guardrails. | Nothing, by construction: its build file has no `project(…)` dependency. |
 | `recipes` | The recipe index (M2): generated at build time by its `generator` source set, read at run time by `BundledRecipeIndex`. | `core`, kotlinx-serialization-json, SLF4J API. OpenRewrite only in the `generator` source set, never at run time. |
-| `ecosystems:jvm` | The Maven adapter (M1, recipe runner and resolved versions since M2). | `core`, `maven-artifact`. |
-| `cli` | `lector` command, version lookup, logging setup. The composition root. | `core`, `recipes`, `ecosystems:jvm`, Clikt, kotlinx-serialization-json, SLF4J API (`slf4j-simple` at runtime). |
+| `llm` | The Ollama client and the prompt (M3). | `core`, kotlinx-serialization-json, SLF4J API. No HTTP library: the JDK client. |
+| `ecosystems:jvm` | The Maven adapter (M1, recipe runner and resolved versions since M2, cluster keys and `javap` grounding since M3). | `core`, `maven-artifact`. |
+| `cli` | `lector` command, version lookup, logging setup. The composition root. | `core`, `recipes`, `llm`, `ecosystems:jvm`, Clikt, kotlinx-serialization-json, SLF4J API (`slf4j-simple` at runtime). |
 | `buildSrc` | The convention plugin. Not a product module. | Kotlin, ktlint, detekt, and Kover Gradle plugins. |
 
-The dependency direction from the [concept](../concept.md#21-ports-and-adapters) holds: `cli → ecosystems:jvm → core`, `cli → recipes → core`, and `cli → core`, never the other way. New adapter modules join the same way.
+The dependency direction from the [concept](../concept.md#21-ports-and-adapters) holds: `cli → ecosystems:jvm → core`, `cli → recipes → core`, `cli → llm → core`, and `cli → core`, never the other way. New adapter modules join the same way.
 
 ```mermaid
 flowchart TB
@@ -51,7 +52,9 @@ flowchart TB
     cli --> jvm
     recipes --> core
     cli --> recipes
-    later["later: sources, more ecosystems, llm, git"] -.-> core
+    llm --> core
+    cli --> llm
+    later["later: sources, more ecosystems, git"] -.-> core
     cli -.-> later
 ```
 
@@ -99,7 +102,7 @@ flowchart LR
 | ktlint | `ktlint*SourceSetCheck`, `ktlintKotlinScriptCheck` | `*.kt` in every source set, `*.kts` in every module, the root, and `buildSrc` | `ktlint_official` from `.editorconfig`. Fix with `./gradlew ktlintFormat`. |
 | detekt 2.x | `detektMain`, `detektTest` (type resolution), plus `detektGenerator` in `recipes` | Kotlin sources | `warningsAsErrors`. Forbidden: `print`/`println` (also `System.out`, including `printf`, `format`, `append`, `write`), process exit outside `main`, `else` on sealed types. The plain `detekt` task is disabled because it only repeats the findings. |
 | Kover | `koverVerify` | In-process tests per module | 100 % lines and branches. `MainKt` is excluded because `main` exits the process; the end-to-end tests run it. |
-| Tests | `test`, `endToEndTest` | Unit and end-to-end. The opt-in `:cli:integrationTest` is not part of `check`. | Every test must pass. |
+| Tests | `test`, `endToEndTest` | Unit and end-to-end. The opt-in `:cli:integrationTest` and `:cli:realModelTest` are not part of `check`. | Every test must pass. |
 
 There are no baselines, no `ignoreFailures`, and no coverage exclusions besides `MainKt`. Each gate was shown to fail the build on a deliberate violation (see the spec's acceptance criteria and the review).
 
@@ -148,6 +151,7 @@ The pipeline reads stdout and the exit code, so both are fixed and tested on eve
 | `lector foo` | empty | Usage and `Error: no such subcommand foo` | `2` |
 | `lector verify …` | See [Verify pipeline](verify-pipeline.md#cli-contract) | | `0`, `1`, or `2` |
 | `lector migrate …` | See [Recipe migration](recipe-migration.md#cli-contract) | | `0`, `1`, or `2` |
+| `lector heal …` | See [Fix loop](fix-loop.md#cli-contract) | | `0`, `1`, or `2` |
 
 Output goes through Clikt's `echo`. Logs go through SLF4J to stderr (`slf4j-simple`, level `info` by default, `debug` with `JAVA_OPTS=-Dorg.slf4j.simpleLogger.defaultLogLevel=debug`). Libraries added later (OpenRewrite, HTTP clients) log through SLF4J too, so their output can't leak into stdout.
 
@@ -170,8 +174,9 @@ No Kotlin file contains the version literal. Tests compare against the same prop
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
-| Unit | `test` | In-process, excludes the `e2e` and `integration` tags. Clikt's `test()` helper captures stdout, stderr, and the status code of a command. Exit codes that `LectorCommand.execute()` sets (usage errors) are tested with `executeInProcess()` (`Execution.kt`), which captures output and exit without ending the JVM. | `LectorCommandTest`, `AppVersionTest`, `RootCommandTest` |
+| Unit | `test` | In-process, excludes the `e2e`, `integration`, and `real-model` tags. Clikt's `test()` helper captures stdout, stderr, and the status code of a command. Exit codes that `LectorCommand.execute()` sets (usage errors) are tested with `executeInProcess()` (`Execution.kt`), which captures output and exit without ending the JVM. | `LectorCommandTest`, `AppVersionTest`, `RootCommandTest` |
 | Integration | `:cli:integrationTest` | Tag `integration`. Real Maven on a fixture repository; opt-in, not in `check`. See [Verify pipeline](verify-pipeline.md#tests) and [Recipe migration](recipe-migration.md#tests). | `VerifyIntegrationTest`, `MigrateIntegrationTest` |
+| Real model | `:cli:realModelTest` | Tag `real-model`. `heal` with a real model in Ollama through Testcontainers; opt-in, not in `check`. See [Fix loop](fix-loop.md#tests). | `RealModelTest` |
 | End-to-end | `endToEndTest` | Tag `e2e`. Runs `bin/lector` from `installDist` as a separate process with `JAVA_HOME` pinned. Streams go to files, with a 30 s timeout. | `LectorEndToEndTest` |
 
 `./gradlew test` stays fast and doesn't build the distribution. `endToEndTest` depends on `installDist` and finds the start script through the `lector.bin` system property, which is derived from `installDist` and `applicationName`. Test fixtures live under `src/test/resources/` of each module (for example a version resource without a `version` key in `cli`, Maven fixture repos in `ecosystems:jvm`).
@@ -192,6 +197,7 @@ flowchart LR
 | What | Where | Behavior |
 |---|---|---|
 | Build workflow | `.github/workflows/build.yml` | On every pull request and on pushes to `main`: JDK 25 via `actions/setup-java`, Gradle via `gradle/actions/setup-gradle`, then `./gradlew build`. This builds our own tool; it is not the product pipeline. |
+| Real-model workflow | `.github/workflows/real-model.yml` | Manual (`workflow_dispatch`, optional `model`) and nightly: `./gradlew :cli:realModelTest`. Never on push or pull requests. |
 | Dependabot | `.github/dependabot.yml` | Weekly updates for the `gradle` and `github-actions` ecosystems. Gradle updates come through the version catalog. |
 | License | `LICENSE` | Apache 2.0. |
 
@@ -203,4 +209,4 @@ flowchart LR
 | Full `clikt` artifact, not `clikt-core` | `clikt-core` exits with `0` and prints errors to stdout unless `main` wires streams and exit codes by hand. The full artifact pulls in Mordant with JNA and needs `--enable-native-access=ALL-UNNAMED` in the start script and test JVMs. | With the container image in M5 |
 | detekt 2.x alpha | detekt 1.x can't analyze Kotlin 2.4. | When 2.0 is stable |
 | foojay version in `settings.gradle.kts` | A settings `plugins {}` block can't read the version catalog. | — |
-| Domain types and ports arrive with the milestones that need them | M1 added `Diagnostic`, `Verification`, and `EcosystemAdapter`; M2 added `DependencyChange`, `VersionScheme`, and the recipe ports. No type ahead of its first use. | Each milestone |
+| Domain types and ports arrive with the milestones that need them | M1 added `Diagnostic`, `Verification`, and `EcosystemAdapter`; M2 added `DependencyChange`, `VersionScheme`, and the recipe ports; M3 added `Edit`, `LlmClient`, and the adapter's `ground`, `clusterKey`, and `isBuildFile`. No type ahead of its first use. | Each milestone |

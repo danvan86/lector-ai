@@ -1,0 +1,32 @@
+# Runs the real-model test: heal turns a red fixture repository green with a real model in Ollama (M3).
+# Manual and nightly, never on push or pull requests: it downloads the model and runs on CPU, which takes a while.
+name: Real model
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Ollama model to test (empty for the CLI's default)
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 2 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  real-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v6
+      # The model comes in through the environment, never into the script itself.
+      - run: ./gradlew :cli:realModelTest "-Plector.model=$MODEL"
+        env:
+          MODEL: ${{ inputs.model }}

@@ -6,11 +6,14 @@ plugins {
 dependencies {
     implementation(project(":core"))
     implementation(project(":recipes"))
+    implementation(project(":llm"))
     implementation(project(":ecosystems:jvm"))
     implementation(libs.clikt)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.slf4j.api)
     runtimeOnly(libs.slf4j.simple)
+    testImplementation(platform(libs.testcontainers.bom))
+    testImplementation(libs.testcontainers.ollama)
 }
 
 // Clikt's terminal detection loads JNA. Without this flag, JDK 25 warns about it on every run.
@@ -40,8 +43,9 @@ tasks.withType<Test>().configureEach {
 
 // Unit tests run in-process. Tests tagged `e2e` run the installed distribution, the same way the pipeline does.
 // Tests tagged `integration` run real Maven and need network access, so they are opt-in and not part of `check`.
+// So is the test tagged `real-model`: it runs a real model in Ollama, in Docker.
 tasks.test {
-    useJUnitPlatform { excludeTags("e2e", "integration") }
+    useJUnitPlatform { excludeTags("e2e", "integration", "real-model") }
 }
 
 val endToEndTest =
@@ -81,11 +85,31 @@ tasks.register<Test>("integrationTest") {
     useJUnitPlatform { includeTags("integration") }
 }
 
-// Kover would make `check` depend on every test task. The integration test stays opt-in.
+tasks.register<Test>("realModelTest") {
+    description = "Runs heal with a real model in Ollama on a fixture repository. Needs Docker, Maven, and network access."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("real-model") }
+    systemProperty("lector.ollamaImage", "ollama/ollama:${libs.versions.ollama.image.get()}")
+    // Cluster keys and grounding read the English compiler messages, as in the container image and on CI runners.
+    environment("MAVEN_OPTS", "-Duser.language=en -Duser.country=US")
+    // `-Plector.model=<name>` tests another model. Without it, the test uses the CLI's default.
+    providers
+        .gradleProperty("lector.model")
+        .orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { systemProperty("lector.model", it) }
+}
+
+// Kover would make `check` depend on every test task. The integration and real-model tests stay opt-in.
 kover {
     currentProject {
         instrumentation {
-            disabledForTestTasks.add("integrationTest")
+            disabledForTestTasks.addAll("integrationTest", "realModelTest")
         }
     }
 }

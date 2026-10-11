@@ -29,4 +29,23 @@ interface EcosystemAdapter {
         repo: Path,
         tests: List<Diagnostic>,
     ): List<Diagnostic>
+
+    /**
+     * The API surface of [change]'s new version that [diagnostics] need (signatures, types, schemas), as text for the
+     * model. Empty if there is none. Never downloads anything: it reads what the build already resolved.
+     */
+    fun ground(
+        repo: Path,
+        change: DependencyChange,
+        diagnostics: List<Diagnostic>,
+    ): String
+
+    /**
+     * The root cause [diagnostic] points to, e.g. a missing symbol, package, or artifact, or null if it names none.
+     * Diagnostics with the same key are fixed together.
+     */
+    fun clusterKey(diagnostic: Diagnostic): String?
+
+    /** Whether [file] (relative to the repository root, `/` as separator) is a build file, e.g. `pom.xml`. */
+    fun isBuildFile(file: String): Boolean
 }

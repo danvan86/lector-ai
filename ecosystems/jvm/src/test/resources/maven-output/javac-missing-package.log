@@ -1,0 +1,43 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -------------------< com.example:missing-package >--------------------
+[INFO] Building missing-package 1.0
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ missing-package ---
+[INFO] Deleting /work/repo/target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ missing-package ---
+[INFO] skip non existing resourceDirectory /work/repo/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ missing-package ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 1 source file with javac [debug release 17] to target/classes
+[INFO] -------------------------------------------------------------
+[ERROR] COMPILATION ERROR : 
+[INFO] -------------------------------------------------------------
+[ERROR] /work/repo/src/main/java/com/example/App.java:[3,32] package org.apache.commons.lang4 does not exist
+[ERROR] /work/repo/src/main/java/com/example/App.java:[9,16] cannot find symbol
+  symbol:   variable StringUtils
+  location: class com.example.App
+[INFO] 2 errors 
+[INFO] -------------------------------------------------------------
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  0.371 s
+[INFO] Finished at: 2026-10-11T11:27:06+02:00
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.15.0:compile (default-compile) on project missing-package: Compilation failure: Compilation failure: 
+[ERROR] /work/repo/src/main/java/com/example/App.java:[3,32] package org.apache.commons.lang4 does not exist
+[ERROR] /work/repo/src/main/java/com/example/App.java:[9,16] cannot find symbol
+[ERROR]   symbol:   variable StringUtils
+[ERROR]   location: class com.example.App
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException

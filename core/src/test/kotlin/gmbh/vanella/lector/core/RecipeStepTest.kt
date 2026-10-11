@@ -273,6 +273,16 @@ class RecipeStepTest {
             repo: Path,
             tests: List<Diagnostic>,
         ) = emptyList<Diagnostic>()
+
+        override fun ground(
+            repo: Path,
+            change: DependencyChange,
+            diagnostics: List<Diagnostic>,
+        ) = ""
+
+        override fun clusterKey(diagnostic: Diagnostic) = null
+
+        override fun isBuildFile(file: String) = false
     }
 
     private class FakeBase(

@@ -52,7 +52,7 @@ internal object JsonReport {
             put("unattributed", array(verification.unattributed))
         }
 
-    private fun array(diagnostics: List<Diagnostic>) = buildJsonArray { diagnostics.forEach { add(json(it)) } }
+    fun array(diagnostics: List<Diagnostic>) = buildJsonArray { diagnostics.forEach { add(json(it)) } }
 
     private fun json(diagnostic: Diagnostic) =
         JsonObject(

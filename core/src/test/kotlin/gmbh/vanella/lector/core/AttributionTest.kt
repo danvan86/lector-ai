@@ -172,6 +172,16 @@ class AttributionTest {
             runTestsCalls += repo to tests
             return if (repo == head) headRerun else baseRun
         }
+
+        override fun ground(
+            repo: Path,
+            change: DependencyChange,
+            diagnostics: List<Diagnostic>,
+        ) = ""
+
+        override fun clusterKey(diagnostic: Diagnostic) = null
+
+        override fun isBuildFile(file: String) = false
     }
 
     private class FakeBase(
