@@ -9,6 +9,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -100,6 +101,23 @@ class FixLoopTest {
         assertIs<AttemptOutcome.Accepted>(result.attempts.single().outcome)
         assertEquals("App.java", git("show", "--name-only", "--format=", "HEAD").trim())
         assertEquals("fixed();\n", repo.resolve("generated/Gen.java").readText())
+    }
+
+    @Test
+    fun `a tool error inside an attempt resets the working tree before it ends the loop`() {
+        val hang = Edit("App.java", "broken();", "while (true) {}")
+        val adapter =
+            FakeAdapter(problems = { dir ->
+                if ("while (true)" in dir.resolve("App.java").readText()) throw ToolError("mvn did not finish within 1h")
+                compileErrors(dir)
+            })
+        val initial = adapter.initial()
+
+        val error = assertFailsWith<ToolError> { loop(adapter, ScriptedLlm(edits(hang))).run(repo, context, initial) }
+
+        assertEquals("mvn did not finish within 1h", error.message)
+        assertEquals("", git("status", "--porcelain"))
+        assertEquals(app, repo.resolve("App.java").readText())
     }
 
     @Test

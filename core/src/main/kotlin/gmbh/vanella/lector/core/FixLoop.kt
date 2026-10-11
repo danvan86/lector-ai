@@ -122,7 +122,14 @@ class FixLoop(
 
         private fun attempt(cluster: Cluster) {
             val proposal = llm.propose(request(cluster))
-            val outcome = judge(cluster, proposal)
+            val outcome =
+                try {
+                    judge(cluster, proposal)
+                } catch (e: ToolError) {
+                    // A build that the edits made hang must not leave them behind.
+                    GitWorkingTree.reset(repo)
+                    throw e
+                }
             if (outcome is AttemptOutcome.Accepted) {
                 withoutProgress = 0
             } else {
