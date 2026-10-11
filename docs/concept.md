@@ -179,7 +179,7 @@ Every adapter implements the same interface:
 | **Run recipe** | Maven plugin via CLI coordinates / Gradle init script (no build file edits) | OpenRewrite JS* | OpenRewrite Python* | OpenRewrite C#* | rewrite-hcl | rewrite-yaml/xml/properties |
 | **Verify** | `verify` / `check` | `tsc --noEmit` + tests | pyright/mypy (JSON) + pytest | `dotnet build` + `dotnet test` | `terraform validate -json` | Schema validation, `helm lint`, app startup |
 | **Grounding** | `javap` / `-sources.jar` | `.d.ts` files in `node_modules` | `.pyi` stubs / `inspect` | XML docs / assembly metadata | `terraform providers schema -json` | JSON schemas, config metadata |
-| **Excluded from editing** | `target/generated-sources`, `build/generated` | `dist/`, generated clients | Generated protobuf/OpenAPI code | `obj/`, `*.g.cs` | `.terraform/` | Rendered templates |
+| **Excluded from editing** | `target/`, `build/` (outside `src/`), `generated*` directories | `dist/`, generated clients | Generated protobuf/OpenAPI code | `obj/`, `*.g.cs` | `.terraform/` | Rendered templates |
 | **Language support (guardrails)** | tree-sitter Java/Kotlin | tree-sitter TypeScript/JavaScript | tree-sitter Python | tree-sitter C# | tree-sitter HCL | tree-sitter YAML/XML |
 
 \* Check maturity and licensing (see section 9).
@@ -194,8 +194,10 @@ EcosystemAdapter
   ground(repo, change, diagnostics)  → Context        (API surface, docs)
   clusterKey(diagnostic)             → String?        (root cause: missing symbol, package, artifact)
   isBuildFile(file)                  → bool           (pom.xml, package.json, …)
-  editableScope()                    → Glob[]         (excludes generated code)
-  language                           → LanguageSupport (tree-sitter grammar + queries)
+  isEditable(file)                   → bool           (the editable scope: no build output, no generated code)
+  testDisablingConfig(file, content, line) → String?  (build-file blocklist: config that disables tests)
+  testsRun(repo)                     → Int?           (tests the last verify ran; reported, not enforced)
+  languageSupport                    → LanguageSupport (tree-sitter grammar + queries → source facts)
 
   ecosystem                          → String         (package namespace, e.g. maven)
   versionScheme                      → VersionScheme  (order versions, selector contains version, updateType)
@@ -272,31 +274,34 @@ A local model often doesn't know the new version of an API, because it was relea
 
 ## 7. Guardrails
 
-The easiest way for an LLM to make the build green is to delete code. The following checks are deterministic and language-agnostic, built on **tree-sitter**:
+The easiest way for an LLM to make the build green is to delete code. The following checks are deterministic and language-agnostic, built on **tree-sitter**. They run on every attempt of the model, after its edits are written and before the downgrade check and the verify, so a bad edit never reaches the build. "Before" is the file at the last commit, "after" the file in the working tree. Recipe output is not checked: it is deterministic, reviewed upstream, and its own commit.
 
 | Check | Rule |
 |---|---|
-| Symbol comparison | No deleted functions or methods unless the recipe or the API change requires it |
-| Test protection | No deleted tests, no removed or weakened assertions, no new skip/ignore annotations |
-| Test count | The number of tests executed must not drop compared to a baseline. This needs a test run, so it is checked after verify, not per edit. Where the baseline comes from is decided in M4. |
-| Stubbing | No new `return null`, empty bodies, or `TODO` placeholders in place of logic |
-| Suppression | No new suppressions such as `@SuppressWarnings`, `// @ts-ignore`, `# type: ignore`, `#pragma warning disable` |
-| Diff size | Maximum change size per fix |
-| Scope | Edits only within the adapter's `editableScope()` |
+| Scope | Edits only to files Git tracks, inside the repository, and in the adapter's editable scope (JVM: not `target/`, `build/`, `generated*` directories). The Git check catches generators the adapter doesn't know. Checked on the edits' paths before anything is written, because a reset doesn't restore ignored files |
+| Diff size | At most 50 changed lines (added plus removed) per attempt. Configurable (`--max-changed-lines`) |
+| Symbol comparison | No deleted methods (by containing type and name, overloads counted), unless the method's name appears in a current diagnostic caused by the update, e.g. a method that overrode a removed one |
+| Test protection | No deleted test methods, ever: a test that doesn't compile is fixed, not removed. No new skip markers (`@Disabled`, `@Ignore`, assumptions). No fewer assertions in a test method, and an existing assertion changes only if a current compile diagnostic points into it: a failing test is fixed in the code, not in what it expects. New assertions are fine |
+| Test count | The static count of test methods in the changed files must not drop. It works even when the build is red from the start and no test ran. The runtime count of the final verify is reported, not enforced |
+| Stubbing | No new `return null`, empty bodies, or `TODO` placeholders in an added or changed line |
+| Suppression | No new suppressions such as `@SuppressWarnings`, `@Suppress`, `// @ts-ignore`, `# type: ignore`, `#pragma warning disable` in an added or changed line |
+| Parse errors | A changed file has no more parse errors than before. Facts from a file that doesn't parse can't be trusted |
+| Build-file blocklist | No test-disabling configuration in an added or changed line of a build file. Maven: `skipTests`, `skipITs`, `maven.test.skip`, `testFailureIgnore`, `<exclude>`/`<skip>` in surefire or failsafe. The blocklist lives in the adapter |
 
-An edit that breaks a rule is rejected and counts as a failed attempt.
+An edit that breaks a rule is rejected and counts as a failed attempt. The violations (rule, file, line, reason) go into the retry, so the model doesn't repeat the same cheat, and into the report, with a count per rule.
 
-**Where the language knowledge lives.** The rules are generic and live in the core. What counts as a method, a test, an assertion, or a suppression in a given language comes from the ecosystem adapter's `LanguageSupport`: a tree-sitter grammar plus query files. A new language needs a grammar and queries, not new guardrail logic.
+**Where the language knowledge lives.** The rules are generic and live in the core. What counts as a method, a test, an assertion, a skip, a suppression, or a stub in a given language comes from the ecosystem adapter's `LanguageSupport`: a tree-sitter grammar plus query files, which report these facts with their lines. tree-sitter is a dependency of the adapter, not of the core. A new language needs a grammar and queries, not new guardrail logic.
 
 ```
 Guardrails (core, generic)                   EcosystemAdapter (jvm)
-  "no deleted methods"      ── asks ──▶       LanguageSupport
-  "no removed assertions"                       grammar: tree-sitter-java
-  "no new suppressions"                         queries: methods.scm, tests.scm,
-  "no new skip annotations"                              asserts.scm, suppressions.scm
+  "no deleted methods"      ── facts ──▶      LanguageSupport
+  "no removed assertions"                       tree-sitter-java, tree-sitter-kotlin
+  "no new suppressions"                         queries: types, methods, tests, assertions,
+  "no new skip markers"                                  skips, suppressions, stubs
+                            ── asks ───▶      isEditable(file), testDisablingConfig(…)
 ```
 
-Each rule is a small `Guardrail` implementation in a list, tested on its own.
+Each rule is a small `Guardrail` implementation in a list, tested on its own. The list is internal, not an extension point.
 
 ## 8. CI/CD integration and Git output
 
