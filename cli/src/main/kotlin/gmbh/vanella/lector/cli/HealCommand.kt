@@ -54,11 +54,14 @@ internal class HealCommand(
     ).path(mustExist = true, canBeDir = false, mustBeReadable = true)
     private val ollamaUrl by option("--ollama-url", metavar = "<url>", help = "The Ollama server")
         .convert { text ->
-            try {
-                URI(text)
-            } catch (e: URISyntaxException) {
-                fail("not a URL: ${e.message}")
-            }
+            val url =
+                try {
+                    URI(text)
+                } catch (e: URISyntaxException) {
+                    fail("not a URL: ${e.message}")
+                }
+            if (url.scheme !in listOf("http", "https") || url.host == null) fail("not an http or https URL with a host: $text")
+            url
         }.default(URI(DEFAULT_OLLAMA_URL), defaultForHelp = DEFAULT_OLLAMA_URL)
     private val model by option("--model", metavar = "<name>", help = "The Ollama model").default(DEFAULT_MODEL)
     private val attemptsPerCluster by budget("--max-attempts-per-cluster", "Attempts per error cluster", DEFAULTS.attemptsPerCluster)

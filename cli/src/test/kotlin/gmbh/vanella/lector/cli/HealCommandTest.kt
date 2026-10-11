@@ -278,6 +278,22 @@ class HealCommandTest {
     }
 
     @Test
+    fun `an --ollama-url without http or https and a host is a usage error with exit 2, before anything runs`() {
+        listOf("localhost:11434", "ftp://ollama", "http:/no-host", "ollama").forEach { url ->
+            val llm = ScriptedLlm()
+            val run =
+                LectorCommand("1.2.3")
+                    .subcommands(command(llm = llm))
+                    .executeInProcess("heal", repo.toString(), *args.split(" ").toTypedArray(), "--ollama-url", url)
+
+            assertEquals("", run.stdout)
+            assertContains(run.stderr, "invalid value for --ollama-url: not an http or https URL with a host", message = url)
+            assertEquals(2, run.exitCode)
+            assertEquals("1", git("rev-list", "--count", "HEAD").trim(), "the recipe didn't run")
+        }
+    }
+
+    @Test
     fun `a budget below 1 is a usage error with exit 2`() {
         val run = lector().executeInProcess("heal", repo.toString(), *args.split(" ").toTypedArray(), "--max-attempts", "0")
 
