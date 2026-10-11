@@ -122,8 +122,4 @@ internal class HealCommand(
         default: Int,
         metavar: String = "<n>",
     ) = option(name, metavar = metavar, help = help).int().restrictTo(min = 1).default(default)
-
-    private companion object {
-        const val SHORT_COMMIT = 7
-    }
 }

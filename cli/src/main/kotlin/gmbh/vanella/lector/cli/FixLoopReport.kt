@@ -9,25 +9,24 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 // Enough to find a commit in a small history, like `git log --oneline`.
-private const val SHORT_COMMIT = 7
+internal const val SHORT_COMMIT = 7
 
 /** The fix-loop section of the `heal` report: every attempt, and every fix with its commit, so reviewers see what the model tried. */
 internal object FixLoopReport {
     fun text(result: FixLoopResult): String {
         val fixes = result.attempts.map { it.outcome }.filterIsInstance<AttemptOutcome.Accepted>()
-        val attempts =
-            result.attempts.mapIndexed {
-                index,
-                attempt,
-                ->
-                "${index + 1}. ${attempt.cluster}, ${attempt.diagnostics.size} diagnostics: ${outcome(attempt.outcome)}"
-            }
+        val attempts = result.attempts.mapIndexed(::line)
         val lines =
             listOf("Fix loop (${result.attempts.size} attempts, ${fixes.size} accepted; stopped: ${stopReason(result.stopReason)})") +
                 list("Attempts", attempts) +
                 list("Fixes", fixes.map { "- ${it.commit.take(SHORT_COMMIT)} ${it.rationale}" })
         return lines.joinToString("\n")
     }
+
+    private fun line(
+        index: Int,
+        attempt: Attempt,
+    ) = "${index + 1}. ${attempt.cluster}, ${attempt.diagnostics.size} diagnostics: ${outcome(attempt.outcome)}"
 
     fun json(result: FixLoopResult) =
         JsonObject(

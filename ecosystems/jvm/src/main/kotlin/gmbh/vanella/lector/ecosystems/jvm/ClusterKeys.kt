@@ -29,14 +29,8 @@ internal object ClusterKeys {
             }
 
             else -> {
-                val missingPackage = javacPackage.find(diagnostic.message)
-                if (missingPackage !=
-                    null
-                ) {
-                    "package:${missingPackage.groupValues[1]}"
-                } else {
-                    missingSymbol(diagnostic.message)?.let { "symbol:$it" }
-                }
+                val missingPackage = javacPackage.find(diagnostic.message)?.let { it.groupValues[1] }
+                if (missingPackage != null) "package:$missingPackage" else missingSymbol(diagnostic.message)?.let { "symbol:$it" }
             }
         }
 

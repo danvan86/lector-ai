@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -226,7 +227,7 @@ class FixLoopTest {
 
         val reason = (result.attempts.single().outcome as AttemptOutcome.Rejected).reason
         assertContains(reason, "- [javac] App.java:10: cannot find symbol\n  symbol: x9\n- and 2 more")
-        assertEquals(false, "symbol: x10" in reason)
+        assertFalse("symbol: x10" in reason, reason)
     }
 
     @Test
