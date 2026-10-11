@@ -1,6 +1,8 @@
 package gmbh.vanella.lector.ecosystems.jvm
 
 import gmbh.vanella.lector.core.ToolError
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -78,6 +80,20 @@ class EffectivePomTest {
         val error = assertFailsWith<ToolError> { EffectivePom.versions("<projects><project>") }
 
         assertContains(error.message, "Can't read Maven's effective POM")
+    }
+
+    @Test
+    fun `a parse error is reported only in the tool error, not on stderr`() {
+        val stderr = ByteArrayOutputStream()
+        val original = System.err
+        System.setErr(PrintStream(stderr, true))
+        try {
+            assertFailsWith<ToolError> { EffectivePom.versions("not xml") }
+        } finally {
+            System.setErr(original)
+        }
+
+        assertEquals("", stderr.toString())
     }
 
     @Test
