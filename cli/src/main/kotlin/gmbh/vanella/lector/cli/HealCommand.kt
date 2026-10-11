@@ -72,6 +72,11 @@ internal class HealCommand(
         "Attempts in a row without progress before the loop stops",
         DEFAULTS.attemptsWithoutProgress,
     )
+    private val maxChangedLines by budget(
+        "--max-changed-lines",
+        "Lines (added plus removed) one attempt may change before the guardrails reject it",
+        DEFAULTS.changedLinesPerAttempt,
+    )
 
     override fun help(context: Context) = "Applies the recipe for a dependency update, then lets a local LLM fix what is still broken."
 
@@ -85,7 +90,7 @@ internal class HealCommand(
         val recipe = applyRecipe(change, adapter, index(), repo, base)
         val recipeCommit = commitRecipe(change, recipe)
         val context = FixContext(change, releaseNotes?.readText(), recipeCommit?.let { GitWorkingTree.diff(repo, it) })
-        val budgets = Budgets(attemptsPerCluster, attempts, timeLimit.minutes, attemptsWithoutProgress)
+        val budgets = Budgets(attemptsPerCluster, attempts, timeLimit.minutes, attemptsWithoutProgress, maxChangedLines)
         val result = FixLoop(adapter, llm(ollamaUrl, model), base, budgets).run(repo, context, attribute(adapter, repo, base))
         val recipeText = RecipeReport.text(change, recipe) + recipeCommit?.let { "\n  Commit: ${it.take(SHORT_COMMIT)}" }.orEmpty()
         return Report(

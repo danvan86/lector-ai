@@ -248,6 +248,15 @@ class HealCommandTest {
     }
 
     @Test
+    fun `the diff-size limit can be set, and an attempt above it is rejected by the guardrails`() {
+        val result = command(llm = ScriptedLlm(fix)).test("$repo $args --max-changed-lines 1 --max-attempts 1")
+
+        assertContains(result.stdout, "rejected: the edits break the guardrails:")
+        assertContains(result.stdout, "- [diff-size] the edits change 2 lines (added plus removed), the limit is 1")
+        assertEquals(1, result.statusCode)
+    }
+
+    @Test
     fun `help shows the defaults of the Ollama and budget options`() {
         val result = lector().test("heal --help")
 
@@ -258,6 +267,7 @@ class HealCommandTest {
             "--max-attempts" to "20",
             "--time-limit" to "30",
             "--max-attempts-without-progress" to "2",
+            "--max-changed-lines" to "50",
         ).forEach { (option, default) ->
             val line =
                 result.stdout
@@ -296,10 +306,13 @@ class HealCommandTest {
 
     @Test
     fun `a budget below 1 is a usage error with exit 2`() {
-        val run = lector().executeInProcess("heal", repo.toString(), *args.split(" ").toTypedArray(), "--max-attempts", "0")
+        listOf("--max-attempts", "--max-changed-lines").forEach { option ->
+            val run = lector().executeInProcess("heal", repo.toString(), *args.split(" ").toTypedArray(), option, "0")
 
-        assertContains(run.stderr, "--max-attempts")
-        assertEquals(2, run.exitCode)
+            assertEquals("", run.stdout)
+            assertContains(run.stderr, option)
+            assertEquals(2, run.exitCode)
+        }
     }
 
     @Test
