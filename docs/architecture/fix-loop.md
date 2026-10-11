@@ -1,6 +1,6 @@
 # Architecture – Fix loop
 
-Milestone: [M3](../features.md#m3--fix-loop-cli-only-no-ci-yet-) · Spec: [`m3-fix-loop/spec.md`](../../specs/open/m3-fix-loop/spec.md) · Review: [`review.md`](../../specs/open/m3-fix-loop/review.md)
+Milestone: [M3](../features.md#m3--fix-loop-cli-only-no-ci-yet-) · Spec: [`m3-fix-loop/spec.md`](../../specs/done/m3-fix-loop/spec.md) · Review: [`review.md`](../../specs/done/m3-fix-loop/review.md)
 
 > **Summary for agents**
 >

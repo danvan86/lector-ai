@@ -24,7 +24,7 @@ specs/
 | M0 – Project skeleton | [brainstorming](done/m0-project-skeleton/brainstorming.md) · [spec](done/m0-project-skeleton/spec.md) |
 | M1 – Verify and report | [brainstorming](done/m1-verify-and-report/brainstorming.md) · [spec](done/m1-verify-and-report/spec.md) |
 | M2 – Recipe index and OpenRewrite run | [brainstorming](done/m2-recipe-index/brainstorming.md) · [spec](done/m2-recipe-index/spec.md) |
-| M3 – Fix loop | [brainstorming](open/m3-fix-loop/brainstorming.md) · [spec](open/m3-fix-loop/spec.md) |
+| M3 – Fix loop | [brainstorming](done/m3-fix-loop/brainstorming.md) · [spec](done/m3-fix-loop/spec.md) |
 | M4 – Guardrails | [brainstorming](open/m4-guardrails/brainstorming.md) · [spec](open/m4-guardrails/spec.md) |
 | M5 – Renovate in CI | [brainstorming](open/m5-renovate-ci/brainstorming.md) · [spec](open/m5-renovate-ci/spec.md) |
 | M6 – Benchmark | [brainstorming](open/m6-benchmark/brainstorming.md) · [spec](open/m6-benchmark/spec.md) |
