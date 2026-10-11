@@ -23,18 +23,21 @@ private val whitespace = Regex("""\s+""")
  *
  * A search text must match exactly once: first as it is, then, if it isn't there, line by line with whitespace ignored
  * (indentation, trailing blanks, runs of spaces). An ambiguous or missing match is never guessed. If any edit doesn't
- * apply, no file is written (rule 4: reject, don't repair).
+ * apply, or the edits change nothing, no file is written (rule 4: reject, don't repair).
  */
 fun applyEdits(
     repo: Path,
     edits: List<Edit>,
 ): String? {
+    val originals = mutableMapOf<Path, String>()
     val contents = mutableMapOf<Path, String>()
     for (edit in edits) {
         val path = repoFile(repo, edit.file) ?: return "${edit.file}: no such file in the repository"
-        val text = contents.getOrPut(path) { path.readText() }
+        val text = contents.getOrPut(path) { path.readText().also { originals[path] = it } }
         contents[path] = replace(text, edit.search, edit.replace).getOrElse { return "${edit.file}: ${it.message}" }
     }
+    // Verifying edits that change nothing would cost a whole build to learn that.
+    if (contents == originals) return "the edits change nothing"
     contents.forEach { (path, text) -> path.writeText(text) }
     return null
 }

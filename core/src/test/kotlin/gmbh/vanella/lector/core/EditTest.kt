@@ -98,6 +98,16 @@ class EditTest {
     }
 
     @Test
+    fun `edits that change nothing reject the attempt`() {
+        val same = applyEdits(repo, listOf(Edit(app, "greet(name);", "greet(name);")))
+        val undone = applyEdits(repo, listOf(Edit(app, "greet(name);", "welcome(name);"), Edit(app, "welcome(name);", "greet(name);")))
+
+        assertEquals("the edits change nothing", same)
+        assertEquals("the edits change nothing", undone)
+        assertEquals(original, text())
+    }
+
+    @Test
     fun `a file that isn't in the repository rejects the attempt`() {
         val outside = repo.parent.resolve("Outside.java").toString()
         listOf("src/Missing.java", "src", "../Outside.java", outside, ".git/config").forEach { file ->
