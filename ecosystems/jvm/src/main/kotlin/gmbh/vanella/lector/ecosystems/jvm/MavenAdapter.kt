@@ -124,6 +124,14 @@ class MavenAdapter(
 
     override fun isBuildFile(file: String) = file == "pom.xml" || file.endsWith("/pom.xml")
 
+    override fun isEditable(file: String) = JvmScope.isEditable(file)
+
+    override fun testDisablingConfig(
+        file: String,
+        content: String,
+        line: Int,
+    ) = MavenTestSkipping.reason(content, line)
+
     /** Runs Maven and collects the problems from its output and the test reports. */
     private fun maven(
         root: Path,

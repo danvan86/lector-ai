@@ -69,6 +69,15 @@ class ClusterTest {
     private class KeyedAdapter : EcosystemAdapter {
         override val ecosystem = "test"
         override val languageSupport = LanguageSupport { _, _ -> null }
+
+        override fun isEditable(file: String) = true
+
+        override fun testDisablingConfig(
+            file: String,
+            content: String,
+            line: Int,
+        ): String? = null
+
         override val versionScheme = DottedVersions
         override val recipeRunner = null
         override val resolvedVersions = null

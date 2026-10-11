@@ -51,4 +51,17 @@ interface EcosystemAdapter {
 
     /** Whether [file] (relative to the repository root, `/` as separator) is a build file, e.g. `pom.xml`. */
     fun isBuildFile(file: String): Boolean
+
+    /**
+     * The editable scope: whether the model may edit [file] (relative to the repository root, `/` as separator). False
+     * for build output and generated code (rule 5).
+     */
+    fun isEditable(file: String): Boolean
+
+    /** What in [line] (1-based) of the build file [file] with [content] disables tests, as a reason for the model, or null. */
+    fun testDisablingConfig(
+        file: String,
+        content: String,
+        line: Int,
+    ): String?
 }

@@ -247,6 +247,15 @@ class RecipeStepTest {
         override val ecosystem = "test"
 
         override val languageSupport = LanguageSupport { _, _ -> null }
+
+        override fun isEditable(file: String) = true
+
+        override fun testDisablingConfig(
+            file: String,
+            content: String,
+            line: Int,
+        ): String? = null
+
         override val versionScheme = DottedVersions
 
         override var recipeRunner: RecipeRunner? =
