@@ -1,15 +1,20 @@
 package gmbh.vanella.lector.cli
 
+import com.sun.net.httpserver.HttpServer
 import gmbh.vanella.lector.core.runProcess
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import kotlin.io.path.createDirectories
 import kotlin.io.path.createFile
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -227,6 +232,48 @@ class LectorEndToEndTest {
         assertEquals("", run.stdout)
         assertContains(run.stderr, "Error: Ollama is not reachable at http://127.0.0.1:$port")
         assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `heal rejects an edit that breaks a guardrail, parsing Java with the bundled tree-sitter grammar`(
+        @TempDir repo: Path,
+    ) {
+        repo.resolve("src/main/java").createDirectories()
+        repo.resolve("src/main/java/App.java").writeText("class App {\n    Object run() {\n        broken();\n    }\n}\n")
+        mavenProject(repo, output = "[ERROR] $repo/src/main/java/App.java:[3,9] cannot find symbol", exitCode = 1)
+        val edit = """{"file":"src/main/java/App.java","search":"broken();","replace":"return null;"}"""
+        val ollama = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        ollama.createContext("/") { exchange ->
+            exchange.requestBody.readAllBytes()
+            val content = """{"analysis":"a","rationale":"Stub it","edits":[$edit]}"""
+            val answer = buildJsonObject { put("message", buildJsonObject { put("content", content) }) }.toString().encodeToByteArray()
+            exchange.sendResponseHeaders(200, answer.size.toLong())
+            exchange.responseBody.use { it.write(answer) }
+        }
+        ollama.start()
+
+        val run =
+            try {
+                lector(
+                    "heal",
+                    repo.toString(),
+                    "--package",
+                    "com.example:no-recipe",
+                    "--from",
+                    "1.0",
+                    "--to",
+                    "2.0",
+                    "--ollama-url",
+                    "http://127.0.0.1:${ollama.address.port}",
+                )
+            } finally {
+                ollama.stop(0)
+            }
+
+        assertContains(run.stdout, "- [stubbing] src/main/java/App.java:3: the edits add the placeholder `return null;` in place of logic")
+        assertContains(run.stdout, "  Rejections per guardrail (1):\n    - stubbing: 2\n")
+        assertTrue("WARNING" !in run.stderr, run.stderr)
+        assertEquals(1, run.exitCode, run.stderr)
     }
 
     /**
