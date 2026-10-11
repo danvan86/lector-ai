@@ -6,6 +6,7 @@ import gmbh.vanella.lector.core.BaseCommit
 import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
+import gmbh.vanella.lector.core.LanguageSupport
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.Verification
@@ -206,6 +207,8 @@ class VerifyCommandTest {
         var verifyCalls = 0
 
         override val ecosystem = "maven"
+
+        override val languageSupport = LanguageSupport { _, _ -> null }
         override val versionScheme = MavenVersionScheme
         override val recipeRunner = null
         override val resolvedVersions = null

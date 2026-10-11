@@ -15,6 +15,9 @@ interface EcosystemAdapter {
     /** Reads the effective versions of a working tree. Optional: null if the ecosystem can't. */
     val resolvedVersions: ResolvedVersions?
 
+    /** The facts about source files that the guardrails check. */
+    val languageSupport: LanguageSupport
+
     /** Whether this adapter handles the repository. */
     fun detect(repo: Path): Boolean
 

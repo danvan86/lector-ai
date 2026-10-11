@@ -157,6 +157,8 @@ class AttributionTest {
         val runTestsCalls = mutableListOf<Pair<Path, List<Diagnostic>>>()
 
         override val ecosystem = "test"
+
+        override val languageSupport = LanguageSupport { _, _ -> null }
         override val versionScheme = DottedVersions
         override val recipeRunner = null
         override val resolvedVersions = null

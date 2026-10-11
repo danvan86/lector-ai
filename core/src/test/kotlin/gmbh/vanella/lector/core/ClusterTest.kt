@@ -68,6 +68,7 @@ class ClusterTest {
     /** Uses the diagnostic's `code` as its cluster key. `pom.xml` is the build file. */
     private class KeyedAdapter : EcosystemAdapter {
         override val ecosystem = "test"
+        override val languageSupport = LanguageSupport { _, _ -> null }
         override val versionScheme = DottedVersions
         override val recipeRunner = null
         override val resolvedVersions = null

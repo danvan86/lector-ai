@@ -3,6 +3,7 @@ package gmbh.vanella.lector.ecosystems.jvm
 import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
+import gmbh.vanella.lector.core.LanguageSupport
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.RecipeRun
 import gmbh.vanella.lector.core.RecipeRunner
@@ -76,6 +77,8 @@ class MavenAdapter(
                 output.deleteIfExists()
             }
         }
+
+    override val languageSupport: LanguageSupport = JvmLanguageSupport
 
     override fun detect(repo: Path) = repo.resolve("pom.xml").isRegularFile()
 

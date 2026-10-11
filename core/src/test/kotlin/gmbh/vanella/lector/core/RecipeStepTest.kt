@@ -245,6 +245,8 @@ class RecipeStepTest {
         val runs = mutableListOf<Recipe>()
 
         override val ecosystem = "test"
+
+        override val languageSupport = LanguageSupport { _, _ -> null }
         override val versionScheme = DottedVersions
 
         override var recipeRunner: RecipeRunner? =

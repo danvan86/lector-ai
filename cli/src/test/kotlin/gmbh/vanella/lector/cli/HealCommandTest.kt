@@ -7,6 +7,7 @@ import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.Edit
 import gmbh.vanella.lector.core.FixRequest
+import gmbh.vanella.lector.core.LanguageSupport
 import gmbh.vanella.lector.core.LlmClient
 import gmbh.vanella.lector.core.Proposal
 import gmbh.vanella.lector.core.Recipe
@@ -384,6 +385,7 @@ class HealCommandTest {
         },
     ) : EcosystemAdapter {
         override val ecosystem = "maven"
+        override val languageSupport = LanguageSupport { _, _ -> null }
         override val versionScheme = MavenVersionScheme
 
         override val recipeRunner = RecipeRunner { dir, _ -> recipeRun(dir) }
