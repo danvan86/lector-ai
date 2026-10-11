@@ -7,6 +7,7 @@ import gmbh.vanella.lector.core.Edit
 import gmbh.vanella.lector.core.FixRequest
 import gmbh.vanella.lector.core.Proposal
 import gmbh.vanella.lector.core.Severity
+import gmbh.vanella.lector.core.Snippet
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.UpdateType
 import kotlinx.serialization.json.Json
@@ -90,6 +91,27 @@ class OllamaClientTest {
         assertEquals(listOf("system", "user"), messages.map { it.getValue("role").jsonPrimitive.content })
         assertEquals(Prompt.SYSTEM, messages[0].getValue("content").jsonPrimitive.content)
         assertEquals(Prompt.user(request), messages[1].getValue("content").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `a request that doesn't fit into the context is still sent in full`() {
+        val huge = request.copy(snippets = List(10) { Snippet("App.java", it * 100 + 1, it * 100 + 1, "x".repeat(5_000) + "\n") })
+
+        OllamaClient(url, "qwen2.5-coder:7b").propose(huge)
+
+        val messages =
+            requests
+                .single()
+                .second
+                .getValue("messages")
+                .jsonArray
+        assertEquals(
+            Prompt.user(huge),
+            messages[1]
+                .jsonObject
+                .getValue("content")
+                .jsonPrimitive.content,
+        )
     }
 
     @Test

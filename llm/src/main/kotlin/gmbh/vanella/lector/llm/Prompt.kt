@@ -73,6 +73,9 @@ internal object Prompt {
         return (listOfNotNull(intro, errors, code) + optional.filterNotNull() + listOfNotNull(earlier)).joinToString(SEPARATOR)
     }
 
+    /** Whether [user] fits into the context next to the system prompt, with room for the answer. */
+    fun fits(user: String) = SYSTEM.length + SEPARATOR.length + user.length <= MAX_CHARS
+
     /** The part with [text] cut to [budget] characters, or null if there is no text or no room for it. */
     private fun trimmed(
         title: String,

@@ -126,5 +126,7 @@ class PromptTest {
         assertEquals(10, Regex("x{5000}").findAll(prompt).count())
         assertFalse("MoreObjects" in prompt)
         assertFalse("## Release notes" in prompt)
+        assertFalse(Prompt.fits(prompt), "the client warns about it")
+        assertTrue(Prompt.fits(Prompt.user(request)))
     }
 }

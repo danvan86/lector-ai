@@ -41,6 +41,10 @@ class OllamaClient(
     override fun propose(request: FixRequest): Proposal {
         val prompt = Prompt.user(request)
         logger.debug("Asking {} at {}:\n{}", model, url, prompt)
+        if (!Prompt.fits(prompt)) {
+            // The errors and the code are never trimmed. Ollama cuts what doesn't fit into the context on its own.
+            logger.warn("The request has {} characters, more than {} fit into the context: Ollama cuts it", prompt.length, Prompt.MAX_CHARS)
+        }
         val body =
             buildJsonObject {
                 put("model", model)
