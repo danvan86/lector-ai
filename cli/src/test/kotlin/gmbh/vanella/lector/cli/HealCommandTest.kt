@@ -7,7 +7,9 @@ import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.Edit
 import gmbh.vanella.lector.core.FixRequest
+import gmbh.vanella.lector.core.Fragment
 import gmbh.vanella.lector.core.LanguageSupport
+import gmbh.vanella.lector.core.LineRange
 import gmbh.vanella.lector.core.LlmClient
 import gmbh.vanella.lector.core.Proposal
 import gmbh.vanella.lector.core.Recipe
@@ -18,6 +20,7 @@ import gmbh.vanella.lector.core.RecipeRunner
 import gmbh.vanella.lector.core.RecipeSelection
 import gmbh.vanella.lector.core.ResolvedVersions
 import gmbh.vanella.lector.core.Severity
+import gmbh.vanella.lector.core.SourceFacts
 import gmbh.vanella.lector.core.runProcess
 import gmbh.vanella.lector.ecosystems.jvm.MavenVersionScheme
 import kotlinx.serialization.json.Json
@@ -99,6 +102,22 @@ class HealCommandTest {
         )
         assertTrue(stdout.indexOf("Recipe (applied)") < stdout.indexOf("Fix loop ("))
         assertTrue(stdout.indexOf("Fix loop (") < stdout.indexOf("Caused by the update (0)"))
+    }
+
+    @Test
+    fun `the report lists each guardrail rejection and the count per rule, and a lower test count keeps exit 0`() {
+        val stub = Edit("App.java", "broken();", "return null;")
+        val adapter = FakeAdapter(testsRun = { dir -> if ("broken()" in dir.resolve("App.java").readText()) 5 else 3 })
+
+        val result = command(llm = ScriptedLlm(stub, fix), adapter = adapter).test("$repo $args")
+
+        assertContains(
+            result.stdout,
+            "1. symbol:broken, 1 diagnostics: rejected: the edits break the guardrails:\n" +
+                "       - [stubbing] App.java:3: the edits add the placeholder `return null;` in place of logic\n",
+        )
+        assertContains(result.stdout, "  Rejections per guardrail (1):\n    - stubbing: 1\n  Tests run in the final verify: 3\n")
+        assertEquals(0, result.statusCode, "the runtime test count is reported, not enforced")
     }
 
     @Test
@@ -392,15 +411,28 @@ class HealCommandTest {
      * `App.java` that calls `broken()` is a compile error.
      */
     private inner class FakeAdapter(
+        private val testsRun: (Path) -> Int? = { null },
         recipeRun: (Path) -> RecipeRun = { dir ->
             dir.resolve("pom.xml").writeText("<parent>3.4.5</parent>\n")
             RecipeRun.Applied
         },
     ) : EcosystemAdapter {
         override val ecosystem = "maven"
-        override val languageSupport = LanguageSupport { _, _ -> null }
+
+        // Every `return null` is a stub.
+        override val languageSupport =
+            LanguageSupport { _, content ->
+                SourceFacts(
+                    stubs =
+                        content.lines().withIndex().filter { "return null" in it.value }.map { (index, line) ->
+                            Fragment(LineRange(index + 1, index + 1), line.trim())
+                        },
+                )
+            }
 
         override fun isEditable(file: String) = true
+
+        override fun testsRun(repo: Path) = testsRun.invoke(repo)
 
         override fun testDisablingConfig(
             file: String,

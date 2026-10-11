@@ -219,6 +219,24 @@ class TestReportsTest {
 
     private fun source(path: String) = repo.resolve(path).createParentDirectories().writeText("// test source")
 
+    @Test
+    fun `the tests run are the test cases of every report, passed, failed, and skipped`() {
+        val fixture = requireNotNull(javaClass.getResource("/fixtures/failing-tests")).toURI().toPath()
+        report("<testcase name=\"passes\"/><testcase name=\"skipped\"><skipped/></testcase>")
+
+        assertEquals(4, TestReports.count(fixture))
+        assertEquals(2, TestReports.count(repo))
+    }
+
+    @Test
+    fun `without readable reports the tests run are unknown`() {
+        assertEquals(null, TestReports.count(repo), "no reports: no test ran")
+
+        report("<testcase")
+
+        assertEquals(null, TestReports.count(repo))
+    }
+
     private fun report(testcases: String) =
         repo
             .resolve("target/surefire-reports/TEST-com.example.FooTest.xml")

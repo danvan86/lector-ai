@@ -145,6 +145,33 @@ class AttributionTest {
         assertEquals(Verification(unattributed = listOf(brokenTest)), verification)
     }
 
+    @Test
+    fun `the number of tests run is read after verify, before the reruns`() {
+        val adapter =
+            FakeAdapter(headVerify = listOf(brokenTest), headRerun = listOf(brokenTest), testsRun = { calls ->
+                if (calls ==
+                    0
+                ) {
+                    12
+                } else {
+                    1
+                }
+            })
+
+        assertEquals(12, attribute(adapter, head, base = null).testsRun)
+        val withBase =
+            FakeAdapter(listOf(brokenTest), listOf(brokenTest), listOf(brokenTest), testsRun = { calls ->
+                if (calls ==
+                    0
+                ) {
+                    12
+                } else {
+                    1
+                }
+            })
+        assertEquals(12, attribute(withBase, head, FakeBase(baseCheckout)).testsRun)
+    }
+
     private fun testFailure(test: String) =
         Diagnostic("src/test/Test.java", 12, null, "AssertionError", "expected <1> but was <2>", Severity.ERROR, "surefire", test)
 
@@ -153,6 +180,7 @@ class AttributionTest {
         private val headVerify: List<Diagnostic>,
         private val headRerun: List<Diagnostic> = emptyList(),
         private val baseRun: List<Diagnostic> = emptyList(),
+        private val testsRun: (calls: Int) -> Int? = { null },
     ) : EcosystemAdapter {
         val runTestsCalls = mutableListOf<Pair<Path, List<Diagnostic>>>()
 
@@ -161,6 +189,8 @@ class AttributionTest {
         override val languageSupport = LanguageSupport { _, _ -> null }
 
         override fun isEditable(file: String) = true
+
+        override fun testsRun(repo: Path) = testsRun(runTestsCalls.size)
 
         override fun testDisablingConfig(
             file: String,

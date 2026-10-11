@@ -212,6 +212,8 @@ class VerifyCommandTest {
 
         override fun isEditable(file: String) = true
 
+        override fun testsRun(repo: Path): Int? = null
+
         override fun testDisablingConfig(
             file: String,
             content: String,

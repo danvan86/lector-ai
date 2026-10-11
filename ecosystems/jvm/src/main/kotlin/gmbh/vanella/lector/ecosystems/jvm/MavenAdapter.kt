@@ -87,6 +87,9 @@ class MavenAdapter(
         return maven(root, listOf("clean", "test-compile")).ifEmpty { maven(root, listOf("verify")) }
     }
 
+    /** The test cases in the surefire and failsafe reports that the last verify left. */
+    override fun testsRun(repo: Path) = TestReports.count(repo.toRealPath())
+
     /**
      * Reruns the classes of the given tests: unit tests with surefire (up to `test`), integration tests with failsafe
      * (up to `verify`). Whole classes, because surefire can't select every test method by name (parameterized tests, for

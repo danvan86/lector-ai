@@ -24,6 +24,9 @@ interface EcosystemAdapter {
     /** Builds the repository and runs its tests. Returns every problem found; empty means green. */
     fun verify(repo: Path): List<Diagnostic>
 
+    /** The number of tests the last [verify] of [repo] ran, or null if it can't tell, e.g. because no test ran. */
+    fun testsRun(repo: Path): Int?
+
     /**
      * Runs only the tests that the given test failures come from. Returns the problems of that run: the tests that
      * still fail, and any build problem that kept the tests from running.
