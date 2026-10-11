@@ -11,6 +11,6 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 3 | `core`: `LlmClient` port, clusters and order, progress tuple, Git commits, fix loop with budgets and downgrade check | ✅ |
 | 4 | `llm`: Ollama client (`/api/chat`, JSON schema, `num_ctx`, temperature) and prompt with trimming | ✅ |
 | 5 | `cli`: `heal` command, recipe commit, fix-loop report (text and JSON), end-to-end tests | ✅ |
-| 6 | Real-model test with Testcontainers' Ollama module, fixture, CI workflow | ⬜ |
+| 6 | Real-model test with Testcontainers' Ollama module, fixture, CI workflow | ✅ |
 | 7 | Quality gates verified | ⬜ |
 | 8 | Docs in sync (`features.md`, concept 5, 6.4, 8.3, `AGENTS.md`) | ⬜ |

@@ -14,6 +14,9 @@ maven-artifact = "3.9.16"
 rewrite-recipe-bom = "3.37.0"
 rewrite-maven-plugin = "6.46.1"
 maven-help-plugin = "3.5.2"
+testcontainers = "2.0.5"
+# The Ollama image of the real-model test. Not a Gradle dependency, so Dependabot doesn't update it.
+ollama-image = "0.40.3"
 
 [libraries]
 clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
@@ -32,6 +35,9 @@ maven-help-plugin = { module = "org.apache.maven.plugins:maven-help-plugin", ver
 # The BOM pins every JUnit artifact, including the ones kotlin-test-junit5 brings in.
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+# Starts Ollama in Docker for the real-model test. Test-only.
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
+testcontainers-ollama = { module = "org.testcontainers:testcontainers-ollama" }
 
 # Gradle plugins, used by the convention plugin in buildSrc.
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }

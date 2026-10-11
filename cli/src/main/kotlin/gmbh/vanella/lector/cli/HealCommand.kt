@@ -33,6 +33,9 @@ import kotlin.time.Duration.Companion.minutes
 private val DEFAULTS = Budgets()
 private const val DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
+/** The model the benchmark measures (M6), and the one the real-model test runs by default. */
+internal const val DEFAULT_MODEL = "qwen2.5-coder:7b"
+
 /**
  * `lector heal <repo> --package … --from … --to …`: `migrate`, then the fix loop. A recipe result that changed anything
  * becomes one local commit, so the fixes that follow are commits of their own. The exit code follows the final
@@ -57,7 +60,7 @@ internal class HealCommand(
                 fail("not a URL: ${e.message}")
             }
         }.default(URI(DEFAULT_OLLAMA_URL), defaultForHelp = DEFAULT_OLLAMA_URL)
-    private val model by option("--model", metavar = "<name>", help = "The Ollama model").default("qwen2.5-coder:7b")
+    private val model by option("--model", metavar = "<name>", help = "The Ollama model").default(DEFAULT_MODEL)
     private val attemptsPerCluster by budget("--max-attempts-per-cluster", "Attempts per error cluster", DEFAULTS.attemptsPerCluster)
     private val attempts by budget("--max-attempts", "Attempts in total", DEFAULTS.attempts)
     private val timeLimit by budget("--time-limit", "Minutes before the loop stops", DEFAULTS.time.inWholeMinutes.toInt(), "<minutes>")
