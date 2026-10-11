@@ -109,7 +109,8 @@ internal class HealCommand(
         val outcome = recipe.outcome
         if (chosen == null || outcome !is RecipeOutcome.Applied || outcome.changedFiles.isEmpty()) return null
         val subject = "Apply recipe ${chosen.recipe.name}"
-        return GitWorkingTree.commit(repo, "$subject\n\nFor ${change.`package`} ${change.fromVersion} -> ${change.toVersion}.")
+        val message = "$subject\n\nFor ${change.`package`} ${change.fromVersion} -> ${change.toVersion}."
+        return GitWorkingTree.commit(repo, message, outcome.changedFiles)
     }
 
     private fun budget(

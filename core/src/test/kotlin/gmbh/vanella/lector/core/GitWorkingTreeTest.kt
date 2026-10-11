@@ -111,7 +111,7 @@ class GitWorkingTreeTest {
         repo.resolve("pom.txt").writeText("v2\n")
         repo.resolve("New.java").writeText("class New {}\n")
 
-        val commit = GitWorkingTree.commit(repo, "Raise the version\n\nBecause.")
+        val commit = GitWorkingTree.commit(repo, "Raise the version\n\nBecause.", listOf("pom.txt", "New.java"))
 
         assertEquals(git("rev-parse", "HEAD").trim(), commit)
         assertEquals("lector <lector@localhost>|Raise the version|Because.", git("log", "-1", "--format=%an <%ae>|%s|%b").trim())
@@ -120,6 +120,27 @@ class GitWorkingTreeTest {
         assertContains(diff, "+++ b/New.java")
         assertContains(diff, "-v1\n+v2")
         assertFalse("Raise the version" in diff, "only the changes, not the message")
+    }
+
+    @Test
+    fun `commit records only the given files and leaves the rest of the working tree as it is`() {
+        repo.resolve("pom.txt").writeText("v2\n")
+        repo.resolve("test-output.log").writeText("written by the build\n")
+
+        val commit = GitWorkingTree.commit(repo, "Raise the version", listOf("pom.txt"))
+
+        assertEquals("pom.txt", git("show", "--name-only", "--format=", commit).trim())
+        assertEquals("?? test-output.log", git("status", "--porcelain").trim())
+    }
+
+    @Test
+    fun `commit without files is an empty commit`() {
+        repo.resolve("test-output.log").writeText("written by the build\n")
+
+        val commit = GitWorkingTree.commit(repo, "Nothing to record", emptyList())
+
+        assertEquals("", git("show", "--name-only", "--format=", commit).trim())
+        assertEquals("Nothing to record", git("log", "-1", "--format=%s").trim())
     }
 
     @Test

@@ -71,6 +71,38 @@ class FixLoopTest {
     }
 
     @Test
+    fun `an accepted fix commits only the files its edits changed, not what the build left behind`() {
+        val adapter =
+            FakeAdapter(problems = { dir ->
+                dir.resolve("test-output.log").writeText("written by the build\n")
+                compileErrors(dir)
+            })
+
+        loop(adapter, ScriptedLlm(edits(fix))).run(repo, context, adapter.initial())
+
+        assertEquals("App.java", git("show", "--name-only", "--format=", "HEAD").trim())
+        assertEquals("?? test-output.log", git("status", "--porcelain").trim())
+    }
+
+    @Test
+    fun `an edit to a file Git ignores is applied but not committed`() {
+        repo.resolve(".gitignore").writeText("generated/\n")
+        git("add", ".gitignore")
+        git("commit", "--quiet", "-m", "ignore generated code")
+        repo.resolve("generated").toFile().mkdir()
+        repo.resolve("generated/Gen.java").writeText("broken();\n")
+        val adapter = FakeAdapter()
+
+        val result =
+            loop(adapter, ScriptedLlm(edits(Edit("./App.java", "broken();", "fixed();"), Edit("generated/Gen.java", "broken", "fixed"))))
+                .run(repo, context, adapter.initial())
+
+        assertIs<AttemptOutcome.Accepted>(result.attempts.single().outcome)
+        assertEquals("App.java", git("show", "--name-only", "--format=", "HEAD").trim())
+        assertEquals("fixed();\n", repo.resolve("generated/Gen.java").readText())
+    }
+
+    @Test
     fun `the first request on a cluster has temperature 0 and everything the model needs`() {
         val llm = ScriptedLlm(edits(fix))
         val adapter = FakeAdapter()

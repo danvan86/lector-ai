@@ -2,6 +2,7 @@ package gmbh.vanella.lector.core
 
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
+import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TimeSource
@@ -161,7 +162,7 @@ class FixLoop(
         ): AttemptOutcome =
             when (proposal) {
                 is Proposal.Invalid -> rejected("the model's answer is invalid: ${proposal.reason}")
-                is Proposal.Edits -> apply(proposal.edits)?.let(::rejected) ?: verify(cluster, proposal.rationale)
+                is Proposal.Edits -> apply(proposal.edits)?.let(::rejected) ?: verify(cluster, proposal)
             }
 
         /** Applies [edits] unless they can't apply or lower a version. Returns why the attempt is rejected, or null. */
@@ -184,18 +185,27 @@ class FixLoop(
             }
         }
 
-        /** Verifies the applied edits. With progress, they become a commit with the first line of [rationale] as subject. */
+        /**
+         * Verifies the applied edits. With progress, the files they changed become a commit with the first line of the
+         * rationale as subject. What the build left in the working tree stays out of it.
+         */
         private fun verify(
             cluster: Cluster,
-            rationale: String,
+            proposal: Proposal.Edits,
         ): AttemptOutcome {
             val after = attribute(adapter, repo, base)
             val progressBefore = Progress.of(verification.causedByUpdate)
             val progressAfter = Progress.of(after.causedByUpdate)
             if (progressAfter >= progressBefore) return rejected(noProgress(progressBefore, after.causedByUpdate))
-            val subject = rationale.lines().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "Fix ${cluster.key}"
+            val subject =
+                proposal.rationale
+                    .lines()
+                    .map { it.trim() }
+                    .firstOrNull { it.isNotEmpty() } ?: "Fix ${cluster.key}"
             val body = "Addresses:\n" + cluster.diagnostics.joinToString("\n", transform = ::describe)
-            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body")
+            val tracked = GitWorkingTree.trackedFiles(repo).toSet()
+            val edited = proposal.edits.map { Path.of(it.file).normalize().invariantSeparatorsPathString }.filter { it in tracked }
+            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", edited.distinct())
             verification = after
             return AttemptOutcome.Accepted(commit, subject, progressBefore, progressAfter)
         }

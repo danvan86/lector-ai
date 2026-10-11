@@ -40,14 +40,16 @@ object GitWorkingTree {
             .sorted()
 
     /**
-     * Commits every change in the working tree with the tool's identity and returns the commit. The repository's hooks
-     * don't run, and nothing is signed: a CI run can't answer a prompt.
+     * Commits the changes to [files] (relative to the repository root, new and deleted ones included) with the tool's
+     * identity and returns the commit. Anything else in the working tree, like build output, stays out of it. The
+     * repository's hooks don't run, and nothing is signed: a CI run can't answer a prompt.
      */
     fun commit(
         repo: Path,
         message: String,
+        files: List<String>,
     ): String {
-        git(repo, "add", "--all")
+        if (files.isNotEmpty()) git(repo, listOf("add", "--all", "--") + files)
         git(repo, IDENTITY + listOf("commit", "--quiet", "--no-verify", "--allow-empty", "-m", message))
         return git(repo, "rev-parse", "HEAD").trim()
     }
