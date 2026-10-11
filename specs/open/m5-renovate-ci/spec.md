@@ -33,12 +33,15 @@ New CLI command `lector pr`, which the action calls. Flow:
 7. **Report:** the sticky comment and the `ai-assisted` label (section 4).
 8. **Exit code** from the final verification: `0` nothing caused by the update left, `1` something left (the check turns red), `2` tool error.
 
+**Time budget:** the fix loop gives each build and test run of an attempt the remaining time as its deadline. A run that hits it is stopped, the attempt is rejected and reset, and the loop ends with stop reason `TIME_BUDGET`. The report and the push of earlier accepted fixes happen as usual.
+
 **Why:**
 - Checking author **and** same repo, not `github.actor`, is the concept's security rule (section 8.1). Checking in the tool too means a misconfigured workflow can't run it on a fork.
 - Verify first catches broken patch updates, and a green PR costs one build and nothing else (Q5 = B). Green means stop, so a PR the update didn't break stays exactly what the bot proposed (Q14).
 - Each distinct recipe once, because monorepo groups usually map to the same recipe (Q15).
 - Accepted fixes passed the guardrails and made measurable progress, so they are pushed even when the build isn't fully green (Q16).
 - Never force-pushing means we never overwrite a Renovate rebase.
+- Until M5 the time limit is only checked between attempts, so one attempt with a slow build can run past it and the CI job timeout kills the run without a report ([M3 review](../../done/m3-fix-loop/review.md) D1).
 - A newer JDK compiles older release levels, so 17, 21, and 25 cover the projects we need. JDK 8 and 11 aren't needed (Q3).
 
 ### 3. GitHub host adapter in a new module `git`
@@ -180,6 +183,7 @@ The review agent checks every criterion and reports it as *met*, *not met*, or *
 | AC34 | A real Renovate PR in the test repository got a fix commit and a sticky comment with no manual steps | 9 | Outside the repo: link to the PR, recorded in `docs/features.md` when M5 is set to ✅ |
 | AC35 | No Dependabot, GitLab, Gradle, or companion-PR code is added | Don't | Module list, source adapters, ports |
 | AC36 | A build or test process started by the tool sees neither the token nor any `INPUT_*` variable | 3 | Unit test on the process runner: a child process started with those variables set prints its environment, and none of them appear |
+| AC37 | A build or test run that exceeds the remaining time budget is stopped, the attempt is rejected and reset, the loop stops with `TIME_BUDGET`, and the report is still written | 2 | Fix-loop unit test with a slow fake adapter; pipeline test |
 
 ## Docs to update
 
