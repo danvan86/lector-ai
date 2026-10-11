@@ -73,7 +73,7 @@ These come from the concept. Don't break them without updating the concept first
 - Every external process gets a timeout, and its stdout and stderr are drained (or redirected to files). Otherwise a full pipe or a stuck process hangs the run.
 - Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors and unexpected exceptions included. Otherwise the pipeline blames the update for a tool bug.
 - Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
-- All versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Dependabot can only update what's declared.
+- All versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs.
 - No new dependency without a short reason in the PR description.
 - English for code, comments, docs, and commits.
 

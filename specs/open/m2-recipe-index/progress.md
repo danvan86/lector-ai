@@ -16,10 +16,11 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 8 | Tagged integration test: Spring Boot 3.3 → 3.4 fixture | ✅ |
 | 9 | Quality gates verified | ✅ |
 | 10 | Docs in sync (`features.md`, concept 2.3, 4, 5, 9, `AGENTS.md`) | ✅ |
+| 11 | Review and fixes: [`review.md`](review.md) | ✅ |
 
 ## Quality gates
 
-Final check from a clean state, each on its own: `ktlintCheck`, `detektMain detektTest :recipes:detektGenerator`, `test`, `:cli:endToEndTest`, `koverVerify`, `:cli:integrationTest`, and `clean build --rerun-tasks --no-build-cache` all exit with 0. 194 unit tests (`core` 46, `recipes` 32, `ecosystems:jvm` 62, `cli` 54), 12 end-to-end tests, 2 integration tests (about 25 s with a warm Maven repository). Kover: 100 % lines and branches in every module, the `generator` source set of `recipes` included (`MainKt` excluded, as before). `build --warning-mode all` shows no deprecation from our build files.
+Final check from a clean state, each on its own: `ktlintCheck`, `detektMain detektTest :recipes:detektGenerator`, `test`, `:cli:endToEndTest`, `koverVerify`, `:cli:integrationTest`, and `clean build --rerun-tasks --no-build-cache` all exit with 0. 196 unit tests (`core` 46, `recipes` 33, `ecosystems:jvm` 63, `cli` 54) after the review, 12 end-to-end tests, 2 integration tests (about 25 s with a warm Maven repository). Kover: 100 % lines and branches in every module, the `generator` source set of `recipes` included (`MainKt` excluded, as before). `build --warning-mode all` shows no deprecation from our build files.
 
 Each gate was checked by adding a violation to the new code, running `./gradlew build --continue`, and reverting:
 
