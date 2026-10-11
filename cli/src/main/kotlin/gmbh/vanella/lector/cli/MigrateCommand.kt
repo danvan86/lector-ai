@@ -1,10 +1,7 @@
 package gmbh.vanella.lector.cli
 
 import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.parameters.options.option
-import com.github.ajalt.clikt.parameters.options.required
 import gmbh.vanella.lector.core.BaseCommit
-import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.GitBaseCommit
 import gmbh.vanella.lector.core.GitWorkingTree
@@ -23,11 +20,7 @@ internal class MigrateCommand(
     adapters: (mavenSettings: Path?) -> List<EcosystemAdapter>,
     private val index: () -> RecipeIndex,
     baseCommit: (repo: Path, ref: String) -> BaseCommit = GitBaseCommit::resolve,
-) : RepositoryCommand("migrate", adapters, baseCommit) {
-    private val packageName by option("--package", metavar = "<package>", help = "The updated package, e.g. group:artifact").required()
-    private val from by option("--from", metavar = "<version>", help = "The version before the update").required()
-    private val to by option("--to", metavar = "<version>", help = "The version after the update").required()
-
+) : UpdateCommand("migrate", adapters, baseCommit) {
     override fun help(context: Context) = "Applies the OpenRewrite recipe for a dependency update, then verifies the result."
 
     override fun execute(
@@ -36,7 +29,7 @@ internal class MigrateCommand(
     ): Report {
         // A clean start means that resetting a failed recipe can never destroy anyone's work.
         GitWorkingTree.requireClean(repo)
-        val change = DependencyChange(adapter.ecosystem, packageName, from, to, adapter.versionScheme.updateType(from, to))
+        val change = change(adapter)
         val recipe = applyRecipe(change, adapter, index(), repo, base)
         val verification = attribute(adapter, repo, base)
         return Report(

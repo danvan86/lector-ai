@@ -4,7 +4,9 @@ import com.github.ajalt.clikt.core.CliktError
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.NoOpCliktCommand
 import com.github.ajalt.clikt.core.UsageError
+import com.github.ajalt.clikt.core.context
 import com.github.ajalt.clikt.core.parse
+import com.github.ajalt.clikt.output.MordantHelpFormatter
 import com.github.ajalt.clikt.parameters.options.versionOption
 
 /** Exit code when the tool fails or is called wrongly. `1` is reserved for "caused by the update". */
@@ -18,6 +20,7 @@ class LectorCommand(
 
     init {
         versionOption(version, message = { it })
+        context { helpFormatter = { MordantHelpFormatter(it, showDefaultValues = true) } }
     }
 
     override fun help(context: Context) = "Fixes the build and test errors that a dependency update causes."

@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.net.ServerSocket
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.createFile
@@ -95,7 +96,7 @@ class LectorEndToEndTest {
     }
 
     @Test
-    fun `help lists exactly the verify and migrate commands`() {
+    fun `help lists exactly the verify, migrate, and heal commands`() {
         val run = lector("--help")
 
         val commands =
@@ -103,7 +104,7 @@ class LectorEndToEndTest {
                 .substringAfter("Commands:")
                 .lines()
                 .filter { it.startsWith("  ") && !it.startsWith("   ") }
-        assertEquals(listOf("verify", "migrate"), commands.map { it.trim().substringBefore(" ") })
+        assertEquals(listOf("verify", "migrate", "heal"), commands.map { it.trim().substringBefore(" ") })
     }
 
     @Test
@@ -169,11 +170,74 @@ class LectorEndToEndTest {
         assertEquals(0, run.exitCode, run.stderr)
     }
 
+    @Test
+    fun `heal without --package exits with 2`(
+        @TempDir repo: Path,
+    ) {
+        val run = lector("heal", repo.toString(), "--from", "3.3.5", "--to", "3.4.1")
+
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "missing option --package")
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `heal of a green project prints one JSON object without asking the model, and exits with 0`(
+        @TempDir repo: Path,
+    ) {
+        mavenProject(repo)
+
+        val run =
+            lector("heal", repo.toString(), "--package", "com.example:no-recipe", "--from", "1.0", "--to", "2.0", "--format", "json")
+
+        val json = Json.parseToJsonElement(run.stdout).jsonObject
+        assertEquals(listOf("recipe", "recipeCommit", "fixLoop", "verification"), json.keys.toList())
+        assertEquals(
+            "nothingLeft",
+            json
+                .getValue("fixLoop")
+                .jsonObject
+                .getValue("stopReason")
+                .jsonPrimitive.content,
+        )
+        assertEquals(0, run.exitCode, run.stderr)
+    }
+
+    @Test
+    fun `heal with an unreachable Ollama exits with 2`(
+        @TempDir repo: Path,
+    ) {
+        mavenProject(repo, output = "[ERROR] $repo/src/main/java/App.java:[3,9] cannot find symbol", exitCode = 1)
+        val port = ServerSocket(0).use { it.localPort }
+
+        val run =
+            lector(
+                "heal",
+                repo.toString(),
+                "--package",
+                "com.example:no-recipe",
+                "--from",
+                "1.0",
+                "--to",
+                "2.0",
+                "--ollama-url",
+                "http://127.0.0.1:$port",
+            )
+
+        assertEquals("", run.stdout)
+        assertContains(run.stderr, "Error: Ollama is not reachable at http://127.0.0.1:$port")
+        assertEquals(2, run.exitCode)
+    }
+
     /**
      * A committed Maven project whose wrapper stands in for Maven: it logs its arguments, writes an effective POM with
-     * the Spring Boot parent where `help:effective-pom` asks for one, and succeeds.
+     * the Spring Boot parent where `help:effective-pom` asks for one, prints [output], and exits with [exitCode].
      */
-    private fun mavenProject(repo: Path) {
+    private fun mavenProject(
+        repo: Path,
+        output: String = "",
+        exitCode: Int = 0,
+    ) {
         repo.resolve("pom.xml").writeText("<project/>\n")
         val wrapper = repo.resolve("mvnw")
         wrapper.writeText(
@@ -185,7 +249,8 @@ class LectorEndToEndTest {
                 -Doutput=*) echo '<project><parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>3.4.1</version></parent></project>' > "${'$'}{arg#-Doutput=}" ;;
               esac
             done
-            exit 0
+            echo '$output'
+            exit $exitCode
             """.trimIndent() + "\n",
         )
         wrapper.toFile().setExecutable(true)

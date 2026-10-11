@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation(project(":core"))
     implementation(project(":recipes"))
+    implementation(project(":llm"))
     implementation(project(":ecosystems:jvm"))
     implementation(libs.clikt)
     implementation(libs.kotlinx.serialization.json)
