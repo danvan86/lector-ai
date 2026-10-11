@@ -39,6 +39,8 @@ class OllamaClient(
     private val endpoint = URI.create(url.toString().removeSuffix("/") + "/api/chat")
 
     override fun propose(request: FixRequest): Proposal {
+        val prompt = Prompt.user(request)
+        logger.debug("Asking {} at {}:\n{}", model, url, prompt)
         val body =
             buildJsonObject {
                 put("model", model)
@@ -51,7 +53,7 @@ class OllamaClient(
                 }
                 putJsonArray("messages") {
                     add(message("system", Prompt.SYSTEM))
-                    add(message("user", Prompt.user(request)))
+                    add(message("user", prompt))
                 }
             }
         val response = send(body.toString())

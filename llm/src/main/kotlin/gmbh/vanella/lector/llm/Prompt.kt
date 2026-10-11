@@ -30,12 +30,16 @@ internal object Prompt {
         """
         You fix the compile errors and test failures that a dependency update caused in a software project.
 
-        Answer with JSON only: {"rationale": "…", "edits": [{"file": "…", "search": "…", "replace": "…"}]}
+        Answer with JSON only: {"analysis": "…", "rationale": "…", "edits": [{"file": "…", "search": "…", "replace": "…"}]}
 
+        - `analysis` comes first: in a few sentences, what causes each error, what the new API offers instead, and which
+          classes the fixed code uses that the file doesn't import yet.
         - `file` is the path relative to the repository root, as shown in the code sections.
         - `search` is copied exactly from the code shown, with its indentation, and occurs exactly once in the file. Keep it
           short: the lines that change, plus enough context to make it unique.
         - `replace` is the text that takes the place of `search`.
+        - A class from another package needs its import. Add it with an edit of its own: search an existing import line,
+          replace it with that line and the new import.
         - Make the smallest change that fixes the errors. Use the API of the new version as shown. Don't guess.
         - Never downgrade a dependency, never delete or disable tests, and never return whole files.
         - `rationale` is one line in the imperative, like a commit subject, e.g. "Use MoreObjects.firstNonNull".
@@ -52,6 +56,7 @@ internal object Prompt {
                 request.previousAttempts.withIndex().joinToString(SEPARATOR) {
                     attempt(it.index + 1, it.value)
                 },
+                "These edits were rejected, and the code is as shown above again. Don't repeat them. Fix what the errors after them show.",
             )
         val fixed = listOfNotNull(intro, errors, code, earlier)
         var budget = MAX_CHARS - SYSTEM.length - fixed.sumOf { it.length } - SEPARATOR.length * (fixed.size + 3)
@@ -90,7 +95,8 @@ internal object Prompt {
     private fun section(
         title: String,
         body: String,
-    ) = if (body.isEmpty()) null else "## $title$SEPARATOR$body"
+        intro: String? = null,
+    ) = if (body.isEmpty()) null else "## $title$SEPARATOR" + intro?.let { it + SEPARATOR }.orEmpty() + body
 
     private fun error(diagnostic: Diagnostic): String {
         val location = diagnostic.file?.let { listOfNotNull(it, diagnostic.line, diagnostic.column).joinToString(":") }

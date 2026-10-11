@@ -35,7 +35,7 @@ class OllamaClientTest {
     private val requests = mutableListOf<Pair<String, JsonObject>>()
     private var status = 200
     private var content =
-        """{"rationale":"Use MoreObjects.firstNonNull","edits":[{"file":"App.java","search":"Objects.","replace":"MoreObjects."}]}"""
+        """{"analysis":"moved","rationale":"Use MoreObjects.firstNonNull","edits":[{"file":"App.java","search":"Objects.","replace":"MoreObjects."}]}"""
     private var body: String? = null
     private var delayMillis = 0L
 
@@ -93,9 +93,9 @@ class OllamaClientTest {
     }
 
     @Test
-    fun `the schema requires a rationale and a list of edits with file, search, and replace`() {
+    fun `the schema requires an analysis first, a rationale, and a list of edits with file, search, and replace`() {
         val schema = FixSchema.SCHEMA
-        assertEquals("[\"rationale\",\"edits\"]", schema.getValue("required").toString())
+        assertEquals("[\"analysis\",\"rationale\",\"edits\"]", schema.getValue("required").toString())
         val edit =
             schema
                 .getValue("properties")
@@ -132,7 +132,7 @@ class OllamaClientTest {
 
     @Test
     fun `code fences around the JSON are stripped`() {
-        content = "```json\n{\"rationale\":\"r\",\"edits\":[]}\n```\n"
+        content = "```json\n{\"analysis\":\"a\",\"rationale\":\"r\",\"edits\":[]}\n```\n"
 
         assertEquals(Proposal.Edits(emptyList(), "r"), OllamaClient(url, "m").propose(request))
     }
@@ -143,14 +143,16 @@ class OllamaClientTest {
             mapOf(
                 "Sure! Here is the fix." to "the answer is not JSON",
                 "[]" to "the answer is not a JSON object",
-                """{"edits":[]}""" to "rationale is missing or not a string",
-                """{"rationale":"r"}""" to "edits is missing or not a list",
-                """{"rationale":"r","edits":[{"file":"A.java","search":"a"}]}""" to "edit 1: replace is missing or not a string",
-                """{"rationale":"r","edits":["a"]}""" to "edit 1 is not an object",
-                """{"rationale":["r"],"edits":[]}""" to "rationale is missing or not a string",
-                """{"rationale":1,"edits":[]}""" to "rationale is missing or not a string",
-                """{"rationale":"r","edits":[{"search":"a","replace":"b"}]}""" to "edit 1: file is missing or not a string",
-                """{"rationale":"r","edits":[{"file":"A.java","search":null,"replace":"b"}]}""" to
+                """{"rationale":"r","edits":[]}""" to "analysis is missing or not a string",
+                """{"analysis":"a","edits":[]}""" to "rationale is missing or not a string",
+                """{"analysis":"a","rationale":"r"}""" to "edits is missing or not a list",
+                """{"analysis":"a","rationale":"r","edits":[{"file":"A.java","search":"a"}]}""" to
+                    "edit 1: replace is missing or not a string",
+                """{"analysis":"a","rationale":"r","edits":["a"]}""" to "edit 1 is not an object",
+                """{"analysis":"a","rationale":["r"],"edits":[]}""" to "rationale is missing or not a string",
+                """{"analysis":"a","rationale":1,"edits":[]}""" to "rationale is missing or not a string",
+                """{"analysis":"a","rationale":"r","edits":[{"search":"a","replace":"b"}]}""" to "edit 1: file is missing or not a string",
+                """{"analysis":"a","rationale":"r","edits":[{"file":"A.java","search":null,"replace":"b"}]}""" to
                     "edit 1: search is missing or not a string",
             )
         answers.forEach { (answer, reason) ->
