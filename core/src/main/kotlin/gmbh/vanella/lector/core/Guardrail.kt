@@ -34,15 +34,17 @@ data class Violation(
 
 /**
  * One file an attempt changed, relative to the repository root: its text [before] (the last commit) and [after] (the
- * working tree), with the facts the adapter's [LanguageSupport] reports about each. Null facts: no language knows the file.
+ * working tree), with the facts [languageSupport] reports about each. Null facts: no language there knows the file.
  */
 class FileChange(
     val file: String,
     val before: String,
     val after: String,
-    val factsBefore: SourceFacts?,
-    val factsAfter: SourceFacts?,
+    languageSupport: LanguageSupport,
 ) {
+    val factsBefore = languageSupport.facts(file, before)
+    val factsAfter = languageSupport.facts(file, after)
+
     val hunks = lineDiff(before.lines(), after.lines())
 
     /** The lines of [after] that are new or changed. */

@@ -1,8 +1,11 @@
 package gmbh.vanella.lector.core
 
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
+import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.seconds
 
 class FileRulesTest {
     private val repo = Path.of("/work/repo")
@@ -44,6 +47,21 @@ class FileRulesTest {
     @Test
     fun `scope reports a file once, however many edits it has`() {
         assertEquals(1, scope.check(listOf("local.properties", "local.properties")).size)
+    }
+
+    @Test
+    fun `the guardrails check the scope against the files Git tracks`(
+        @TempDir repo: Path,
+    ) {
+        val git = { args: List<String> -> assertEquals(0, runProcess(listOf("git") + args, repo, 30.seconds).exitCode) }
+        git(listOf("init", "--quiet"))
+        repo.resolve("App.java").writeText("class App {}\n")
+        repo.resolve("Local.java").writeText("class Local {}\n")
+        git(listOf("add", "App.java"))
+
+        val violations = Guardrails(EditableEverywhere, DEFAULT_MAX_CHANGED_LINES).checkScope(repo, listOf("App.java", "Local.java"))
+
+        assertEquals(listOf("Local.java"), violations.map { it.file })
     }
 
     @Test
@@ -96,5 +114,5 @@ class FileRulesTest {
         file: String,
         before: String,
         after: String,
-    ) = FileChange(file, before, after, null, null)
+    ) = FileChange(file, before, after) { _, _ -> null }
 }

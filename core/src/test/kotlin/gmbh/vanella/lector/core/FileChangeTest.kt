@@ -66,5 +66,5 @@ class FileChangeTest {
     private fun change(
         before: String,
         after: String,
-    ) = FileChange("App.java", before, after, null, null)
+    ) = FileChange("App.java", before, after) { _, _ -> null }
 }
