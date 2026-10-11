@@ -8,7 +8,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 |---|---|---|
 | 1 | `core`: `Edit` and edit application, code snippets | ✅ |
 | 2 | Adapter grows (`ground`, cluster key, build file); `ecosystems:jvm`: cluster keys for javac, kotlinc, and Maven, `javap` grounding | ✅ |
-| 3 | `core`: `LlmClient` port, clusters and order, progress tuple, Git commits, fix loop with budgets and downgrade check | ⬜ |
+| 3 | `core`: `LlmClient` port, clusters and order, progress tuple, Git commits, fix loop with budgets and downgrade check | ✅ |
 | 4 | `llm`: Ollama client (`/api/chat`, JSON schema, `num_ctx`, temperature) and prompt with trimming | ⬜ |
 | 5 | `cli`: `heal` command, recipe commit, fix-loop report (text and JSON), end-to-end tests | ⬜ |
 | 6 | Real-model test with Testcontainers' Ollama module, fixture, CI workflow | ⬜ |
