@@ -93,21 +93,18 @@ class IndexBuilder(
             return null
         }
         val reason = skipReason(selector, leaf.options["versionPattern"])
-        if (reason != null) skipped += reason
-        return if (reason !=
-            null
-        ) {
-            null
-        } else {
-            IndexEntry(
-                ECOSYSTEM,
-                "$group:$artifact",
-                selector,
-                recipe.tree.name,
-                depth,
-                recipe.artifact.coordinates,
-                recipe.artifact.license,
-            )
+        if (reason != null) {
+            skipped += reason
+            return null
         }
+        return IndexEntry(
+            ECOSYSTEM,
+            "$group:$artifact",
+            selector,
+            recipe.tree.name,
+            depth,
+            recipe.artifact.coordinates,
+            recipe.artifact.license,
+        )
     }
 }

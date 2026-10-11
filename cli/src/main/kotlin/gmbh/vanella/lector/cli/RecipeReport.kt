@@ -21,11 +21,8 @@ internal object RecipeReport {
         val lines =
             buildList {
                 add("Recipe (${if (outcome is RecipeOutcome.Applied) "applied" else "not applied"})")
-                add(
-                    "  Change: ${change.`package`} ${change.fromVersion} -> ${change.toVersion} (${change.ecosystem}, ${updateType(
-                        change,
-                    )})",
-                )
+                val versions = "${change.fromVersion} -> ${change.toVersion}"
+                add("  Change: ${change.`package`} $versions (${change.ecosystem}, ${updateType(change)})")
                 reason(change, outcome)?.let { add("  Reason: ${it.replace("\n", "\n    ")}") }
                 if (chosen != null) {
                     add("  Recipe: ${match(chosen)}")
