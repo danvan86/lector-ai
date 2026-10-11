@@ -3,6 +3,7 @@ package gmbh.vanella.lector.cli
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.testing.test
 import gmbh.vanella.lector.core.BaseCommit
+import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.Severity
@@ -221,5 +222,15 @@ class VerifyCommandTest {
             repo: Path,
             tests: List<Diagnostic>,
         ) = if (repo == this@VerifyCommandTest.repo) headRerun else baseRun
+
+        override fun ground(
+            repo: Path,
+            change: DependencyChange,
+            diagnostics: List<Diagnostic>,
+        ) = ""
+
+        override fun clusterKey(diagnostic: Diagnostic) = null
+
+        override fun isBuildFile(file: String) = false
     }
 }
