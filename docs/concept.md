@@ -191,7 +191,9 @@ EcosystemAdapter
   detect(repo)                       → bool
   verify(repo)                       → Diagnostic[]   (build + tests/validation)
   runTests(repo, tests: Diagnostic[])→ Diagnostic[]   (only the tests of these failures: rerun, baseline)
-  ground(change, diagnostics)        → Context        (API surface, docs)
+  ground(repo, change, diagnostics)  → Context        (API surface, docs)
+  clusterKey(diagnostic)             → String?        (root cause: missing symbol, package, artifact)
+  isBuildFile(file)                  → bool           (pom.xml, package.json, …)
   editableScope()                    → Glob[]         (excludes generated code)
   language                           → LanguageSupport (tree-sitter grammar + queries)
 
@@ -262,7 +264,11 @@ A local model often doesn't know the new version of an API, because it was relea
 
 - Maximum attempts per error cluster (e.g. 3)
 - Global limit on attempts and wall-clock time per run
-- Stop once no progress is made (the number of failures caused by the update doesn't drop)
+- Stop once no progress is made
+
+**Progress** is measured stage by stage. The failures caused by the update are counted as the tuple (build errors without a location, compile errors, test failures), and an attempt counts as progress only if this tuple gets lower, comparing the stages in that order. So fixing a missing artifact counts even if it unmasks 50 compile errors, and a new compile error never counts as progress while fixing tests. An attempt without progress is rejected and rolled back.
+
+**No downgrades by the LLM.** After an attempt that touched a build file, the resolved versions are read again. If any package resolves lower than before the fix loop, including the PR's own package, the attempt is rejected. Reverting the bump is the easiest way to make a build green.
 
 ## 7. Guardrails
 
@@ -311,6 +317,8 @@ Separate, traceable commits:
 1. The bot's version bump (Renovate or Dependabot)
 2. The OpenRewrite recipe output
 3. One commit per AI fix, with the error it addressed and a one-line rationale
+
+The commits for 2 and 3 are created locally by `heal` from M3 on, with the tool identity `lector`. M5 pushes them and swaps the identity for the GitHub App's.
 
 Also:
 - Label the PR `ai-assisted`. **It is never auto-merged.**

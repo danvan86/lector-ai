@@ -44,7 +44,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** a Spring Boot fixture repo gets the right upgrade recipe, and it's applied and verified.
 
-## M3 – Fix loop (CLI only, no CI yet) ⬜
+## M3 – Fix loop (CLI only, no CI yet) ✅
 
 **Goal:** the LLM fixes remaining errors. Driven through the CLI directly, not yet wired into a pipeline; CI integration lands in M5.
 
@@ -66,6 +66,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 - Test protection: no deleted or skipped tests, no removed assertions, test count stays the same
 - Block stubs (`return null`, empty bodies) and new suppressions
 - Diff size limit, `editableScope` (no generated code)
+- Close rule 5: reject edits to generated code (`editableScope`). Not enforced in M3
 
 **Done when:** every guardrail rule has a test that rejects a matching bad edit.
 
