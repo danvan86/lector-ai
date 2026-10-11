@@ -1,6 +1,6 @@
 # Architecture – Recipe migration
 
-Milestone: [M2](../features.md#m2--recipe-index-and-openrewrite-run-) · Spec: [`m2-recipe-index/spec.md`](../../specs/open/m2-recipe-index/spec.md) · Review: [`review.md`](../../specs/open/m2-recipe-index/review.md)
+Milestone: [M2](../features.md#m2--recipe-index-and-openrewrite-run-) · Spec: [`m2-recipe-index/spec.md`](../../specs/done/m2-recipe-index/spec.md) · Review: [`review.md`](../../specs/done/m2-recipe-index/review.md)
 
 > **Summary for agents**
 >
