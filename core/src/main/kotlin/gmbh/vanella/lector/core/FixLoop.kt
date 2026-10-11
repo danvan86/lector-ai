@@ -12,6 +12,9 @@ private val logger = LoggerFactory.getLogger(FixLoop::class.java)
 private const val FIRST_TEMPERATURE = 0.0
 private const val RETRY_TEMPERATURE = 0.3
 
+// The errors after an attempt without progress that go back to the model. More would crowd out the code.
+private const val FEEDBACK_ERRORS = 10
+
 /** The limits of one fix loop (concept section 6.4). */
 data class Budgets(
     val attemptsPerCluster: Int = 3,
@@ -189,7 +192,7 @@ class FixLoop(
             val after = attribute(adapter, repo, base)
             val progressBefore = Progress.of(verification.causedByUpdate)
             val progressAfter = Progress.of(after.causedByUpdate)
-            if (progressAfter >= progressBefore) return rejected("no progress: $progressBefore -> $progressAfter")
+            if (progressAfter >= progressBefore) return rejected(noProgress(progressBefore, after.causedByUpdate))
             val subject = rationale.lines().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "Fix ${cluster.key}"
             val body = "Addresses:\n" + cluster.diagnostics.joinToString("\n", transform = ::describe)
             val commit = GitWorkingTree.commit(repo, "$subject\n\n$body")
@@ -218,10 +221,24 @@ private fun unreadable(error: Throwable) = "the resolved versions can't be read,
 
 private fun describe(change: VersionChange) = "${change.`package`} ${change.before} -> ${change.after}"
 
-/** `- [javac] App.java:3: message`, with the first line of the message. */
-private fun describe(diagnostic: Diagnostic): String {
+/** Why an attempt without progress is rejected, with the errors after it: the model learns what its edits caused. */
+private fun noProgress(
+    before: Progress,
+    after: List<Diagnostic>,
+): String {
+    val errors = after.take(FEEDBACK_ERRORS).joinToString("\n") { describe(it, wholeMessage = true) }
+    val more = if (after.size > FEEDBACK_ERRORS) "\n- and ${after.size - FEEDBACK_ERRORS} more" else ""
+    return "no progress: $before -> ${Progress.of(after)}\nErrors after the edits:\n$errors$more"
+}
+
+/** `- [javac] App.java:3: message`, with the first line of the message, or the whole message indented. */
+private fun describe(
+    diagnostic: Diagnostic,
+    wholeMessage: Boolean = false,
+): String {
     val location = diagnostic.file?.let { listOfNotNull(it, diagnostic.line).joinToString(":") }
     val subject = listOfNotNull(diagnostic.test, location).joinToString(" at ")
-    val message = diagnostic.message.lines().first()
+    val lines = diagnostic.message.lines()
+    val message = if (wholeMessage) lines.joinToString("\n  ") else lines.first()
     return "- [${diagnostic.tool}] " + if (subject.isEmpty()) message else "$subject: $message"
 }

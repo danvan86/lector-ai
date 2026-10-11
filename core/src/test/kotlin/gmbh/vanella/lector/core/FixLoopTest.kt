@@ -137,15 +137,46 @@ class FixLoopTest {
     fun `an attempt without progress is rejected and the working tree is reset to the last commit`() {
         val worse = Edit("App.java", "broken();", "broken();\n        missing();")
         val adapter = FakeAdapter()
+        val llm = ScriptedLlm(edits(worse), edits(worse))
 
-        val result = loop(adapter, ScriptedLlm(edits(worse), edits(worse))).run(repo, context, adapter.initial())
+        val result = loop(adapter, llm).run(repo, context, adapter.initial())
 
-        val expected = "no progress: 0 build errors, 1 compile errors, 0 test failures -> 0 build errors, 2 compile errors, 0 test failures"
+        val expected =
+            """
+            no progress: 0 build errors, 1 compile errors, 0 test failures -> 0 build errors, 2 compile errors, 0 test failures
+            Errors after the edits:
+            - [javac] App.java:3: cannot find symbol broken
+            - [javac] App.java:4: cannot find symbol missing
+            """.trimIndent()
         assertEquals(AttemptOutcome.Rejected(expected), result.attempts.first().outcome)
+        assertEquals(
+            expected,
+            llm.requests
+                .last()
+                .previousAttempts
+                .single()
+                .failure,
+            "the retry learns what the edits caused",
+        )
         assertEquals("", git("status", "--porcelain"))
         assertEquals(app, repo.resolve("App.java").readText())
         assertEquals("1", git("rev-list", "--count", "HEAD").trim())
         assertEquals(listOf(compileError(3)), result.verification.causedByUpdate, "the result is the last accepted state")
+    }
+
+    @Test
+    fun `the errors after an attempt without progress are cut at ten, with the rest of each message`() {
+        val many =
+            List(12) { Diagnostic("App.java", it + 1, 9, "symbol:broken", "cannot find symbol\nsymbol: x$it", Severity.ERROR, "javac") }
+        val adapter = FakeAdapter(problems = { dir -> if ("broken" in dir.resolve("App.java").readText()) many.take(1) else many })
+
+        val result =
+            loop(adapter, ScriptedLlm(edits(Edit("App.java", "broken", "other"))), Budgets(attempts = 1))
+                .run(repo, context, adapter.initial())
+
+        val reason = (result.attempts.single().outcome as AttemptOutcome.Rejected).reason
+        assertContains(reason, "- [javac] App.java:10: cannot find symbol\n  symbol: x9\n- and 2 more")
+        assertEquals(false, "symbol: x10" in reason)
     }
 
     @Test
