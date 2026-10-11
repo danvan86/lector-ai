@@ -84,7 +84,38 @@ sourceSets.main {
     resources.srcDir(files(indexDir).builtBy(generateRecipeIndex))
 }
 
+// The JVM adapter runs the indexed recipes with rewrite-maven-plugin, so the plugin must be built on the OpenRewrite
+// version the BOM names. Dependabot bumps the two in separate PRs; this check fails the build until both match.
+val rewritePluginPom =
+    configurations.detachedConfiguration(dependencies.create("${libs.rewrite.maven.plugin.get()}@pom"))
+val checkRewritePluginVersion =
+    tasks.register("checkRewritePluginVersion") {
+        description = "Checks that rewrite-maven-plugin is built on the OpenRewrite version of rewrite-recipe-bom."
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        val pluginPom: FileCollection = rewritePluginPom
+        val bomVersion =
+            configurations
+                .named("generatorRuntimeClasspath")
+                .flatMap { it.incoming.artifacts.resolvedArtifacts }
+                .map { artifacts ->
+                    artifacts
+                        .map { it.id.componentIdentifier }
+                        .filterIsInstance<ModuleComponentIdentifier>()
+                        .single { it.group == "org.openrewrite" && it.module == "rewrite-core" }
+                        .version
+                }
+        inputs.files(pluginPom)
+        doLast {
+            val pom = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pluginPom.singleFile)
+            val pluginVersion = pom.getElementsByTagName("rewrite.version").item(0)?.textContent
+            check(pluginVersion == bomVersion.get()) {
+                "rewrite-maven-plugin is built on OpenRewrite $pluginVersion, but rewrite-recipe-bom names " +
+                    "${bomVersion.get()}. Update both in gradle/libs.versions.toml."
+            }
+        }
+    }
+
 // The convention plugin wires detekt for `main` and `test`. The generator gets the same check.
 tasks.check {
-    dependsOn("detektGenerator")
+    dependsOn("detektGenerator", checkRewritePluginVersion)
 }
