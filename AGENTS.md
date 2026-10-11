@@ -72,7 +72,8 @@ These come from the concept. Don't break them without updating the concept first
 - Small, focused classes and functions. Name things after domain terms from the concept (`DependencyChange`, `Diagnostic`, `Edit`, `EcosystemAdapter`).
 - Prefer immutable data classes and pure functions. Keep I/O (processes, HTTP, Git) at the edges.
 - Every external process gets a timeout, and its stdout and stderr are drained (or redirected to files). Otherwise a full pipe or a stuck process hangs the run.
-- Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors and unexpected exceptions included. Otherwise the pipeline blames the update for a tool bug.
+- Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors and unexpected exceptions included. Otherwise the pipeline blames the update for a tool bug. Validate option values completely when parsing (a URL's scheme and host, not only its syntax), so a bad value fails before minutes of build.
+- The repository under repair is the user's. Commit only the files a step changed: a build leaves output in the tree, and test fixtures ignore `target/`, so `git add --all` looks fine in tests and isn't. Reset the working tree on every way out of a failed step, exceptions included.
 - Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
 - All versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs.
 - No new dependency without a short reason in the PR description.
@@ -84,7 +85,7 @@ These come from the concept. Don't break them without updating the concept first
 
 - **ktlint** owns formatting (`ktlint_official`, configured in `.editorconfig`). Run `ktlintFormat` instead of formatting by hand.
 - **detekt** owns code smells and likely bugs. Defaults plus the deviations in `config/detekt/detekt.yml`. Notable project rules: no `print`/`println`, also not via `System.out` and its `printf`, `format`, `append`, `write` (stdout is the report channel; use Clikt `echo` and SLF4J), no process exit outside `main`, no `else` on sealed types.
-- **Kover** requires 100 % line and branch coverage per module. The only exclusion is the `main` entry point (`MainKt`): it exits the process, so only the end-to-end tests run it.
+- **Kover** requires 100 % line and branch coverage per module. The only exclusion is the `main` entry point (`MainKt`): it exits the process, so only the end-to-end tests run it. Kover counts branches that no test can reach: `?: …` after a `let` that never returns null, a safe call on a non-null value, the exceptional copy of a `finally` block, a null check in a default argument. Write a plain `if` on a single safe call, and catch-and-rethrow instead of `finally`.
 - Fix the code first. If a rule is wrong for this project, change it in the config with a one-line reason. A single justified exception may use `@Suppress("RuleName")` with a comment that says why.
 - Never add baselines, `ignoreFailures`, or further coverage exclusions.
 - Don't shape the design around coverage. Code that can't run in-process (`main`) stays a one-liner in its own file; logic moves into a testable function because it belongs there, not to raise the number.

@@ -14,10 +14,11 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 6 | Real-model test with Testcontainers' Ollama module, fixture, CI workflow | ✅ |
 | 7 | Quality gates verified | ✅ |
 | 8 | Docs in sync (`features.md`, concept 5, 6.4, 8.3, `AGENTS.md`) | ✅ |
+| 9 | Review and fixes: [`review.md`](review.md) | ✅ |
 
 ## Quality gates
 
-Final check from a clean state, each on its own: `ktlintCheck`, `detektMain detektTest :recipes:detektGenerator`, `test`, `:cli:endToEndTest`, `koverVerify`, `:cli:integrationTest`, and `clean build --rerun-tasks --no-build-cache` all exit with 0. 291 unit tests (`core` 90, `recipes` 33, `llm` 16, `ecosystems:jvm` 77, `cli` 75), 15 end-to-end tests, 2 integration tests, 1 real-model test (`:cli:realModelTest`, 8 min with Docker on a Mac, CPU only, model download included). Kover: 100 % lines and branches in every module (`MainKt` excluded, as before). `build --warning-mode all` shows no deprecation from our build files.
+Final check from a clean state, each on its own: `ktlintCheck`, `detektMain detektTest :recipes:detektGenerator`, `test`, `:cli:endToEndTest`, `koverVerify`, `:cli:integrationTest`, and `clean build --rerun-tasks --no-build-cache` all exit with 0. After the review: 299 unit tests (`core` 96, `recipes` 33, `llm` 17, `ecosystems:jvm` 77, `cli` 76), 15 end-to-end tests, 2 integration tests, 1 real-model test (`:cli:realModelTest`, 8 min with Docker on a Mac, CPU only, model download included). Kover: 100 % lines and branches in every module (`MainKt` excluded, as before). `build --warning-mode all` shows no deprecation from our build files.
 
 Each gate was checked by adding a violation, running `./gradlew build --continue`, and reverting:
 
