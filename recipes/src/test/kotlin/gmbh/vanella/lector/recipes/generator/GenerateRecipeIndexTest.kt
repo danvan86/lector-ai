@@ -35,6 +35,11 @@ class GenerateRecipeIndexTest {
     }
 
     @Test
+    fun `an X-range with a version pattern is skipped, because the index can't hold the pattern`() {
+        assertEquals("XRange with versionPattern", skipReason("10.x", "-SNAPSHOT"))
+    }
+
+    @Test
     fun `indexes the recipes of the OpenRewrite JARs it is given, and reports every one with its license`() {
         val mavenJar = classpathJar("rewrite-maven-")
         val version =

@@ -70,7 +70,11 @@ private fun tree(descriptor: RecipeDescriptor): RecipeTree =
         descriptor.recipeList.map(::tree),
     )
 
-/** OpenRewrite's own reading of a selector. Only exact versions and X-ranges are bounded and supported. */
+/**
+ * OpenRewrite's own reading of a selector. Only exact versions and X-ranges are bounded and supported. A version pattern
+ * (`-jre`) narrows the selector, and the index has no field for it: OpenRewrite reads an exact version with a pattern
+ * as its own type, an X-range with a pattern is skipped here.
+ */
 fun skipReason(
     selector: String,
     versionPattern: String?,
@@ -78,7 +82,8 @@ fun skipReason(
     val validated = Semver.validate(selector, versionPattern)
     return when (val comparator = if (validated.isValid) validated.value else null) {
         null -> "invalid selector"
-        is ExactVersion, is XRange -> null
+        is ExactVersion -> null
+        is XRange -> if (versionPattern == null) null else "XRange with versionPattern"
         else -> comparator::class.simpleName
     }
 }
