@@ -31,15 +31,16 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** a broken fixture repo produces the correct list of diagnostics, and a pre-existing test failure is reported but not attributed to the update.
 
-## M2 – Recipe index and OpenRewrite run ⬜
+## M2 – Recipe index and OpenRewrite run ✅
 
 **Goal:** the right recipe is found and applied automatically, without an LLM.
 
-- Data model: `DependencyChange`
-- Build the index from recipe metadata: `(package, target version) → recipe`
+- Data model: `DependencyChange`; `VersionScheme` and resolved versions from the ecosystem adapter
+- Build the index from recipe metadata at build time: `(ecosystem, package, target version) → recipe`, plus a license report
 - Pick the most specific recipe that doesn't overshoot the target version
-- Run the recipe through the Maven plugin without editing `pom.xml`
-- Then verify (M1)
+- Never downgrade: no recipe for an outdated PR, and a recipe that moves a package down is discarded
+- Run the recipe through the Maven plugin (`runNoFork`) without editing `pom.xml`
+- Then verify (M1); CLI: `migrate <repo> --package … --from … --to … [--base <ref>]`
 
 **Done when:** a Spring Boot fixture repo gets the right upgrade recipe, and it's applied and verified.
 
@@ -78,6 +79,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 - PR comment with a summary and any remaining errors; `ai-assisted` label
 - GitHub Action and container image (Ollama sidecar, weights baked in)
 - Secure trigger: check PR author and same repo; GitHub App token
+- Legal check of the Moderne Source Available License (recipe index, `rewrite-spring`) before release
 - Documentation: `gitIgnoredAuthors` setup for Renovate
 
 **Done when:** a real Renovate PR in a test repo gets a fix commit and a report, with no manual steps.

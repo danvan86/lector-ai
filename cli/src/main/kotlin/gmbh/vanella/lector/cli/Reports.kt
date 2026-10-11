@@ -44,13 +44,13 @@ internal object TextReport {
 
 /** The same [Verification] for machines: one JSON object with the four lists. Every field is present, null or not. */
 internal object JsonReport {
-    fun render(verification: Verification): String =
+    fun json(verification: Verification): JsonObject =
         buildJsonObject {
             put("causedByUpdate", array(verification.causedByUpdate))
             put("preExisting", array(verification.preExisting))
             put("flaky", array(verification.flaky))
             put("unattributed", array(verification.unattributed))
-        }.toString()
+        }
 
     private fun array(diagnostics: List<Diagnostic>) = buildJsonArray { diagnostics.forEach { add(json(it)) } }
 

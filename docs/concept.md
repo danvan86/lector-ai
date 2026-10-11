@@ -117,7 +117,7 @@ If an adapter turns into mostly glue around another runtime (e.g. the TypeScript
 
 | Type | Fields | Purpose |
 |---|---|---|
-| `DependencyChange` | `ecosystem, package, fromVersion, toVersion, updateType` | Neutral description of a dependency update |
+| `DependencyChange` | `ecosystem, package, fromVersion, toVersion, updateType` | Neutral description of a dependency update. `ecosystem` is the package namespace (`maven` for every JVM build, later `npm`, `pypi`), not the build tool. `package` is opaque to the core; only the ecosystem's adapter reads it. `updateType` comes from the adapter's version scheme. |
 | `Diagnostic` | `file, line, column, code, message, severity, tool, test` | Normalized compiler, type-checker, validator, and test output. `file`, `line`, `column`, and `code` are empty when the tool doesn't report them; `test` names the failing test and is empty for everything else. SARIF is the preferred exchange format. |
 | `Edit` | `file, search, replace` | Language-neutral, verifiable code change |
 | `Verification` | `causedByUpdate, preExisting, flaky, unattributed` (each `Diagnostic[]`) | Result of verify plus attribution (section 5). Only `causedByUpdate` is the tool's job. |
@@ -151,14 +151,22 @@ The fallback makes the tool independent of whoever opened the PR, including Snyk
 
 ## 4. Recipe selection: deterministic and maintenance-free
 
-No LLM picks recipes. The index is derived from the recipes' own metadata:
+No LLM picks recipes. The index is derived from the recipes' own metadata, at build time of the tool:
 
-1. Load all recipe descriptors from the configured recipe BOM (`Environment.builder().scanRuntimeClasspath().build().listRecipeDescriptors()` or `rewrite:discover`).
-2. Walk each composite recipe tree and collect the typed upgrade leaves (`UpgradeDependencyVersion`, `UpgradeParentVersion`, and their equivalents for npm, NuGet, …) with their options (`groupId`, `artifactId`, `newVersion`, …).
-3. Build the index `(ecosystem, package, target version) → top-level recipe`. Choose the most specific recipe that covers the change without overshooting the target version.
-4. Rebuild the index automatically whenever the recipe BOM is updated.
+1. The build loads every recipe of the official `rewrite-recipe-bom` (version in the version catalog) and writes the index as a resource. The runtime never loads OpenRewrite and needs no network for the index. Dependabot bumps the BOM, CI rebuilds, so the index can't go stale. No user-provided recipes.
+2. It walks each recipe tree and collects the typed upgrade leaves at any depth: `UpgradeDependencyVersion` (the `maven` and `java.dependencies` variants), `UpgradeParentVersion`, `UpgradePluginVersion`. Glob artifact IDs (`*`) stay patterns. Only exact versions and X-ranges (`3.4.x`, `3.x`) are indexed, as OpenRewrite's own `Semver` reads them. Other selectors (`latest.*`, ranges) are unbounded or would need OpenRewrite's logic at run time; they are skipped and counted.
+3. Each entry holds ecosystem, package pattern, selector, recipe, leaf depth, the recipe's artifact with version, and its license. Next to the index, the build writes a report: counts, skipped leaves by reason, and the license of every recipe artifact.
+4. Matching asks the ecosystem adapter's version scheme, so the index knows no version syntax. A recipe's target for a package is its **highest** leaf for that package, so `UpgradeSpringBoot_3_4`, which includes the 3.3 upgrade, never matches a change to 3.3. A recipe matches when its target contains the target version. Ranking: tightest selector (`3.4.x` beats `3.x`), then shallowest leaf (the recipe *about* the package beats one that includes it), then name. The alternatives are reported.
 
-**Fallback:** for recipes without structured upgrade leaves, use embedding search over name and description. Any match is checked against the index before running. Recipe names are never generated.
+**Never downgrade.** None of these rules fails the run; verify always follows.
+
+1. A change whose target isn't higher than its start version runs no recipe.
+2. With a base commit: if the base already resolves the package higher than the target, the PR is outdated and no recipe runs.
+3. If any package resolves lower after the recipe than before, the recipe's result is discarded.
+
+The versions come from the adapter's resolved versions (Maven: the effective POM). If they can't be read, nothing can be proven, so no recipe runs. Version changes beyond the PR (a framework recipe also moves its managed dependencies, or a newer patch) are kept and listed in the report.
+
+**Later:** for recipes without structured upgrade leaves, embedding search over name and description. Any match is checked against the index before running. Recipe names are never generated.
 
 **The recipe is optional.** If no matching recipe exists, the pipeline goes straight to verify and the fix loop. This covers every Renovate and Dependabot PR, including ecosystems OpenRewrite doesn't support (Go, Rust, PHP, …). OpenRewrite is a quality boost where available, not a prerequisite.
 
@@ -187,12 +195,16 @@ EcosystemAdapter
   editableScope()                    → Glob[]         (excludes generated code)
   language                           → LanguageSupport (tree-sitter grammar + queries)
 
+  ecosystem                          → String         (package namespace, e.g. maven)
+  versionScheme                      → VersionScheme  (order versions, selector contains version, updateType)
+
   Optional capabilities (absent = the step is skipped):
-  recipeRunner?.run(recipe)          → Result
+  recipeRunner?.run(repo, recipe)    → Applied | Failed(reason)   (in place, on a clean working tree)
+  resolvedVersions?.read(repo)       → package → version          (effective versions, also when the code doesn't compile)
   manifestDiff?.diff(base, head)     → DependencyChange[]   (fallback source)
 ```
 
-The recipe runner is optional because the recipe is optional (section 4). The manifest diff is only needed by the fallback source.
+The recipe runner is optional because the recipe is optional (section 4). Resolved versions are what the downgrade rules and the version list in the report need; without them no recipe runs. The manifest diff is only needed by the fallback source.
 
 ### Attribution: what did the update break?
 
@@ -335,7 +347,7 @@ The engine and the build plugins are Apache 2.0. Most recipes that migrate code 
 
 - **MSAL artifacts are never shipped:** not in the image, the distribution, or a pre-filled cache. The organisation's own Maven or Gradle fetches them, so the organisation is the licensee and runs them on its own code (M2).
 - **No paid service that runs the recipes:** no hosted version, and no paid setup, support, or consulting in which we run the tool on a client's code.
-- **License notices stay visible:** the license report per recipe artifact (M2).
+- **License notices stay visible:** the license report per recipe artifact (M2). The build writes it as `recipe-index-report.md` next to the index, and it ships with the tool. `rewrite-spring`, the source of the Spring Boot recipes, is listed there as MSAL.
 
 **Remaining risk.** The FAQ explains the license, but the license text governs, and it is broader. It prohibits "offering a product or service, the value of which derives to any extent from the value of the Software" and one "that accomplishes for users any purpose of the Software", and it doesn't require payment. A strict reading could cover a free tool whose recipe step runs MSAL recipes. We are licensees ourselves, because our tests and the benchmark run `rewrite-spring`. Before the first release (M5):
 

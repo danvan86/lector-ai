@@ -4,11 +4,9 @@ import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.Severity
 import org.w3c.dom.Element
 import org.xml.sax.SAXException
-import org.xml.sax.helpers.DefaultHandler
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.streams.asSequence
@@ -43,7 +41,7 @@ internal object TestReports {
         tool: String,
     ): List<Diagnostic> =
         try {
-            val testcases = documentBuilder().parse(repo.resolve(report).toFile()).getElementsByTagName("testcase")
+            val testcases = xmlDocumentBuilder().parse(repo.resolve(report).toFile()).getElementsByTagName("testcase")
             (0 until testcases.length)
                 .map { testcases.item(it) as Element }
                 .mapNotNull { failure(repo, module, tool, it) }
@@ -106,12 +104,4 @@ internal object TestReports {
     }
 
     private fun Element.childElements() = (0 until childNodes.length).map { childNodes.item(it) }.filterIsInstance<Element>()
-
-    // A report never needs a DOCTYPE. Rejecting it rules out external entities. DefaultHandler keeps parse errors off stderr.
-    private fun documentBuilder() =
-        DocumentBuilderFactory
-            .newInstance()
-            .apply { setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
-            .newDocumentBuilder()
-            .apply { setErrorHandler(DefaultHandler()) }
 }

@@ -45,7 +45,7 @@ class ProcessesTest {
     fun `a missing program is a tool error`() {
         val error = assertFailsWith<ToolError> { runProcess(listOf("no-such-program-lector"), dir, 10.seconds) }
 
-        assertContains(error.message.orEmpty(), "Cannot run no-such-program-lector")
+        assertContains(error.message, "Cannot run no-such-program-lector")
     }
 
     @Test

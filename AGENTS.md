@@ -43,7 +43,8 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew build            # compile, unit + end-to-end tests, lint, coverage check
 ./gradlew test             # unit tests only (fast, no distribution)
 ./gradlew :cli:endToEndTest # end-to-end tests against the installed start script
-./gradlew :cli:integrationTest # opt-in: verify with real Maven on a fixture (needs mvn and network)
+./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven on fixtures (needs mvn and network)
+./gradlew :recipes:generateRecipeIndex # recipe index and license report, under recipes/build/generated/recipe-index/
 ./gradlew ktlintFormat     # fix most ktlint violations
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
@@ -72,7 +73,7 @@ These come from the concept. Don't break them without updating the concept first
 - Every external process gets a timeout, and its stdout and stderr are drained (or redirected to files). Otherwise a full pipe or a stuck process hangs the run.
 - Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors and unexpected exceptions included. Otherwise the pipeline blames the update for a tool bug.
 - Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
-- All versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Dependabot can only update what's declared.
+- All versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs.
 - No new dependency without a short reason in the PR description.
 - English for code, comments, docs, and commits.
 

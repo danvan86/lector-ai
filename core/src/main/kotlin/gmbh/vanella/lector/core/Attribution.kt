@@ -6,8 +6,8 @@ import java.nio.file.Path
 private val logger = LoggerFactory.getLogger("gmbh.vanella.lector.core.Attribution")
 
 /** The commit the update is compared against. [checkout] runs `block` on a temporary checkout and removes it afterwards. */
-fun interface BaseCommit {
-    fun checkout(block: (Path) -> List<Diagnostic>): List<Diagnostic>
+interface BaseCommit {
+    fun <T> checkout(block: (Path) -> T): T
 }
 
 /**

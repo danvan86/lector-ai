@@ -156,6 +156,11 @@ class AttributionTest {
     ) : EcosystemAdapter {
         val runTestsCalls = mutableListOf<Pair<Path, List<Diagnostic>>>()
 
+        override val ecosystem = "test"
+        override val versionScheme = DottedVersions
+        override val recipeRunner = null
+        override val resolvedVersions = null
+
         override fun detect(repo: Path) = true
 
         override fun verify(repo: Path) = headVerify
@@ -174,7 +179,7 @@ class AttributionTest {
     ) : BaseCommit {
         var checkouts = 0
 
-        override fun checkout(block: (Path) -> List<Diagnostic>): List<Diagnostic> {
+        override fun <T> checkout(block: (Path) -> T): T {
             checkouts++
             return block(checkout)
         }

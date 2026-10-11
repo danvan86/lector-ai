@@ -1,0 +1,1 @@
+{"entries":[{"ecosystem":"maven","package":"org.springframework.boot:*","selector":"3.4.x","recipe":"org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_4","depth":1,"artifact":"org.openrewrite.recipe:rewrite-spring:6.37.0","license":"Moderne Source Available License"}]}
