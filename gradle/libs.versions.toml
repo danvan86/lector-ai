@@ -30,7 +30,8 @@ slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 # Maven's own version ordering (`ComparableVersion`), for the Maven version scheme.
 maven-artifact = { module = "org.apache.maven:maven-artifact", version.ref = "maven-artifact" }
-# The guardrails' facts about Java and Kotlin sources (JNI, native libraries for Linux and macOS inside the JARs).
+# The guardrails' facts about Java and Kotlin sources. JNI, with native libraries inside the JARs for glibc Linux,
+# macOS, and Windows: the container image can't be musl (Alpine).
 tree-sitter = { module = "io.github.bonede:tree-sitter", version.ref = "tree-sitter" }
 tree-sitter-java = { module = "io.github.bonede:tree-sitter-java", version.ref = "tree-sitter-java" }
 tree-sitter-kotlin = { module = "io.github.bonede:tree-sitter-kotlin", version.ref = "tree-sitter-kotlin" }
