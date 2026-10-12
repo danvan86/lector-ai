@@ -16,7 +16,7 @@ tree-sitter-java = "0.23.5"
 tree-sitter-kotlin = "0.3.8.1"
 # The recipe index is generated from this BOM at build time. The plugin must be built on the BOM's OpenRewrite version
 # (`:recipes:checkRewritePluginVersion`).
-rewrite-recipe-bom = "3.37.0"
+rewrite-recipe-bom = "3.38.0"
 rewrite-maven-plugin = "6.46.1"
 maven-help-plugin = "3.5.2"
 testcontainers = "2.0.5"
