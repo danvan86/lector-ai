@@ -124,7 +124,7 @@ class PrCommandTest {
     }
 
     @Test
-    fun `the host gets the event, the GitHub URLs, and the token, and the model comes from the shared options`() {
+    fun `the host gets the event, the GitHub URLs, the token, and the bot's login, and the model comes from the shared options`() {
         host.pr = host.pr.copy(author = "mallory")
         val env = token + mapOf("GITHUB_EVENT_PATH" to event.toString(), "GITHUB_API_URL" to "https://ghe.example.com/api/v3")
 
@@ -133,7 +133,12 @@ class PrCommandTest {
             envvars = env,
         )
 
-        assertEquals(listOf(listOf<Any>(event, URI("https://ghe.example.com/api/v3"), URI("https://ghe.example.com"), "ghs_token")), hosts)
+        assertEquals(
+            listOf(
+                listOf<Any>(event, URI("https://ghe.example.com/api/v3"), URI("https://ghe.example.com"), "ghs_token", "lector-ai[bot]"),
+            ),
+            hosts,
+        )
         assertEquals(listOf(URI("http://ollama:11434") to "qwen3-coder:30b"), clients)
     }
 
@@ -247,8 +252,8 @@ class PrCommandTest {
             clients += url to model
             llm
         },
-        host = { event, apiUrl, serverUrl, token ->
-            hosts += listOf(event, apiUrl, serverUrl, token)
+        host = { event, apiUrl, serverUrl, token, botLogin ->
+            hosts += listOf(event, apiUrl, serverUrl, token, botLogin)
             host
         },
     )

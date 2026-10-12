@@ -27,6 +27,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
+private const val BOT = "lector-ai[bot]"
+
 /** The GitHub adapter against a local fake of the REST API, and against local Git remotes. */
 class GitHubHostTest {
     @TempDir
@@ -195,6 +197,18 @@ class GitHubHostTest {
     }
 
     @Test
+    fun `a marked comment by anyone but the bot is not the report`() {
+        comments += comment(1, "<!-- lector-ai -->\nlooks like a report", author = "mallory")
+
+        host().comment(pr, "report", create = true)
+
+        assertEquals(
+            listOf("GET /repos/acme/app/issues/7/comments", "POST /repos/acme/app/issues/7/comments"),
+            requests.map { "${it.method} ${it.path}" },
+        )
+    }
+
+    @Test
     fun `without a marked comment and without create, nothing is written`() {
         comments += comment(1, "LGTM")
 
@@ -227,7 +241,7 @@ class GitHubHostTest {
 
     @Test
     fun `an unreachable API is a tool error`() {
-        val unreachable = GitHubHost(event(), URI("http://127.0.0.1:1"), URI("https://github.com"), token)
+        val unreachable = GitHubHost(event(), URI("http://127.0.0.1:1"), URI("https://github.com"), token, BOT)
 
         val error = assertFailsWith<ToolError> { unreachable.label(pr, "ai-assisted") }
 
@@ -238,7 +252,7 @@ class GitHubHostTest {
     fun `fetch and push authenticate with the token in the environment, never on the command line, and push never forces`() {
         val runs = mutableListOf<Pair<List<String>, Map<String, String>>>()
         val host =
-            GitHubHost(event(), apiUrl(), URI("https://github.example.com/"), token) { command, _, environment ->
+            GitHubHost(event(), apiUrl(), URI("https://github.example.com/"), token, BOT) { command, _, environment ->
                 runs += command to environment
                 gmbh.vanella.lector.core
                     .ProcessResult(0, "")
@@ -284,7 +298,7 @@ class GitHubHostTest {
         git(dir, "init", "--quiet", clone.toString())
         commit(clone, "update")
         git(clone, "push", "--quiet", remote.toString(), "HEAD:refs/heads/renovate/guava")
-        val host = GitHubHost(event(), apiUrl(), dir.resolve("server").toUri(), token)
+        val host = GitHubHost(event(), apiUrl(), dir.resolve("server").toUri(), token, BOT)
 
         commit(clone, "fix")
         assertTrue(host.push(clone, pr))
@@ -304,7 +318,7 @@ class GitHubHostTest {
         val repo = dir.resolve("repo")
         git(dir, "init", "--quiet", repo.toString())
         commit(repo, "update")
-        val host = GitHubHost(event(), apiUrl(), dir.resolve("nowhere").toUri(), token)
+        val host = GitHubHost(event(), apiUrl(), dir.resolve("nowhere").toUri(), token, BOT)
 
         val push = assertFailsWith<ToolError> { host.push(repo, pr) }
         val fetch = assertFailsWith<ToolError> { host.fetch(repo, pr, "2222222") }
@@ -313,7 +327,7 @@ class GitHubHostTest {
         assertContains(fetch.message, "git fetch failed:")
     }
 
-    private fun host(event: Path = event()) = GitHubHost(event, apiUrl(), URI("https://github.com"), token)
+    private fun host(event: Path = event()) = GitHubHost(event, apiUrl(), URI("https://github.com"), token, BOT)
 
     private fun apiUrl() = URI("http://127.0.0.1:${server.address.port}/")
 
@@ -358,7 +372,12 @@ class GitHubHostTest {
     private fun comment(
         id: Int,
         body: String,
-    ) = JsonObject(mapOf("id" to JsonPrimitive(id), "body" to JsonPrimitive(body)))
+        author: String = BOT,
+    ) = buildJsonObject {
+        put("id", id)
+        put("body", body)
+        put("user", buildJsonObject { put("login", author) })
+    }
 
     private fun commit(
         repo: Path,

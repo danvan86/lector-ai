@@ -113,7 +113,7 @@ class PrFlowTest {
             sources = listOf(RenovateSource()),
             index = { RecipeIndex { _, _ -> RecipeSelection.NONE } },
             // The CLI only takes http(s) servers; the test's remote is a local directory.
-            host = { event, apiUrl, _, token -> GitHubHost(event, apiUrl, dir.resolve("server").toUri(), token) },
+            host = { event, apiUrl, _, token, botLogin -> GitHubHost(event, apiUrl, dir.resolve("server").toUri(), token, botLogin) },
         )
 
     /**

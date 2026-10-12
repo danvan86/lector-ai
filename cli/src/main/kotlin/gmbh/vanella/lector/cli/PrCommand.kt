@@ -45,7 +45,7 @@ internal class PrCommand(
     private val sources: List<UpdateSource>,
     private val index: () -> RecipeIndex,
     private val llm: (url: URI, model: String) -> LlmClient = ::OllamaClient,
-    private val host: (event: Path, apiUrl: URI, serverUrl: URI, token: String) -> GitHost = ::GitHubHost,
+    private val host: (event: Path, apiUrl: URI, serverUrl: URI, token: String, botLogin: String) -> GitHost = ::GitHubHost,
 ) : CliktCommand(name = "pr") {
     private val repo by argument(help = "The repository, checked out at the PR's head commit").path().default(Path.of("."))
     private val event by option(
@@ -113,7 +113,8 @@ internal class PrCommand(
         ensure(settings?.isRegularFile() != false) { "Maven settings $settings is not a file" }
         val pipeline =
             PrPipeline(
-                host = host(event, apiUrl, serverUrl, token),
+                // The App's bot commits under its login, so its name is also the author of the report comment.
+                host = host(event, apiUrl, serverUrl, token, botName),
                 sources = sources,
                 adapters = adapters(settings),
                 index = index(),

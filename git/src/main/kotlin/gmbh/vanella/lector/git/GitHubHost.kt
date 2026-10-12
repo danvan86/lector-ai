@@ -45,13 +45,15 @@ private const val HTTP_SUCCESS = 2
  * GitHub as the Git host: the PR from the `pull_request` event the workflow received, the report comment and the
  * label through the REST API, and fetch and push with the `git` CLI. [token] is the GitHub App's installation token:
  * pushes with it start the PR's checks again, unlike pushes with `GITHUB_TOKEN`. It only reaches `git` through its
- * environment, never the command line, and it never reaches a build. Never merges, approves, or requests reviews.
+ * environment, never the command line, and it never reaches a build. [botLogin] is the App's bot, `<app-slug>[bot]`:
+ * only its comment is the report. Never merges, approves, or requests reviews.
  */
 class GitHubHost(
     private val event: Path,
     apiUrl: URI,
     serverUrl: URI,
     private val token: String,
+    private val botLogin: String,
     private val git: (
         command: List<String>,
         workDir: Path,
@@ -151,7 +153,10 @@ class GitHubHost(
         )
     }
 
-    /** The id of the comment with the marker, or null. Reads the PR's comments page by page until it finds it. */
+    /**
+     * The id of the bot's comment with the marker, or null. Anyone can write the marker, but only the bot's comment is
+     * the report. Reads the PR's comments page by page until it finds it.
+     */
     private fun markedComment(pr: PullRequest): Long? {
         var page = 1
         while (true) {
@@ -161,7 +166,10 @@ class GitHubHost(
                     "/repos/${pr.baseRepository}/issues/${pr.number}/comments?page=$page&per_page=$PAGE_SIZE",
                     null,
                 ).jsonArray
-            val marked = comments.map { it.jsonObject }.firstOrNull { it.string("body").startsWith(MARKER) }
+            val marked =
+                comments.map { it.jsonObject }.firstOrNull {
+                    it.field("user").jsonObject.string("login") == botLogin && it.string("body").startsWith(MARKER)
+                }
             if (marked != null) {
                 return marked.string("id").toLong()
             }
