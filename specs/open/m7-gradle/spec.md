@@ -62,7 +62,7 @@ The task compiles nothing, so it works when the code doesn't compile. If it fail
 - The init script applies the OpenRewrite Gradle plugin to the build and runs `rewriteRun` with the recipe artifact and recipe name from the index entry.
 - The plugin JAR (version pinned in our version catalog) is shipped in the tool image as a small local repository that the init script uses. Recipe artifacts and the OpenRewrite libraries resolve through the project's repositories, never from the image.
 - No file of the target repository is edited to run the recipe. The recipe's own changes are the only changes, captured with Git as in M2.
-- Check during implementation that `rewriteRun` doesn't compile the project first. If it does, the run fails exactly when the update broke the build, as M2 found with Maven's `run` goal. Then reopen this point instead of working around it.
+- `rewriteRun` must not compile the project first: the plugin makes it depend on every `compileJava` task, so the run would fail exactly when the update broke the build, as M2 found with Maven's `run` goal. The init script clears that dependency (Q19). Test sources then lose the types of their own `main` source set; types from dependency JARs still resolve from the compile classpath.
 
 **Why:** concept section 5: Gradle recipes run through an init script, with no build-file edits. An init script's own classpath can't be redirected by a user's mirror, so shipping the plugin avoids a blocked fetch in regulated environments (Q7). Recipe JARs still never ship, because of their licences (M2 Q2). I believe the plugin is Apache 2.0 and small; both are checked and recorded (section 9).
 

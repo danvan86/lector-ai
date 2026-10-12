@@ -211,6 +211,24 @@ Renovate's `gradle-wrapper` manager opens PRs that only bump Gradle itself. The 
 
 **Notes:** A (answered in chat)
 
+## Round 3 (during implementation)
+
+### Q19 · `rewriteRun` compiles the project first
+
+The OpenRewrite Gradle plugin (7.39.0, built on the BOM's OpenRewrite 8.89.0) makes `rewriteRun` depend on the
+`compileJava` task of every source set. On a scratch multi-project build with a compile error, `rewriteRun` failed at
+`:app:compileJava` before the recipe ran: the same problem M2 found with Maven's `run` goal (spec section 5 asked to
+reopen this point). With the dependency cleared in our init script (`rewriteRun.setDependsOn([])`, no build-file edit),
+the recipe ran on the broken code and changed the file.
+
+- [x] **A · Clear the compile dependency in our init script** — *recommended.* The recipe runs when the update broke
+  compilation, like Maven's `runNoFork`. Cost: test sources lose the types of their own `main` source set, which come
+  from compiled classes. Types from dependency JARs (the Spring Boot case) still resolve from the compile classpath.
+- [ ] **B · Keep the plugin's compile dependency** — The recipe only runs when the PR head still compiles.
+- [ ] **C · Leave the Gradle recipe runner out of M7** — No plugin in the image; AC29/AC30 move to a later milestone.
+
+**Notes:** A (answered in chat)
+
 ---
 
 ## Decisions
@@ -242,3 +260,9 @@ Renovate's `gradle-wrapper` manager opens PRs that only bump Gradle itself. The 
 |---|---|---|
 | Q17 | Stage 2 | Every `Test` task in every project (aggregate init-script task), not `check`. Replaces the stage-2 part of Q10. Same linter problem for Maven noted as an open point for M1/M3 |
 | Q18 | Gradle wrapper PRs | `gradle-wrapper` maps to no ecosystem; wrapper-only PRs are skipped and documented |
+
+### Round 3
+
+| # | Topic | Decision |
+|---|---|---|
+| Q19 | `rewriteRun` compiles first | Our init script clears `rewriteRun`'s dependency on the compile tasks. Test sources lose the types of their own `main` source set |
