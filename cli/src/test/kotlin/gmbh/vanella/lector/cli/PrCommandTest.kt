@@ -88,6 +88,17 @@ class PrCommandTest {
     }
 
     @Test
+    fun `a PR that only updates the Gradle wrapper is skipped with exit 0`() {
+        host.pr = host.pr.copy(body = table("[gradle](https://gradle.org)", "9.2.1", "9.5.1"))
+
+        val result = command().test("$repo --event $event $bot", envvars = token)
+
+        assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
+        assertEquals(0, result.statusCode)
+        assertEquals(emptyList<String>(), host.comments)
+    }
+
+    @Test
     fun `the bot logins can be set, comma-separated, with spaces around them`() {
         host.pr = host.pr.copy(author = "my-renovate[bot]")
 

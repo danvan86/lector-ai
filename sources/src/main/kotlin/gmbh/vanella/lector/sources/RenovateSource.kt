@@ -6,6 +6,7 @@ import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.SourceUpdate
 import gmbh.vanella.lector.core.UpdateSource
 import org.slf4j.LoggerFactory
+import java.net.URLDecoder
 
 private val logger = LoggerFactory.getLogger(RenovateSource::class.java)
 
@@ -24,13 +25,20 @@ private val ECOSYSTEMS =
         "pypi" to "pypi",
     )
 
+// Rows without badges whose datasource is known anyway: Renovate's gradle-wrapper manager names Gradle itself `gradle`,
+// and a PR that only updates the wrapper has no badge columns.
+private val UNBADGED_DATASOURCES = mapOf("gradle" to "gradle-version")
+
 // Update types that change a digest, a range, or lock files, but no version.
 private val NO_VERSION_CHANGE = setOf("digest", "pindigest", "pin", "lockfilemaintenance")
 
 // `1.0` → `2.0`, also inside a diff link, and with the ASCII arrow of older Renovate versions.
 private val CHANGE = Regex("""`([^`]*)` (?:→|->) `([^`]*)`""")
 private val LINK_TEXT = Regex("""^\[([^\]]+)]""")
-private val BADGE_DATASOURCE = Regex("""/badges/[a-z]+/([a-z0-9-]+)/""")
+
+// `…/badges/age/<datasource>/<package>/<version>`: the package as the registry names it, e.g. a Gradle plugin's marker
+// coordinates, where the table shows the plugin ID, or a library's coordinates, where it shows a version catalog alias.
+private val BADGE = Regex("""/badges/[a-z]+/([a-z0-9-]+)/([^/?)\s]+)/""")
 
 // A short or full commit hash: what a digest update shows when the table has no update column.
 private val DIGEST = Regex("""[0-9a-f]{7}|[0-9a-f]{40}""")
@@ -40,7 +48,9 @@ private const val ZERO_WIDTH_SPACE = "&#8203;"
 
 /**
  * Renovate's PRs (concept section 3): recognized by the `renovate/` branch, read from the update table and the release
- * notes in the PR body. Every row of a grouped PR is a change. Needs no configuration in Renovate.
+ * notes in the PR body. Every row of a grouped PR is a change. A row's package and datasource come from its
+ * merge-confidence badges, if it has any: the table may show a Gradle plugin ID or a version catalog alias instead.
+ * Needs no configuration in Renovate.
  */
 class RenovateSource : UpdateSource {
     override fun recognizes(pr: PullRequest) = pr.headBranch.startsWith(BRANCH_PREFIX)
@@ -70,9 +80,9 @@ class RenovateSource : UpdateSource {
         if (name == null || change == null) return null
         val (from, to) = change.destructured
         if (!changesVersion(cell("update"), from, to)) return null
-        val packageName = packageName(name)
-        val badge = row.firstNotNullOfOrNull { BADGE_DATASOURCE.find(it) }
-        val datasource = if (badge == null) null else badge.groupValues[1]
+        val badge = row.firstNotNullOfOrNull { BADGE.find(it) }
+        val packageName = if (badge == null) packageName(name) else URLDecoder.decode(badge.groupValues[2], Charsets.UTF_8)
+        val datasource = if (badge == null) UNBADGED_DATASOURCES[packageName] else badge.groupValues[1]
         val ecosystem = datasource?.let(ECOSYSTEMS::get)
         val known = datasource == null || ecosystem != null
         if (!known) logger.info("Skipping {}: no ecosystem for Renovate's {} datasource", packageName, datasource)
