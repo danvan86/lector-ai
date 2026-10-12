@@ -44,7 +44,8 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew build            # compile, unit + end-to-end tests, lint, coverage check
 ./gradlew test             # unit tests only (fast, no distribution)
 ./gradlew :cli:endToEndTest # end-to-end tests against the installed start script
-./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven on fixtures (needs mvn and network)
+./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven and Gradle on fixtures (needs mvn and network)
+./gradlew :ecosystems:jvm:integrationTest # opt-in: the Gradle adapter with real Gradle on fixtures (needs network)
 ./gradlew :cli:realModelTest # opt-in: heal with a real model in Ollama (needs Docker, mvn, network); -Plector.model=<name>
 ./gradlew :recipes:generateRecipeIndex # recipe index and license report, under recipes/build/generated/recipe-index/
 ./gradlew ktlintFormat     # fix most ktlint violations
