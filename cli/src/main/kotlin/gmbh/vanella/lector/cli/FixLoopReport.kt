@@ -3,14 +3,12 @@ package gmbh.vanella.lector.cli
 import gmbh.vanella.lector.core.Attempt
 import gmbh.vanella.lector.core.AttemptOutcome
 import gmbh.vanella.lector.core.FixLoopResult
+import gmbh.vanella.lector.core.SHORT_COMMIT
 import gmbh.vanella.lector.core.StopReason
 import gmbh.vanella.lector.core.Violation
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-
-// Enough to find a commit in a small history, like `git log --oneline`.
-internal const val SHORT_COMMIT = 7
 
 /**
  * The fix-loop section of the `heal` report: every attempt, every fix with its commit, the guardrail rejections per

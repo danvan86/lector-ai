@@ -54,20 +54,12 @@ internal class JdkSelection(
     }
 
     private fun properties(project: Element): Map<String, String> {
-        val nodes = project.childNodes
-        val properties =
-            (0 until nodes.length)
-                .map {
-                    nodes.item(
-                        it,
-                    )
-                }.filterIsInstance<Element>()
-                .firstOrNull { it.tagName == "properties" }
-        if (properties == null) return emptyMap()
-        val children = properties.childNodes
-        return (0 until children.length)
-            .map { children.item(it) }
-            .filterIsInstance<Element>()
-            .associate { it.tagName to it.textContent.trim() }
+        val properties = children(project).firstOrNull { it.tagName == "properties" } ?: return emptyMap()
+        return children(properties).associate { it.tagName to it.textContent.trim() }
+    }
+
+    private fun children(element: Element): List<Element> {
+        val nodes = element.childNodes
+        return (0 until nodes.length).map { nodes.item(it) }.filterIsInstance<Element>()
     }
 }

@@ -5,6 +5,9 @@ import kotlin.time.Duration.Companion.minutes
 
 private val GIT_TIMEOUT = 5.minutes
 
+/** The length of a commit hash in a report: enough to find the commit in a PR's history, like `git log --oneline`. */
+const val SHORT_COMMIT = 7
+
 /** Who commits: the tool's own identity on the command line, the Git host's bot in a pipeline. */
 data class CommitIdentity(
     val name: String,

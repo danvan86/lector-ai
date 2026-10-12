@@ -15,6 +15,7 @@ import gmbh.vanella.lector.core.LlmClient
 import gmbh.vanella.lector.core.RecipeIndex
 import gmbh.vanella.lector.core.RecipeOutcome
 import gmbh.vanella.lector.core.RecipeResult
+import gmbh.vanella.lector.core.SHORT_COMMIT
 import gmbh.vanella.lector.core.applyRecipe
 import gmbh.vanella.lector.core.attribute
 import gmbh.vanella.lector.llm.OllamaClient

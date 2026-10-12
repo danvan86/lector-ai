@@ -1,8 +1,5 @@
 package gmbh.vanella.lector.core
 
-// Enough to find a commit in a PR's history.
-private const val SHORT_COMMIT = 7
-
 // A comment has a size limit, and a reviewer reads the first errors anyway.
 private const val MAX_ITEMS = 50
 
@@ -21,20 +18,12 @@ object PrComment {
                 TITLE,
                 headline(report),
                 "#### Recipes\n" + recipes(report).ifEmpty { listOf("- none") }.joinToString("\n"),
-                "#### Fixes\n" +
-                    fixLoop.fixes
-                        .map {
-                            "- ${it.commit.take(
-                                SHORT_COMMIT,
-                            )} ${it.rationale}"
-                        }.ifEmpty { listOf("- none") }
-                        .joinToString("\n"),
+                "#### Fixes\n" + fixes(fixLoop).ifEmpty { listOf("- none") }.joinToString("\n"),
                 "The fix loop made ${count(fixLoop.attempts.size, "attempt")} and stopped: ${fixLoop.stopReason.description}.",
                 if (left.isEmpty()) null else "#### Left to fix\n" + items(left),
                 notCausedByUpdate(report.verification),
                 fixLoop.rejectionsPerRule().map { (rule, count) -> "- $rule: $count" }.ifEmpty { null }?.let {
-                    "#### Guardrail rejections\n" +
-                        it.joinToString("\n")
+                    "#### Guardrail rejections\n" + it.joinToString("\n")
                 },
                 "Tests run in the last verify: ${report.verification.testsRun ?: "unknown"}. Review every commit: lector-ai never merges.",
             )
@@ -65,15 +54,14 @@ object PrComment {
         return "The update of $update broke the build. lector-ai $pushed; $verdict"
     }
 
+    private fun fixes(fixLoop: FixLoopResult) = fixLoop.fixes.map { "- ${it.commit.take(SHORT_COMMIT)} ${it.rationale}" }
+
     private fun recipes(report: PrReport): List<String> {
         val applied =
             report.recipes.map { application ->
                 val changes = application.changes.joinToString(", ", transform = ::change)
-                "- `${application.recipe.name}` for $changes: ${result(
-                    application.outcome,
-                    application.changes.first(),
-                    application.commit,
-                )}"
+                val result = result(application.outcome, application.changes.first(), application.commit)
+                "- `${application.recipe.name}` for $changes: $result"
             }
         val without =
             report.withoutRecipe.map { (change, outcome) ->
