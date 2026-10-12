@@ -368,19 +368,27 @@ class GradleAdapterTest : FakeGradleTest() {
     @Test
     fun `a daemon that doesn't stop is logged, not a failure`() {
         gradleProject()
-        val adapter =
+        val stops = mutableListOf<Duration>()
+        val timingOut =
             GradleAdapter { command, _, _, timeout ->
-                when {
-                    "--stop" in command && timeout == 1.minutes -> throw ProcessTimedOut("gradlew did not finish within 1m")
-                    else -> ProcessResult(0, "")
+                if ("--stop" in command) {
+                    stops += timeout
+                    throw ProcessTimedOut("gradlew did not finish within 1m")
                 }
+                ProcessResult(0, "")
             }
-        adapter.runTests(repo, listOf(testFailure(":test", "com.example.AppTest#adds")), 1.hours)
-        adapter.close()
+        val failing =
+            GradleAdapter { command, _, _, timeout ->
+                if ("--stop" in command) stops += timeout
+                ProcessResult(if ("--stop" in command) 1 else 0, "")
+            }
 
-        val failing = GradleAdapter { command, _, _, _ -> ProcessResult(if ("--stop" in command) 1 else 0, "") }
-        failing.runTests(repo, listOf(testFailure(":test", "com.example.AppTest#adds")), 1.hours)
-        failing.close()
+        for (adapter in listOf(timingOut, failing)) {
+            adapter.runTests(repo, listOf(testFailure(":test", "com.example.AppTest#adds")), 1.hours)
+            adapter.close()
+        }
+
+        assertEquals(listOf(1.minutes, 1.minutes), stops)
     }
 
     @Test
