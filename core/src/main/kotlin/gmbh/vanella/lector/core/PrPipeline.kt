@@ -15,14 +15,6 @@ data class PrSettings(
     val budgets: Budgets = Budgets(),
 )
 
-/** A recipe that ran once for the [changes] that map to it, and its commit if it changed anything. */
-data class RecipeApplication(
-    val recipe: Recipe,
-    val changes: List<DependencyChange>,
-    val outcome: RecipeOutcome,
-    val commit: String?,
-)
-
 /** What a run did to a PR the update broke: the recipes, the changes without one and why, the fix loop, the push. */
 data class PrReport(
     val changes: List<DependencyChange>,
@@ -163,14 +155,10 @@ class PrPipeline(
         releaseNotes: String?,
         verification: Verification,
     ): PrOutcome {
-        val lookups = changes.map { it to lookUp(it, adapter, base) }
-        val withoutRecipe = lookups.mapNotNull { (change, lookup) -> (lookup as? Lookup.Stopped)?.let { change to it.outcome } }
-        val recipes =
-            lookups
-                .mapNotNull { (change, lookup) -> (lookup as? Lookup.Found)?.let { it.recipe to change } }
-                .groupBy({ it.first }, { it.second })
-                .map { (recipe, covered) -> apply(recipe, covered, adapter, repo) }
-        val commits = recipes.mapNotNull { it.commit }
+        val recipeStep = applyRecipes(changes, adapter, index, repo, base, settings.identity)
+        val withoutRecipe = recipeStep.withoutRecipe
+        val recipes = recipeStep.applications
+        val commits = recipeStep.commits
         val afterRecipes = if (commits.isEmpty()) verification else attribute(adapter, repo, base)
         val recipeDiff = commits.joinToString("\n") { GitWorkingTree.diff(repo, it) }.ifEmpty { null }
         val context = FixContext(changes, releaseNotes, recipeDiff)
@@ -184,46 +172,5 @@ class PrPipeline(
         host.comment(pr, PrComment.render(report), create = true)
         if (anyCommit) host.label(pr, AI_ASSISTED)
         return PrOutcome.Reported(report)
-    }
-
-    /** Rules 1 and 2 of the recipe step, then the index. */
-    private fun lookUp(
-        change: DependencyChange,
-        adapter: EcosystemAdapter,
-        base: BaseCommit,
-    ): Lookup {
-        val blocker = recipeBlocker(change, adapter, base)
-        if (blocker != null) return Lookup.Stopped(blocker)
-        val chosen = index.find(change, adapter.versionScheme).chosen
-        return if (chosen == null) Lookup.Stopped(RecipeOutcome.NoMatch) else Lookup.Found(chosen.recipe)
-    }
-
-    /** Runs [recipe] once for every change in [changes], and commits what it changed. */
-    private fun apply(
-        recipe: Recipe,
-        changes: List<DependencyChange>,
-        adapter: EcosystemAdapter,
-        repo: Path,
-    ): RecipeApplication {
-        val outcome = runRecipe(recipe, adapter, repo)
-        val changed = (outcome as? RecipeOutcome.Applied)?.changedFiles.orEmpty()
-        val commit =
-            if (changed.isEmpty()) {
-                null
-            } else {
-                val versions = changes.joinToString(", ") { "${it.`package`} ${it.fromVersion} -> ${it.toVersion}" }
-                GitWorkingTree.commit(repo, "Apply recipe ${recipe.name}\n\nFor $versions.", changed, settings.identity)
-            }
-        return RecipeApplication(recipe, changes, outcome, commit)
-    }
-
-    private sealed interface Lookup {
-        data class Found(
-            val recipe: Recipe,
-        ) : Lookup
-
-        data class Stopped(
-            val outcome: RecipeOutcome,
-        ) : Lookup
     }
 }
