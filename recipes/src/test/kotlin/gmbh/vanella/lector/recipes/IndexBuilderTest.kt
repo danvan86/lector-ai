@@ -52,13 +52,50 @@ class IndexBuilderTest {
                     mapOf("oldGroupId" to "org.webjars", "oldArtifactId" to "webjars-locator-core", "newVersion" to "1.0.x"),
                     emptyList(),
                 ),
-                RecipeTree("org.openrewrite.gradle.plugins.UpgradePluginVersion", mapOf("newVersion" to "3.4.x"), emptyList()),
+                RecipeTree(
+                    "org.openrewrite.gradle.UpgradeDependencyVersion",
+                    mapOf("groupId" to "org.example", "newVersion" to "3.4.x"),
+                    emptyList(),
+                ),
             )
 
         val index = builder.build(listOf(ScannedRecipe(recipe, spring)))
 
         assertEquals(emptyList(), index.entries)
         assertEquals(IndexReport(recipes = 0, entries = 0, skipped = emptyMap(), artifacts = mapOf(spring to 0)), index.report)
+    }
+
+    @Test
+    fun `a Gradle plugin leaf is an entry for the plugin's marker coordinates`() {
+        val recipe =
+            recipe(
+                "UpgradeSpringBoot_3_4",
+                RecipeTree(GRADLE_PLUGIN, mapOf("pluginIdPattern" to "org.springframework.boot", "newVersion" to "3.4.x"), emptyList()),
+                node(
+                    "UpgradeKotlin",
+                    RecipeTree(GRADLE_PLUGIN, mapOf("pluginIdPattern" to "org.jetbrains.kotlin.*", "newVersion" to "2.1.x"), emptyList()),
+                ),
+            )
+
+        val index = builder.build(listOf(ScannedRecipe(recipe, spring)))
+
+        assertEquals(
+            listOf(
+                entry("org.springframework.boot:org.springframework.boot.gradle.plugin", "3.4.x", 1),
+                entry("org.jetbrains.kotlin.*:org.jetbrains.kotlin.*.gradle.plugin", "2.1.x", 2),
+            ),
+            index.entries,
+        )
+    }
+
+    @Test
+    fun `a Gradle plugin leaf without a plugin ID is skipped`() {
+        val recipe = recipe("Broken", RecipeTree(GRADLE_PLUGIN, mapOf("newVersion" to "3.4.x"), emptyList()))
+
+        val index = builder.build(listOf(ScannedRecipe(recipe, spring)))
+
+        assertEquals(emptyList(), index.entries)
+        assertEquals(mapOf("missing option" to 1), index.report.skipped)
     }
 
     @Test
@@ -172,5 +209,6 @@ class IndexBuilderTest {
         const val JAVA_DEPENDENCY = "org.openrewrite.java.dependencies.UpgradeDependencyVersion"
         const val PARENT = "org.openrewrite.maven.UpgradeParentVersion"
         const val PLUGIN = "org.openrewrite.maven.UpgradePluginVersion"
+        const val GRADLE_PLUGIN = "org.openrewrite.gradle.plugins.UpgradePluginVersion"
     }
 }
