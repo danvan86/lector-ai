@@ -11,7 +11,21 @@ permissions:
   packages: write
 
 jobs:
+  # Every image job needs this one: no image is published, the model weights included, before it passes.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # The tag must be the tool's version, which the action's image tag matches (checkActionImage).
+      # No release before the MSAL check is done and recorded (M5 release blocker).
+      - name: Check the tag and the licensing record
+        run: |
+          version="$(grep '^version=' gradle.properties | cut -d= -f2)"
+          test "$GITHUB_REF_NAME" = "v$version" || { echo "Tag $GITHUB_REF_NAME is not v$version"; exit 1; }
+          grep -qx '\*\*MSAL check:\*\* done' docs/licensing.md || { echo "The MSAL check in docs/licensing.md is not done"; exit 1; }
+
   tool-image:
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -20,14 +34,9 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v6
-      # The tag must be the tool's version, which the action's image tag matches (checkActionImage).
-      # No release before the MSAL check is done and recorded (M5 release blocker).
-      - name: Check the tag and the licensing record
+      - name: Name the image
         run: |
-          version="$(grep '^version=' gradle.properties | cut -d= -f2)"
-          test "$GITHUB_REF_NAME" = "v$version" || { echo "Tag $GITHUB_REF_NAME is not v$version"; exit 1; }
-          grep -qx '\*\*MSAL check:\*\* done' docs/licensing.md || { echo "The MSAL check in docs/licensing.md is not done"; exit 1; }
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "VERSION=$(grep '^version=' gradle.properties | cut -d= -f2)" >> "$GITHUB_ENV"
           echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
       - run: ./gradlew build :cli:installDist
       - uses: docker/login-action@v4
@@ -44,6 +53,7 @@ jobs:
           tags: ghcr.io/${{ env.OWNER }}/lector:${{ env.VERSION }}
 
   ollama-image:
+    needs: check
     runs-on: ubuntu-latest
     strategy:
       # The 30B weights are one file of about 19 GB, GHCR takes layers up to 10 GB: the 7B variant must not depend on it.
