@@ -13,7 +13,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 5 | Workflow `benchmark.yml`: Ollama image job, matrix, merge and report artifact | ✅ |
 | 6 | Corpus: 22 cases, 16 historical PRs and 6 synthetic bumps, each reproduced locally with Maven; synthetic heads and the heads of 4 still-open PRs on [`danvan86/lector-benchmark-corpus`](https://github.com/danvan86/lector-benchmark-corpus) | ✅ |
 | 7 | Default model `qwen2.5-coder:7b` (spec 7) | ✅ already in place since M5 (CLI, action, concept 8.4) |
-| 8 | Quality gates verified | ⬜ |
+| 8 | Quality gates verified | ✅ |
 | 9 | Docs in sync | ✅ |
 
 ## Acceptance criteria
@@ -41,6 +41,9 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | AC19 | met | `FixLoopTest`: an oversized cluster sends the diagnostics that fit; `OllamaClientTest`; `requestsWithDiagnosticsLeftOut` in `results.json` |
 
 ## Quality gates
+
+Final check from a clean state: ktlint, detekt, 541 unit tests, 19 end-to-end tests, Kover 100% per module, and
+`./gradlew clean build --rerun-tasks --no-build-cache` all green.
 
 Probed on the new module, each reverted after: ktlint (main, test, `benchmark/build.gradle.kts`), detekt (main incl.
 `System.out.println`, test), Kover (an untested function), tests (a wrong expectation). Each failed the build on its own
