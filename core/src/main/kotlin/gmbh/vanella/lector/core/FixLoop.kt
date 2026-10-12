@@ -36,12 +36,16 @@ data class FixContext(
     val recipeDiff: String?,
 )
 
-/** One attempt on one cluster: what the model proposed, and what became of it. */
+/**
+ * One attempt on one cluster: the [diagnostics] it was sent, what the model proposed, and what became of it.
+ * [diagnosticsLeftOut] is how many of the cluster's diagnostics didn't fit into the request.
+ */
 data class Attempt(
     val cluster: String,
     val diagnostics: List<Diagnostic>,
     val edits: List<Edit>,
     val outcome: AttemptOutcome,
+    val diagnosticsLeftOut: Int = 0,
 )
 
 sealed interface AttemptOutcome {
@@ -81,6 +85,9 @@ data class FixLoopResult(
 ) {
     /** The accepted attempts, in order. */
     val fixes get() = attempts.map { it.outcome }.filterIsInstance<AttemptOutcome.Accepted>()
+
+    /** How many requests left diagnostics out because they didn't fit. */
+    val requestsWithDiagnosticsLeftOut get() = attempts.count { it.diagnosticsLeftOut > 0 }
 
     /** How many attempts each guardrail rule rejected, by rule. */
     fun rejectionsPerRule(): Map<String, Int> =
@@ -154,10 +161,14 @@ class FixLoop(
         // is a rejected attempt, and the loop stops on time with its report.
         @Suppress("TooGenericExceptionCaught")
         private fun attempt(cluster: Cluster) {
-            val proposal = llm.propose(request(cluster))
+            // The first diagnostics that fit into one request, each with its code. The rest come back in a later round:
+            // clusters are rebuilt after every accepted attempt (concept section 6.2). Grounding is trimmed to fit, so the
+            // checks leave it out: it can take a process per change to read.
+            val sent = firstThatFit(cluster.diagnostics) { llm.fits(request(cluster.key, it, grounded = false)) }
+            val proposal = llm.propose(request(cluster.key, sent))
             val outcome =
                 try {
-                    judge(cluster, proposal)
+                    judge(cluster.key, sent, proposal)
                 } catch (e: ProcessTimedOut) {
                     if (timeLeft > Duration.ZERO) {
                         GitWorkingTree.reset(repo)
@@ -180,21 +191,29 @@ class FixLoop(
                     is Proposal.Edits -> proposal.edits
                     is Proposal.Invalid -> emptyList()
                 }
-            attempts += Attempt(cluster.key, cluster.diagnostics, edits, outcome)
+            attempts += Attempt(cluster.key, sent, edits, outcome, cluster.diagnostics.size - sent.size)
         }
 
-        private fun request(cluster: Cluster): FixRequest {
-            val earlier = attemptsOn(cluster.key)
+        private fun request(
+            cluster: String,
+            diagnostics: List<Diagnostic>,
+            grounded: Boolean = true,
+        ): FixRequest {
+            val earlier = attemptsOn(cluster)
             val buildFiles = GitWorkingTree.trackedFiles(repo).filter(adapter::isBuildFile)
             return FixRequest(
                 changes = context.changes,
-                diagnostics = cluster.diagnostics,
-                snippets = codeSnippets(repo, cluster.diagnostics, buildFiles, context.changes.map { it.toVersion }),
+                diagnostics = diagnostics,
+                snippets = codeSnippets(repo, diagnostics, buildFiles, context.changes.map { it.toVersion }),
                 grounding =
-                    context.changes
-                        .map { adapter.ground(repo, it, cluster.diagnostics) }
-                        .filter { it.isNotEmpty() }
-                        .joinToString("\n\n"),
+                    if (grounded) {
+                        context.changes
+                            .map { adapter.ground(repo, it, diagnostics) }
+                            .filter { it.isNotEmpty() }
+                            .joinToString("\n\n")
+                    } else {
+                        ""
+                    },
                 releaseNotes = context.releaseNotes,
                 recipeDiff = context.recipeDiff,
                 previousAttempts =
@@ -206,12 +225,13 @@ class FixLoop(
         }
 
         private fun judge(
-            cluster: Cluster,
+            cluster: String,
+            diagnostics: List<Diagnostic>,
             proposal: Proposal,
         ): AttemptOutcome =
             when (proposal) {
                 is Proposal.Invalid -> rejected("the model's answer is invalid: ${proposal.reason}")
-                is Proposal.Edits -> apply(proposal.edits) ?: verify(cluster, proposal)
+                is Proposal.Edits -> apply(proposal.edits) ?: verify(cluster, diagnostics, proposal)
             }
 
         /**
@@ -263,7 +283,8 @@ class FixLoop(
          * rationale as subject. What the build left in the working tree stays out of it.
          */
         private fun verify(
-            cluster: Cluster,
+            cluster: String,
+            diagnostics: List<Diagnostic>,
             proposal: Proposal.Edits,
         ): AttemptOutcome {
             val after = attribute(adapter, repo, base) { timeLeft }
@@ -274,8 +295,8 @@ class FixLoop(
                 proposal.rationale
                     .lines()
                     .map { it.trim() }
-                    .firstOrNull { it.isNotEmpty() } ?: "Fix ${cluster.key}"
-            val body = "Addresses:\n" + cluster.diagnostics.joinToString("\n", transform = ::describe)
+                    .firstOrNull { it.isNotEmpty() } ?: "Fix $cluster"
+            val body = "Addresses:\n" + diagnostics.joinToString("\n", transform = ::describe)
             val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", edited(repo, proposal.edits), identity)
             verification = after
             return AttemptOutcome.Accepted(commit, subject, progressBefore, progressAfter)
@@ -285,6 +306,17 @@ class FixLoop(
         private fun versionsBefore(): Result<Map<String, String>> =
             versionsBefore?.let { Result.success(it) } ?: readVersions(adapter, repo).onSuccess { versionsBefore = it }
     }
+}
+
+/** The longest start of [all] that [fits], and at least its first element. */
+private fun <T> firstThatFit(
+    all: List<T>,
+    fits: (List<T>) -> Boolean,
+): List<T> {
+    if (fits(all)) return all
+    var count = 1
+    while (count + 1 < all.size && fits(all.take(count + 1))) count++
+    return all.take(count)
 }
 
 private fun rejected(reason: String) = AttemptOutcome.Rejected(reason)

@@ -314,6 +314,49 @@ class FixLoopTest {
     }
 
     @Test
+    fun `a cluster that doesn't fit is sent with the diagnostics that fit, each with its code, and the rest come back next round`() {
+        val code = app.replace("broken();", "broken(); // a\n        broken(); // b\n        broken(); // c")
+        repo.resolve("App.java").writeText(code)
+        git("commit", "--quiet", "-am", "three errors")
+        val llm =
+            ScriptedLlm(
+                edits(Edit("App.java", "broken(); // a", "fixed();")),
+                edits(Edit("App.java", "broken(); // b\n        broken(); // c", "fixed();")),
+                fits = { it.diagnostics.size <= 2 },
+            )
+        val adapter = FakeAdapter()
+
+        val result = loop(adapter, llm).run(repo, context, adapter.initial())
+
+        val first = llm.requests.first()
+        assertEquals(listOf(compileError(3), compileError(4)), first.diagnostics)
+        assertEquals(listOf(Snippet("App.java", 1, 7, code)), first.snippets)
+        assertEquals("API of $lib 2.0 for 2 diagnostics", first.grounding)
+        assertEquals(listOf(1, 0), result.attempts.map { it.diagnosticsLeftOut })
+        assertEquals(listOf(compileError(3), compileError(4)), result.attempts.first().diagnostics)
+        assertEquals(1, result.requestsWithDiagnosticsLeftOut)
+        assertEquals(StopReason.NOTHING_LEFT, result.stopReason)
+        assertEquals(
+            "Addresses:\n- [javac] App.java:3: cannot find symbol broken\n- [javac] App.java:4: cannot find symbol broken",
+            git("log", "-1", "--skip=1", "--format=%b").trim(),
+        )
+    }
+
+    @Test
+    fun `a single diagnostic that doesn't fit on its own is still sent, alone`() {
+        repo.resolve("App.java").writeText(app.replace("broken();", "broken(); // a\n        broken(); // b\n        broken(); // c"))
+        git("commit", "--quiet", "-am", "three errors")
+        val llm = ScriptedLlm(edits(Edit("App.java", "nowhere", "x")), fits = { false })
+        val adapter = FakeAdapter()
+
+        val result = loop(adapter, llm, Budgets(attempts = 1)).run(repo, context, adapter.initial())
+
+        assertEquals(listOf(compileError(3)), llm.requests.single().diagnostics)
+        assertEquals(2, result.attempts.single().diagnosticsLeftOut)
+        assertEquals(1, result.requestsWithDiagnosticsLeftOut)
+    }
+
+    @Test
     fun `an edit that doesn't apply rejects the attempt, and the retry gets the edits, the reason, and a higher temperature`() {
         val wrong = Edit("App.java", "broken(1);", "fixed(1);")
         val llm = ScriptedLlm(edits(wrong), edits(fix))
@@ -650,9 +693,12 @@ class FixLoopTest {
     /** Answers with the given functions in order, and records every request. */
     private class ScriptedLlm(
         vararg answers: (FixRequest) -> Proposal,
+        private val fits: (FixRequest) -> Boolean = { true },
     ) : LlmClient {
         val requests = mutableListOf<FixRequest>()
         private val answers = ArrayDeque(answers.toList())
+
+        override fun fits(request: FixRequest) = fits.invoke(request)
 
         override fun propose(request: FixRequest): Proposal {
             requests += request
