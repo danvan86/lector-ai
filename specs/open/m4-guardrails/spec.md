@@ -34,7 +34,7 @@ Every fix attempt from the LLM passes a set of deterministic guardrails before i
 |---|---|---|
 | **Scope** | An edit to a file outside the adapter's `editableScope()`, a Git-ignored file, or a file outside the repository. JVM scope: everything except `target/`, `build/`, `**/generated*/**` | All files |
 | **Diff size** | More than 50 changed lines (added + removed) in one attempt. Configurable | All files |
-| **Symbol comparison** | A method that existed before and is gone after (per containing type and name, overloads counted), unless its name appears in a current diagnostic caused by the update | Java, Kotlin |
+| **Symbol comparison** | A method that existed before and is gone after (per containing type and name, overloads counted), unless a current diagnostic caused by the update points into it **and** its logic survives: its body was empty, or a method the attempt added has the same body (whitespace ignored) | Java, Kotlin |
 | **Test protection: deletion** | A deleted test method. No exception | Java, Kotlin |
 | **Test protection: skips** | A new skip marker (e.g. `@Disabled`, `@Ignore`, an assumption that always skips) | Java, Kotlin |
 | **Test protection: assertions** | Fewer assertions in a test method than before, or a changed existing assertion that no current compile diagnostic points into. New assertions are allowed | Java, Kotlin |
@@ -50,7 +50,7 @@ Every fix attempt from the LLM passes a set of deterministic guardrails before i
 **Why:**
 - Scope closes rule 5. The Git check also catches generators the globs don't know about (Q11).
 - 50 lines is enough for a real fix and small enough to stop rewrites (Q6).
-- Deleting a method is sometimes required, e.g. when it overrode a removed interface method. A current diagnostic naming it is a deterministic sign of that case (Q3). Tests are never deleted, because a test that no longer compiles is fixed, not removed.
+- Deleting a method is sometimes required: an empty hook that overrode a removed interface method, or a method that is renamed or moved. A diagnostic pointing into it shows it has to change; it doesn't show its logic may go. Deleting `configure(HttpSecurity)` in a Spring Security 6 upgrade compiles and drops every access rule. So the logic must survive, checked by the body, the same way as an assertion (Q3, revised in the review, F5). A rename or move that also changes the body is rejected and left to a human for now; M6 measures how often. Tests are never deleted, because a test that no longer compiles is fixed, not removed.
 - Changing an expected value is how a model hides a behaviour change. Compile fixes inside assertion lines (e.g. `getStatusCodeValue()` removed in Spring 6) stay possible (Q12).
 - The static count works even when the build is red from the start and no test ran (Q4).
 - Stubs and suppressions are only checked in lines the attempt touched. Existing ones in the codebase aren't our business (Q5).
@@ -68,7 +68,7 @@ Every fix attempt from the LLM passes a set of deterministic guardrails before i
 ### 5. Tests and fixtures
 
 - **One test per rule that rejects a matching bad edit**, in Java and, for the language-specific rules, in Kotlin.
-- **One test per rule that lets a legitimate edit pass**, e.g. a compile fix inside an assertion that a diagnostic points into, deleting a method named in a diagnostic, a 50-line edit.
+- **One test per rule that lets a legitimate edit pass**, e.g. a compile fix inside an assertion that a diagnostic points into, renaming a method a diagnostic points into, a 50-line edit.
 - **Query tests** for Java and Kotlin on small source fixtures under `src/test/resources/fixtures/`: methods, test methods, assertions, skips, suppressions, stubs.
 - **Fix-loop tests** with a fake `LlmClient`: a violating attempt is reset, counted, and its reason appears in the next request.
 
@@ -110,8 +110,8 @@ The review agent checks every criterion and reports it as *met*, *not met*, or *
 | AC9 | Recipe output is not checked by guardrails | 2, Don't | Unit or integration test: a recipe result with a deleted method is kept |
 | AC10 | Scope: edits to `target/…`, a `generated` directory, a Git-ignored file, and a path outside the repository are each rejected | 3 | One test each |
 | AC11 | Diff size: 51 changed lines are rejected, 50 pass, and the limit is configurable | 3 | Tests and CLI option |
-| AC12 | Symbol comparison: deleting a method is rejected; deleting a method named in a current diagnostic passes | 3 | Tests in Java and Kotlin |
-| AC13 | A deleted test method is rejected, even if named in a diagnostic | 3 | Tests in Java and Kotlin |
+| AC12 | Symbol comparison: deleting a method is rejected, also when a current diagnostic points into it and its body is lost; deleting an empty method, or renaming a method with its body kept, passes if a current diagnostic points into it; a diagnostic in another file that names the method doesn't count | 3 | Tests in Java and Kotlin |
+| AC13 | A deleted test method is rejected, even if a diagnostic points into it | 3 | Tests in Java and Kotlin |
 | AC14 | A new `@Disabled` / `@Ignore` is rejected | 3 | Tests in Java and Kotlin |
 | AC15 | Removing an assertion from a test method is rejected | 3 | Tests in Java and Kotlin |
 | AC16 | Changing an expected value in an existing assertion without a compile diagnostic in it is rejected; the same change with a compile diagnostic pointing into it passes | 3 | Tests in Java and Kotlin |

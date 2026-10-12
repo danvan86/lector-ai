@@ -62,7 +62,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 **Goal:** the LLM can't make the build green by deleting code.
 
 - `LanguageSupport` for JVM: tree-sitter grammars for Java and Kotlin plus queries for methods, tests, assertions, skips, suppressions, stubs
-- tree-sitter symbol comparison (no deleted methods, unless a current diagnostic names them)
+- tree-sitter symbol comparison (no deleted methods; a method a current diagnostic points into may go only if it was empty or its body moves to a new method)
 - Test protection: no deleted or skipped tests, no removed or changed assertions, the static test count stays the same (Java and Kotlin)
 - Block stubs (`return null`, empty bodies, `TODO`) and new suppressions; reject edits that add parse errors
 - Diff size limit, `editableScope` (no generated code), build-file blocklist (no test-disabling config)
