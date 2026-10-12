@@ -23,13 +23,14 @@ rejections.
 
 ## Quality gates
 
-`./gradlew clean build --rerun-tasks --no-build-cache` exits `0` with 473 unit tests (core 170, jvm 124, cli 98, llm 18,
+`./gradlew clean build --rerun-tasks --no-build-cache` exits `0` with 479 unit tests (core 175, jvm 125, cli 98, llm 18,
 recipes 33, sources 16, git 14), 19 end-to-end tests, and 100 % lines and branches per module. The opt-in
 `:cli:integrationTest` (real Maven, network) passes too. The real-model test was not run for M5.
 
-Final check, each on its own: `ktlintCheck`, `test`, `:cli:endToEndTest`, `koverVerify`, and
-`clean build --rerun-tasks --no-build-cache` exit `0`. `detektMain detektTest` exited `1` once, with its log overwritten
-by the next check; four reruns after `clean` exit `0`. M4 saw the same once.
+Final check after AC37, each on its own after `clean`: `ktlintCheck`, `detektMain detektTest` (14 tasks), `test`,
+`:cli:endToEndTest`, `koverVerify`, and `clean build --rerun-tasks --no-build-cache` exit `0`. An earlier
+`detektMain detektTest` exit `1` was the check script, not detekt: a zsh loop passed both names as one task, which
+doesn't exist. M4's unexplained detekt failure looks like the same thing.
 
 Probes, all in one `build --continue`, each failing on its own gate, then reverted:
 
