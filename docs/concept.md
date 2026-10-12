@@ -316,6 +316,8 @@ Each rule is a small `Guardrail` implementation in a list, tested on its own. Th
 
 - Pushes made with `GITHUB_TOKEN` don't trigger new workflow runs, so required checks wouldn't run on the fix commit. Use a **GitHub App token**.
 - Prevent a loop where the bot's own commit triggers the fix job again: the tool skips a head commit by its own identity.
+  So once it has pushed, its check on the PR's new head is green even when something is left. The report comment and
+  the repository's own CI show what is left; the tool's exit `1` marks only the commit it worked on.
 - The token reaches only the Git host adapter and `git` fetch and push, through `git`'s environment config. Builds and tests run with an allowlisted environment, so the updated dependency's code doesn't see it. They still run in the same container as the tool, as the same user: isolating the token from them completely needs a separate user or container.
 
 ### 8.3 PR structure

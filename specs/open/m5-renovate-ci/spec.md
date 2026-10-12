@@ -31,7 +31,7 @@ New CLI command `lector pr`, which the action calls. Flow:
 5. **Otherwise:** M2's downgrade rules per change. Recipe lookup per change. Each distinct recipe runs once, in the order of the PR table, and becomes one commit. Then verify, then the fix loop (M3 with M4 guardrails) over all remaining diagnostics.
 6. **Push** the recipe commits and every accepted fix commit to the Renovate branch with plain `git push` (never force). If the push is rejected because the branch moved, nothing is pushed and the run ends. The new head triggers a new run.
 7. **Report:** the sticky comment and the `ai-assisted` label (section 4).
-8. **Exit code** from the final verification: `0` nothing caused by the update left, `1` something left (the check turns red), `2` tool error.
+8. **Exit code** from the final verification: `0` nothing caused by the update left, `1` something left (the check turns red), `2` tool error. After a push, the run on the tool's own commit skips with `0` (step 1), so the PR's latest commit shows a green check; the comment and the repository's own CI show what is left ([review](review.md) F4, decided: keep the skip, document it).
 
 **Time budget:** the fix loop gives each build and test run of an attempt the remaining time as its deadline. A run that hits it is stopped, the attempt is rejected and reset, and the loop ends with stop reason `TIME_BUDGET`. The report and the push of earlier accepted fixes happen as usual.
 

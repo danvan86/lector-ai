@@ -111,6 +111,10 @@ What happens on each run:
 | Renovate pushed while lector-ai was working | Nothing is pushed; the new head gets its own run | green |
 | lector-ai itself failed (configuration, network, a timeout) | Nothing is pushed | red, exit code 2 |
 
+After lector-ai pushes, the run on its own commit skips, so its check on the PR's latest commit is green even when
+something is left. Your own build workflow runs on that commit too, and the comment lists what is left: those are what
+to look at before merging. The red check of exit code 1 stays on the commit lector-ai worked on.
+
 lector-ai never merges, approves, or requests reviews.
 
 **Options.** The action's inputs, besides `token`, `bot-name`, and `bot-email`:

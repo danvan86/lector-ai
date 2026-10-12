@@ -20,11 +20,12 @@ rejections.
 | 8b | Time budget as the deadline of an attempt's builds and test runs (AC37, added to the spec on `main` during M5) | ✅ |
 | 9 | Quality gates verified | ✅ |
 | 10 | Docs in sync | ✅ |
+| 11 | Review and fixes: [`review.md`](review.md) | ✅ |
 
 ## Quality gates
 
-`./gradlew clean build --rerun-tasks --no-build-cache` exits `0` with 479 unit tests (core 175, jvm 125, cli 98, llm 18,
-recipes 33, sources 16, git 14), 19 end-to-end tests, and 100 % lines and branches per module. The opt-in
+`./gradlew clean build --rerun-tasks --no-build-cache` exits `0` with 480 unit tests (core 175, jvm 125, cli 98, llm 18,
+recipes 33, sources 16, git 15), 19 end-to-end tests, and 100 % lines and branches per module (after the review fixes). The opt-in
 `:cli:integrationTest` (real Maven, network) passes too. The real-model test was not run for M5.
 
 Final check after AC37, each on its own after `clean`: `ktlintCheck`, `detektMain detektTest` (14 tasks), `test`,
