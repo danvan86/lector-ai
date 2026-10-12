@@ -85,7 +85,8 @@ fun runProcess(
                 throw ToolError("Cannot run ${command.first()}: ${e.message}", e)
             }
         process.outputStream.close()
-        if (!process.waitFor(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)) {
+        // In nanoseconds: whole milliseconds would end the wait up to 1 ms before the caller's deadline.
+        if (!process.waitFor(timeout.inWholeNanoseconds, TimeUnit.NANOSECONDS)) {
             process.descendants().forEach { it.destroyForcibly() }
             process.destroyForcibly().waitFor()
             throw ProcessTimedOut("${command.first()} did not finish within $timeout")

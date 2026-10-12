@@ -14,6 +14,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * The PR pipeline with fakes for the host, the source, the adapter, the index, and the model, on a real Git
@@ -516,7 +517,9 @@ class PrPipelineTest {
         ): List<Diagnostic> {
             val code = repo.resolve("App.java").readText()
             if (slowWhen != null && slowWhen in code) {
-                Thread.sleep(timeout.inWholeMilliseconds.coerceAtLeast(0))
+                // Until the timeout has passed on the loop's clock: a sleep in whole milliseconds can end just before it.
+                val deadline = TimeSource.Monotonic.markNow() + timeout
+                while (deadline.hasNotPassedNow()) Thread.sleep(1)
                 throw ProcessTimedOut("mvn did not finish within $timeout")
             }
             return code.lines().withIndex().mapNotNull { (index, line) ->
