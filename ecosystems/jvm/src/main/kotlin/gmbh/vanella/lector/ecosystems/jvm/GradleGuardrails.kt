@@ -31,28 +31,33 @@ internal object GradleScope {
 /** The Gradle build-file blocklist: configuration that disables, skips, or filters tests. */
 internal object GradleTestSkipping {
     private val disabled = Regex("""\b(?:(?:is)?[eE]nabled\s*=\s*false|enabled\s+false|setEnabled\s*\(\s*false\s*\))""")
-    private val onlyIf = Regex("""\bonlyIf\b""")
+    private val onlyIf = Regex("""\b(?:set)?[oO]nlyIf\b""")
     private val ignoreFailures = Regex("""\bignoreFailures\b""")
-    private val filter = Regex("""\b(?:exclude|include)(?:TestsMatching|Tags|Engines)\b""")
 
-    // `exclude '**/SlowTest.class'`: a file pattern, on a Test task or a source set. A dependency exclude names a group
-    // or a module instead.
-    private val patternExclude = Regex("""\bexclude\s*\(?\s*["']""")
+    // The filters of a Test task and its test frameworks (JUnit Platform, JUnit 4, TestNG).
+    private val filter = Regex("""\b(?:set)?(?:[eE]xclude|[iI]nclude)(?:TestsMatching|Tags|Engines|Patterns|Categories|Groups)\b""")
 
-    /** Why [line] (1-based) of the build file [content] disables tests, or null. */
+    // `include`, `exclude`, `includes`, `excludes`: file patterns or conditions, on a Test task or a source set. A
+    // dependency exclude names a group or a module instead, and a settings file includes projects.
+    private val pattern = Regex("""\b(?:set)?(?:[eE]xclude|[iI]nclude)s?\b(?!\s*\(?\s*(?:group|module)\b)""")
+
+    /** Why [line] (1-based) of the build file [file] with [content] disables tests, or null. */
     fun reason(
+        file: String,
         content: String,
         line: Int,
     ): String? {
         val text = content.lines()[line - 1]
         val disabledBy = disabled.find(text)?.value
+        val conditionBy = onlyIf.find(text)?.value
         val filteredBy = filter.find(text)?.value
+        val patternBy = if (file.substringAfterLast('/').startsWith("settings.gradle")) null else pattern.find(text)?.value
         return when {
             disabledBy != null -> "`$disabledBy` disables a task, so it can disable tests"
-            onlyIf.containsMatchIn(text) -> "`onlyIf` makes a task conditional, so it can skip tests"
+            conditionBy != null -> "`$conditionBy` makes a task conditional, so it can skip tests"
             ignoreFailures.containsMatchIn(text) -> "`ignoreFailures` ignores test failures"
             filteredBy != null -> "`$filteredBy` leaves tests out"
-            patternExclude.containsMatchIn(text) -> "`exclude` with a file pattern leaves tests or sources out"
+            patternBy != null -> "`$patternBy` leaves tests or sources out"
             else -> null
         }
     }

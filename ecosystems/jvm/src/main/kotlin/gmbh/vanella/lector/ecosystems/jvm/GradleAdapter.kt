@@ -196,7 +196,7 @@ class GradleAdapter(
         file: String,
         content: String,
         line: Int,
-    ) = GradleTestSkipping.reason(content, line)
+    ) = GradleTestSkipping.reason(file, content, line)
 
     /**
      * Stops the Gradle daemons of every repository Gradle ran in that is still there, and removes the init scripts. A
