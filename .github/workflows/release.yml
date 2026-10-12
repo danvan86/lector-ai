@@ -1,0 +1,78 @@
+# Publishes a release to GHCR when a version tag (v0.1.0) is pushed: the tool image, which the action runs, and the
+# Ollama image with each model baked in. Never on a branch push: a release is a deliberate step.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  tool-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v6
+      # The tag must be the tool's version, which the action's image tag matches (checkActionImage).
+      # No release before the MSAL check is done and recorded (M5 release blocker).
+      - name: Check the tag and the licensing record
+        run: |
+          version="$(grep '^version=' gradle.properties | cut -d= -f2)"
+          test "$GITHUB_REF_NAME" = "v$version" || { echo "Tag $GITHUB_REF_NAME is not v$version"; exit 1; }
+          grep -qx '\*\*MSAL check:\*\* done' docs/licensing.md || { echo "The MSAL check in docs/licensing.md is not done"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - run: ./gradlew build :cli:installDist
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/lector/Dockerfile
+          push: true
+          tags: ghcr.io/${{ env.OWNER }}/lector:${{ env.VERSION }}
+
+  ollama-image:
+    runs-on: ubuntu-latest
+    strategy:
+      # The 30B weights are one file of about 19 GB, GHCR takes layers up to 10 GB: the 7B variant must not depend on it.
+      fail-fast: false
+      matrix:
+        model: ["qwen2.5-coder:7b", "qwen3-coder:30b"]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Name the image
+        run: |
+          echo "VERSION=$(grep '^version=' gradle.properties | cut -d= -f2)" >> "$GITHUB_ENV"
+          echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+          echo "MODEL_TAG=$(echo "$MODEL" | tr ':' '-')" >> "$GITHUB_ENV"
+        env:
+          MODEL: ${{ matrix.model }}
+      # A standard runner has about 14 GB free; the 30B image needs more than twice its size while it is built.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: docker/ollama
+          build-args: MODEL=${{ matrix.model }}
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/lector-ollama:${{ env.MODEL_TAG }}
+            ghcr.io/${{ env.OWNER }}/lector-ollama:${{ env.VERSION }}-${{ env.MODEL_TAG }}

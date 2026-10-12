@@ -8,3 +8,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # The base images of the tool and the model images. The Ollama version is also the real-model test's.
+  - package-ecosystem: docker
+    directories:
+      - /docker/lector
+      - /docker/ollama
+    schedule:
+      interval: weekly

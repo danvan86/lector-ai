@@ -20,8 +20,6 @@ rewrite-recipe-bom = "3.37.0"
 rewrite-maven-plugin = "6.46.1"
 maven-help-plugin = "3.5.2"
 testcontainers = "2.0.5"
-# The Ollama image of the real-model test. Not a Gradle dependency, so Dependabot doesn't update it.
-ollama-image = "0.40.3"
 
 [libraries]
 clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }

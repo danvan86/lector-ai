@@ -1,10 +1,13 @@
 package gmbh.vanella.lector.ecosystems.jvm
 
 import gmbh.vanella.lector.core.ToolError
+import org.slf4j.LoggerFactory
 import org.w3c.dom.Element
 import org.xml.sax.SAXException
 import java.nio.file.Path
 import kotlin.io.path.isRegularFile
+
+private val logger = LoggerFactory.getLogger(JdkSelection::class.java)
 
 // Without a declared release, the project gets the JDK most current projects build with.
 private const val DEFAULT_RELEASE = 21
@@ -32,6 +35,7 @@ internal class JdkSelection(
                 ?: throw ToolError(
                     "The project needs Java $release, but only JDKs ${installed.keys.sorted().joinToString(", ")} are installed",
                 )
+        logger.info("{} needs Java {}: building with JDK {}", root, release, jdk)
         return installed.getValue(jdk)
     }
 
