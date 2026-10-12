@@ -1,6 +1,6 @@
 # Architecture – Gradle adapter
 
-Milestone: [M7](../features.md#m7--gradle-) · Spec: [`m7-gradle/spec.md`](../../specs/open/m7-gradle/spec.md) · Review: [`review.md`](../../specs/open/m7-gradle/review.md)
+Milestone: [M7](../features.md#m7--gradle-) · Spec: [`m7-gradle/spec.md`](../../specs/done/m7-gradle/spec.md) · Review: [`review.md`](../../specs/done/m7-gradle/review.md)
 
 > **Summary for agents**
 >

@@ -28,6 +28,6 @@ specs/
 | M4 – Guardrails | [brainstorming](done/m4-guardrails/brainstorming.md) · [spec](done/m4-guardrails/spec.md) |
 | M5 – Renovate in CI | [brainstorming](done/m5-renovate-ci/brainstorming.md) · [spec](done/m5-renovate-ci/spec.md) |
 | M6 – Benchmark | [brainstorming](open/m6-benchmark/brainstorming.md) · [spec](open/m6-benchmark/spec.md) |
-| M7 – Gradle | [brainstorming](open/m7-gradle/brainstorming.md) · [spec](open/m7-gradle/spec.md) |
+| M7 – Gradle | [brainstorming](done/m7-gradle/brainstorming.md) · [spec](done/m7-gradle/spec.md) |
 | M8 – Dependabot and fallback | [brainstorming](open/m8-dependabot-fallback/brainstorming.md) · [spec](open/m8-dependabot-fallback/spec.md) |
 | M9 – TypeScript | [brainstorming](open/m9-typescript/brainstorming.md) · [spec](open/m9-typescript/spec.md) |
