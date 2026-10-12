@@ -86,7 +86,7 @@ class GradleIntegrationTest {
     }
 
     @Test
-    fun `stage 2 runs every Test task and nothing else of check, and runTests reruns one task's tests`() {
+    fun `stage 2 runs every Test task and nothing else of check, runTests reruns one task's tests, and included builds are build files`() {
         val repo = fixture("gradle-multi-project")
 
         val problems = adapter.verify(repo, 10.minutes)
@@ -103,6 +103,7 @@ class GradleIntegrationTest {
         assertFalse(problems.any { "lint" in it.message }, "the lint task bound to check never ran: $problems")
         assertEquals(4, testsRun)
         assertEquals(listOf("com.example.app.GreetingIT#greetsWrong()"), rerun.map { it.test })
+        assertTrue(adapter.isBuildFile("conventions/src/main/kotlin/Conventions.kt"), "the included build's files are build files")
     }
 
     @Test

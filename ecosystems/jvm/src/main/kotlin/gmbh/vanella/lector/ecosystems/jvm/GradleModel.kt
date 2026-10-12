@@ -18,12 +18,13 @@ internal data class ClasspathJar(
 
 /**
  * What the init script's query task reads from Gradle: the highest resolved version of every package, the JARs of the
- * compile classpaths, and the IDs of the applied plugins.
+ * compile classpaths, the IDs of the applied plugins, and the directories of the included builds, relative to the root.
  */
 internal data class GradleModel(
     val versions: Map<String, String>,
     val classpath: List<ClasspathJar>,
     val plugins: List<String>,
+    val includedBuilds: List<String>,
 ) {
     companion object {
         /** Reads the query task's JSON. Of several versions of a package, the highest in Maven's order wins. */
@@ -41,6 +42,7 @@ internal data class GradleModel(
                             ClasspathJar(fields.text("module"), fields.text("version"), Path.of(fields.text("file")))
                         },
                     plugins = model.field("plugins").jsonArray.map { it.jsonPrimitive.content },
+                    includedBuilds = model.field("includedBuilds").jsonArray.map { it.jsonPrimitive.content },
                 )
             } catch (e: SerializationException) {
                 throw ToolError("Can't read the model of the Gradle build: ${e.message}", e)

@@ -81,7 +81,7 @@ class GradleModelTest : FakeGradleTest() {
     fun `an Android or Kotlin Multiplatform project is a tool error`() {
         gradleProject()
         for (plugin in listOf("com.android.application", "com.android.library", "org.jetbrains.kotlin.multiplatform")) {
-            query = """{"versions": {}, "classpath": [], "plugins": ["java", "$plugin"]}"""
+            query = """{"versions": {}, "classpath": [], "plugins": ["java", "$plugin"], "includedBuilds": []}"""
 
             val error = assertFailsWith<ToolError> { adapter().verify(repo, 1.hours) }
 
@@ -107,7 +107,7 @@ class GradleModelTest : FakeGradleTest() {
     @Test
     fun `resolved versions are the model's, and a model Gradle can't read is a tool error with the end of its output`() {
         gradleProject()
-        query = """{"versions": {"org.example:lib": ["1.2.0", "1.10.0", "1.9.0"]}, "classpath": [], "plugins": []}"""
+        query = """{"versions": {"org.example:lib": ["1.2.0", "1.10.0", "1.9.0"]}, "classpath": [], "plugins": [], "includedBuilds": []}"""
 
         assertEquals(mapOf("org.example:lib" to "1.10.0"), adapter().resolvedVersions.read(repo))
 
@@ -135,7 +135,7 @@ class GradleModelTest : FakeGradleTest() {
         )
         query =
             """
-            {"versions": {}, "plugins": [], "classpath": [
+            {"versions": {}, "plugins": [], "includedBuilds": [], "classpath": [
               {"module": "org.example:lib-core", "version": "2.0", "file": "$core"},
               {"module": "org.example:lib-core", "version": "1.0", "file": "$old"},
               {"module": "org.example:gone", "version": "2.0", "file": "${repo.resolve("cache/gone.jar")}"},
@@ -165,9 +165,26 @@ class GradleModelTest : FakeGradleTest() {
     }
 
     @Test
+    fun `the files of the included builds are build files once verify has read the model`() {
+        gradleProject()
+        query = """{"versions": {}, "classpath": [], "plugins": [], "includedBuilds": ["conventions", "gradle/plugins"]}"""
+        val adapter = adapter()
+        val plugin = "conventions/src/main/kotlin/JavaConventions.kt"
+
+        assertFalse(adapter.isBuildFile(plugin), "no model read yet")
+        adapter.verify(repo, 1.hours)
+
+        assertTrue(adapter.isBuildFile(plugin))
+        assertTrue(adapter.isBuildFile("gradle/plugins/src/main/kotlin/Publishing.kt"))
+        assertFalse(adapter.isBuildFile("conventions-app/src/main/kotlin/App.kt"))
+        assertFalse(adapter.isBuildFile("src/main/kotlin/conventions/App.kt"))
+        assertTrue(adapter.isEditable(plugin), "build files stay editable")
+    }
+
+    @Test
     fun `the query's output that isn't the model's JSON is a tool error`() {
         gradleProject()
-        for (json in listOf("not json", """{"versions": {}}""", "[]")) {
+        for (json in listOf("not json", """{"versions": {}}""", """{"versions": {}, "classpath": [], "plugins": []}""", "[]")) {
             query = json
 
             val error = assertFailsWith<ToolError> { adapter().resolvedVersions.read(repo) }

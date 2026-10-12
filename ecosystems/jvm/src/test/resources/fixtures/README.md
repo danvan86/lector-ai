@@ -46,7 +46,7 @@ wrapper next to the fixture's `gradle/wrapper/gradle-wrapper.properties`, which 
 |---|---|---|---|
 | `gradle-groovy` | Groovy DSL, Gradle 8.14.2, Java toolchain 21 | javac errors in two files | `gradle-output/javac-errors.log` |
 | `gradle-kotlin-catalog` | Kotlin DSL with a version catalog, Gradle 9.8.1, Kotlin 2.2 | kotlinc errors | `gradle-output/kotlinc-errors.log` |
-| `gradle-multi-project` | Kotlin DSL, Gradle 9.8.1, `lib` and `app` with an `integrationTest` suite and a failing `lint` task in `check` | a failing test in `lib:test` and in `app:integrationTest` | `gradle-output/test-failures.log`, and the XML reports under `gradle-output/test-results/<project>/<task>/` |
+| `gradle-multi-project` | Kotlin DSL, Gradle 9.8.1, `lib` and `app` with an `integrationTest` suite and a failing `lint` task in `check`, and an included build `conventions` | a failing test in `lib:test` and in `app:integrationTest` | `gradle-output/test-failures.log`, and the XML reports under `gradle-output/test-results/<project>/<task>/` |
 
 The other captures come from copies of these fixtures with one change each:
 

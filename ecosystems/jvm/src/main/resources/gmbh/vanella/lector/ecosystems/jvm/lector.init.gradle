@@ -25,7 +25,8 @@ gradle.rootProject { root ->
     }
 
     // The model, as JSON in the file -Plector.queryOutput names: the resolved versions of every package, the JARs of
-    // the compile classpaths, and the IDs of the applied plugins. Resolves configurations, compiles nothing.
+    // the compile classpaths, the IDs of the applied plugins, and the directories of the included builds inside the
+    // repository, relative to it. Resolves configurations, compiles nothing.
     root.tasks.register('lectorQuery') { task ->
         task.description = 'lector-ai: writes the resolved versions, the compile classpath JARs, and the applied plugins.'
         task.notCompatibleWithConfigurationCache('reads the model of every project')
@@ -53,7 +54,12 @@ gradle.rootProject { root ->
                 }
                 project.plugins.each { plugin -> plugins.addAll(pluginIds(plugin.getClass(), pluginJars)) }
             }
-            output.text = JsonOutput.toJson([versions: versions, classpath: classpath, plugins: plugins])
+            def rootDir = root.projectDir.toPath()
+            def includedBuilds = root.gradle.includedBuilds
+                .collect { rootDir.relativize(it.projectDir.toPath()).toString().replace(File.separator, '/') }
+                .findAll { !it.startsWith('..') }
+                .sort()
+            output.text = JsonOutput.toJson([versions: versions, classpath: classpath, plugins: plugins, includedBuilds: includedBuilds])
         }
     }
 }

@@ -21,7 +21,7 @@ open class FakeGradleTest {
     protected val adapters = mutableListOf<GradleAdapter>()
 
     // What the fake Gradle answers: the query's JSON, and the output and exit code of the other runs.
-    protected var query = """{"versions": {}, "classpath": [], "plugins": []}"""
+    protected var query = """{"versions": {}, "classpath": [], "plugins": [], "includedBuilds": []}"""
     protected var queryOutput: ProcessResult? = null
     protected var compileOutput = ProcessResult(0, "")
     protected var testOutput = ProcessResult(0, "")

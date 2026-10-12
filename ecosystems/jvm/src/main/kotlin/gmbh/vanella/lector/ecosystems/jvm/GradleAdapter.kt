@@ -193,7 +193,12 @@ class GradleAdapter(
 
     override fun clusterKey(diagnostic: Diagnostic) = ClusterKeys.of(diagnostic)
 
-    override fun isBuildFile(file: String) = GradleScope.isBuildFile(file)
+    /**
+     * Whether Gradle reads its configuration from [file]: see [GradleScope], plus every file of the included builds that
+     * the last verify found, whatever their names.
+     */
+    override fun isBuildFile(file: String) =
+        GradleScope.isBuildFile(file) || models.values.any { model -> model.includedBuilds.any { file.startsWith("$it/") } }
 
     override fun isEditable(file: String) = GradleScope.isEditable(file)
 

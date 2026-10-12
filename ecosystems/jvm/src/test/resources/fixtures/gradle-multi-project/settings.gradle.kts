@@ -7,3 +7,4 @@ dependencyResolutionManagement {
 }
 
 include("lib", "app")
+includeBuild("conventions")
