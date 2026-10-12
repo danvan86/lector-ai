@@ -87,7 +87,7 @@ class FixLoopTest {
     }
 
     @Test
-    fun `an edit to a file Git ignores is applied but not committed`() {
+    fun `an edit to a file Git ignores breaks the scope, and is never written`() {
         repo.resolve(".gitignore").writeText("generated/\n")
         git("add", ".gitignore")
         git("commit", "--quiet", "-m", "ignore generated code")
@@ -96,12 +96,81 @@ class FixLoopTest {
         val adapter = FakeAdapter()
 
         val result =
-            loop(adapter, ScriptedLlm(edits(Edit("./App.java", "broken();", "fixed();"), Edit("generated/Gen.java", "broken", "fixed"))))
-                .run(repo, context, adapter.initial())
+            loop(
+                adapter,
+                ScriptedLlm(edits(Edit("./App.java", "broken();", "fixed();"), Edit("generated/Gen.java", "broken", "fixed"))),
+                Budgets(attempts = 1),
+            ).run(repo, context, adapter.initial())
 
-        assertIs<AttemptOutcome.Accepted>(result.attempts.single().outcome)
-        assertEquals("App.java", git("show", "--name-only", "--format=", "HEAD").trim())
-        assertEquals("fixed();\n", repo.resolve("generated/Gen.java").readText())
+        val violation = Violation("scope", "generated/Gen.java", null, "Git doesn't track the file, so it is generated or ignored")
+        assertEquals(
+            AttemptOutcome.Rejected("the edits break the guardrails:\n- $violation", listOf(violation)),
+            result.attempts.first().outcome,
+        )
+        assertEquals("broken();\n", repo.resolve("generated/Gen.java").readText())
+        assertEquals(app, repo.resolve("App.java").readText())
+        assertEquals(0, adapter.verifyCalls)
+    }
+
+    @Test
+    fun `an attempt that breaks a guardrail is reset, counted, never verified, and the retry learns what it broke`() {
+        val stub = Edit("App.java", "broken();", "return null;")
+        val llm = ScriptedLlm(edits(stub), edits(stub))
+        val adapter = FakeAdapter()
+
+        val result = loop(adapter, llm).run(repo, context, adapter.initial())
+
+        val violation = Violation("stubbing", "App.java", 3, "the edits add the placeholder `return null;` in place of logic")
+        val rejected =
+            AttemptOutcome.Rejected(
+                "the edits break the guardrails:\n- [stubbing] App.java:3: ${violation.reason}",
+                listOf(violation),
+            )
+        assertEquals(listOf(rejected, rejected), result.attempts.map { it.outcome })
+        assertEquals(StopReason.NO_PROGRESS, result.stopReason, "rejections count against the budgets")
+        assertEquals(
+            PreviousAttempt(listOf(stub), rejected.reason),
+            llm.requests
+                .last()
+                .previousAttempts
+                .first(),
+        )
+        assertEquals(0, adapter.verifyCalls, "a violating attempt is never verified")
+        assertEquals("", git("status", "--porcelain"))
+        assertEquals(app, repo.resolve("App.java").readText())
+    }
+
+    @Test
+    fun `the guardrails see the diagnostics caused by the update before the attempt`() {
+        val rename = Edit("App.java", "void run()", "void start()")
+        val overrides = Diagnostic("App.java", 2, 5, "override", "method does not override a method", Severity.ERROR, "javac")
+        val adapter = FakeAdapter()
+
+        val pointedInto =
+            loop(adapter, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, Verification(listOf(overrides)))
+        val verifiedOnce = adapter.verifyCalls
+        val elsewhere = loop(adapter, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, adapter.initial())
+
+        assertEquals(emptyList(), (pointedInto.attempts.single().outcome as AttemptOutcome.Rejected).violations, "verified, no progress")
+        assertEquals(1, verifiedOnce)
+        assertEquals(
+            listOf("symbol-comparison"),
+            (elsewhere.attempts.single().outcome as AttemptOutcome.Rejected).violations.map { it.rule },
+        )
+    }
+
+    @Test
+    fun `the diff-size limit is configurable`() {
+        val adapter = FakeAdapter()
+
+        val result =
+            loop(
+                adapter,
+                ScriptedLlm(edits(fix)),
+                Budgets(attempts = 1, changedLinesPerAttempt = 1),
+            ).run(repo, context, adapter.initial())
+
+        assertEquals(listOf("diff-size"), (result.attempts.single().outcome as AttemptOutcome.Rejected).violations.map { it.rule })
     }
 
     @Test
@@ -117,6 +186,18 @@ class FixLoopTest {
         val error = assertFailsWith<ToolError> { loop(adapter, ScriptedLlm(edits(hang))).run(repo, context, initial) }
 
         assertEquals("mvn did not finish within 1h", error.message)
+        assertEquals("", git("status", "--porcelain"))
+        assertEquals(app, repo.resolve("App.java").readText())
+    }
+
+    @Test
+    fun `any other failure inside an attempt resets the working tree too`() {
+        val adapter = FakeAdapter(languageSupport = { _, _ -> throw UnsatisfiedLinkError("no tree-sitter for this platform") })
+        val initial = adapter.initial()
+
+        val error = assertFailsWith<UnsatisfiedLinkError> { loop(adapter, ScriptedLlm(edits(fix))).run(repo, context, initial) }
+
+        assertEquals("no tree-sitter for this platform", error.message)
         assertEquals("", git("status", "--porcelain"))
         assertEquals(app, repo.resolve("App.java").readText())
     }
@@ -302,6 +383,18 @@ class FixLoopTest {
 
         assertIs<AttemptOutcome.Accepted>(result.attempts.single().outcome)
         assertEquals("org.example:other 3.1", repo.resolve("pom.xml").readLines().last())
+    }
+
+    @Test
+    fun `an attempt out of scope is rejected for its scope before the versions are read`() {
+        val raise = Edit("pom.xml", "org.example:other 3.0", "org.example:other 3.1")
+        val adapter = FakeAdapter(versions = { throw ToolError("resolution failed") })
+
+        val result =
+            loop(adapter, ScriptedLlm(edits(raise, Edit("untracked.txt", "a", "b"))), Budgets(attempts = 1))
+                .run(repo, context, adapter.initial())
+
+        assertEquals(listOf("scope"), (result.attempts.single().outcome as AttemptOutcome.Rejected).violations.map { it.rule })
     }
 
     @Test
@@ -516,10 +609,28 @@ class FixLoopTest {
         private val versions: ((Path) -> Map<String, String>)? = { dir ->
             dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
         },
+        override val languageSupport: LanguageSupport =
+            LanguageSupport {
+                file,
+                content,
+                ->
+                if (file.endsWith(".java")) facts(content) else null
+            },
     ) : EcosystemAdapter {
         var verifyCalls = 0
 
         override val ecosystem = "test"
+
+        override fun isEditable(file: String) = true
+
+        override fun testsRun(repo: Path): Int? = null
+
+        override fun testDisablingConfig(
+            file: String,
+            content: String,
+            line: Int,
+        ): String? = null
+
         override val versionScheme = DottedVersions
         override val recipeRunner = null
         override val resolvedVersions = versions?.let { ResolvedVersions(it) }
@@ -547,6 +658,23 @@ class FixLoopTest {
         override fun clusterKey(diagnostic: Diagnostic) = diagnostic.code
 
         override fun isBuildFile(file: String) = file == "pom.xml"
+    }
+
+    /** The methods (`void name(`) of class `App`, with the next line as body, and every `return null` as a stub. */
+    private fun facts(content: String): SourceFacts {
+        val lines = content.lines().withIndex()
+        return SourceFacts(
+            methods =
+                lines.mapNotNull { (index, line) ->
+                    Regex("""void (\w+)\(""").find(line)?.let {
+                        Method("App", it.groupValues[1], LineRange(index + 1, index + 1), content.lines()[index + 1].trim())
+                    }
+                },
+            stubs =
+                lines.filter { "return null" in it.value }.map { (index, line) ->
+                    Fragment(LineRange(index + 1, index + 1), line.trim())
+                },
+        )
     }
 
     private fun compileErrors(dir: Path): List<Diagnostic> =

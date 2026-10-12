@@ -72,8 +72,9 @@ These come from the concept. Don't break them without updating the concept first
 - Small, focused classes and functions. Name things after domain terms from the concept (`DependencyChange`, `Diagnostic`, `Edit`, `EcosystemAdapter`).
 - Prefer immutable data classes and pure functions. Keep I/O (processes, HTTP, Git) at the edges.
 - Every external process gets a timeout, and its stdout and stderr are drained (or redirected to files). Otherwise a full pipe or a stuck process hangs the run.
-- Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors and unexpected exceptions included. Otherwise the pipeline blames the update for a tool bug. Validate option values completely when parsing (a URL's scheme and host, not only its syntax), so a bad value fails before minutes of build.
-- The repository under repair is the user's. Commit only the files a step changed: a build leaves output in the tree, and test fixtures ignore `target/`, so `git add --all` looks fine in tests and isn't. Reset the working tree on every way out of a failed step, exceptions included.
+- Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors, unexpected exceptions, and `Error`s included (an uncaught `Error`, like a native library that doesn't load, ends the JVM with `1`). Otherwise the pipeline blames the update for a tool bug. Validate option values completely when parsing (a URL's scheme and host, not only its syntax), so a bad value fails before minutes of build.
+- The repository under repair is the user's. Commit only the files a step changed: a build leaves output in the tree, and test fixtures ignore `target/`, so `git add --all` looks fine in tests and isn't. Reset the working tree on every way out of a failed step, exceptions and errors included.
+- An adapter's build files are every file the build tool reads its configuration from, not only the manifest (Maven: `.mvn/` and the wrapper, too). The build-file guardrails and the downgrade check see only what `isBuildFile` names, so a missed file is a way around them.
 - Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
 - All versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs.
 - No new dependency without a short reason in the PR description.
@@ -94,6 +95,7 @@ These come from the concept. Don't break them without updating the concept first
 
 - **Test-first:** write or update the test before the logic.
 - Unit tests for core logic. Adapters are tested against small **fixture repos** under `src/test/resources/fixtures/`.
+- Tool output in tests (compiler messages, build logs) uses the real tool's wording, copied from a real run. An invented message hid that javac's "does not override" names no method, so a rule matching on the name never fired for Java.
 - No real LLM in unit tests: use a fake `LlmClient`. Tests against a real Ollama are tagged and opt-in.
 - Test the failure paths, not only the happy path: invalid input, missing or malformed resources. For the CLI, assert exit code, stdout, and stderr on every path, because they are the contract with the pipeline.
 - A command that should run only some tests is checked once with the real build tool, not only by its command line. Lifecycles run other test tasks first (Maven's `verify` runs every surefire test before failsafe).

@@ -7,6 +7,9 @@ import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.Edit
 import gmbh.vanella.lector.core.FixRequest
+import gmbh.vanella.lector.core.Fragment
+import gmbh.vanella.lector.core.LanguageSupport
+import gmbh.vanella.lector.core.LineRange
 import gmbh.vanella.lector.core.LlmClient
 import gmbh.vanella.lector.core.Proposal
 import gmbh.vanella.lector.core.Recipe
@@ -17,6 +20,7 @@ import gmbh.vanella.lector.core.RecipeRunner
 import gmbh.vanella.lector.core.RecipeSelection
 import gmbh.vanella.lector.core.ResolvedVersions
 import gmbh.vanella.lector.core.Severity
+import gmbh.vanella.lector.core.SourceFacts
 import gmbh.vanella.lector.core.runProcess
 import gmbh.vanella.lector.ecosystems.jvm.MavenVersionScheme
 import kotlinx.serialization.json.Json
@@ -98,6 +102,22 @@ class HealCommandTest {
         )
         assertTrue(stdout.indexOf("Recipe (applied)") < stdout.indexOf("Fix loop ("))
         assertTrue(stdout.indexOf("Fix loop (") < stdout.indexOf("Caused by the update (0)"))
+    }
+
+    @Test
+    fun `the report lists each guardrail rejection and the count per rule, and a lower test count keeps exit 0`() {
+        val stub = Edit("App.java", "broken();", "return null;")
+        val adapter = FakeAdapter(testsRun = { dir -> if ("broken()" in dir.resolve("App.java").readText()) 5 else 3 })
+
+        val result = command(llm = ScriptedLlm(stub, fix), adapter = adapter).test("$repo $args")
+
+        assertContains(
+            result.stdout,
+            "1. symbol:broken, 1 diagnostics: rejected: the edits break the guardrails:\n" +
+                "       - [stubbing] App.java:3: the edits add the placeholder `return null;` in place of logic\n",
+        )
+        assertContains(result.stdout, "  Rejections per guardrail (1):\n    - stubbing: 1\n  Tests run in the final verify: 3\n")
+        assertEquals(0, result.statusCode, "the runtime test count is reported, not enforced")
     }
 
     @Test
@@ -247,6 +267,15 @@ class HealCommandTest {
     }
 
     @Test
+    fun `the diff-size limit can be set, and an attempt above it is rejected by the guardrails`() {
+        val result = command(llm = ScriptedLlm(fix)).test("$repo $args --max-changed-lines 1 --max-attempts 1")
+
+        assertContains(result.stdout, "rejected: the edits break the guardrails:")
+        assertContains(result.stdout, "- [diff-size] the edits change 2 lines (added plus removed), the limit is 1")
+        assertEquals(1, result.statusCode)
+    }
+
+    @Test
     fun `help shows the defaults of the Ollama and budget options`() {
         val result = lector().test("heal --help")
 
@@ -257,6 +286,7 @@ class HealCommandTest {
             "--max-attempts" to "20",
             "--time-limit" to "30",
             "--max-attempts-without-progress" to "2",
+            "--max-changed-lines" to "50",
         ).forEach { (option, default) ->
             val line =
                 result.stdout
@@ -295,10 +325,13 @@ class HealCommandTest {
 
     @Test
     fun `a budget below 1 is a usage error with exit 2`() {
-        val run = lector().executeInProcess("heal", repo.toString(), *args.split(" ").toTypedArray(), "--max-attempts", "0")
+        listOf("--max-attempts", "--max-changed-lines").forEach { option ->
+            val run = lector().executeInProcess("heal", repo.toString(), *args.split(" ").toTypedArray(), option, "0")
 
-        assertContains(run.stderr, "--max-attempts")
-        assertEquals(2, run.exitCode)
+            assertEquals("", run.stdout)
+            assertContains(run.stderr, option)
+            assertEquals(2, run.exitCode)
+        }
     }
 
     @Test
@@ -378,12 +411,35 @@ class HealCommandTest {
      * `App.java` that calls `broken()` is a compile error.
      */
     private inner class FakeAdapter(
+        private val testsRun: (Path) -> Int? = { null },
         recipeRun: (Path) -> RecipeRun = { dir ->
             dir.resolve("pom.xml").writeText("<parent>3.4.5</parent>\n")
             RecipeRun.Applied
         },
     ) : EcosystemAdapter {
         override val ecosystem = "maven"
+
+        // Every `return null` is a stub.
+        override val languageSupport =
+            LanguageSupport { _, content ->
+                SourceFacts(
+                    stubs =
+                        content.lines().withIndex().filter { "return null" in it.value }.map { (index, line) ->
+                            Fragment(LineRange(index + 1, index + 1), line.trim())
+                        },
+                )
+            }
+
+        override fun isEditable(file: String) = true
+
+        override fun testsRun(repo: Path) = testsRun.invoke(repo)
+
+        override fun testDisablingConfig(
+            file: String,
+            content: String,
+            line: Int,
+        ): String? = null
+
         override val versionScheme = MavenVersionScheme
 
         override val recipeRunner = RecipeRunner { dir, _ -> recipeRun(dir) }

@@ -15,11 +15,17 @@ interface EcosystemAdapter {
     /** Reads the effective versions of a working tree. Optional: null if the ecosystem can't. */
     val resolvedVersions: ResolvedVersions?
 
+    /** The facts about source files that the guardrails check. */
+    val languageSupport: LanguageSupport
+
     /** Whether this adapter handles the repository. */
     fun detect(repo: Path): Boolean
 
     /** Builds the repository and runs its tests. Returns every problem found; empty means green. */
     fun verify(repo: Path): List<Diagnostic>
+
+    /** The number of tests the last [verify] of [repo] ran, or null if it can't tell, e.g. because no test ran. */
+    fun testsRun(repo: Path): Int?
 
     /**
      * Runs only the tests that the given test failures come from. Returns the problems of that run: the tests that
@@ -48,4 +54,17 @@ interface EcosystemAdapter {
 
     /** Whether [file] (relative to the repository root, `/` as separator) is a build file, e.g. `pom.xml`. */
     fun isBuildFile(file: String): Boolean
+
+    /**
+     * The editable scope: whether the model may edit [file] (relative to the repository root, `/` as separator). False
+     * for build output and generated code (rule 5).
+     */
+    fun isEditable(file: String): Boolean
+
+    /** What in [line] (1-based) of the build file [file] with [content] disables tests, as a reason for the model, or null. */
+    fun testDisablingConfig(
+        file: String,
+        content: String,
+        line: Int,
+    ): String?
 }

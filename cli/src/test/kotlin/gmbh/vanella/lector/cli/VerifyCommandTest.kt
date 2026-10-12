@@ -6,6 +6,7 @@ import gmbh.vanella.lector.core.BaseCommit
 import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
+import gmbh.vanella.lector.core.LanguageSupport
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.Verification
@@ -153,6 +154,17 @@ class VerifyCommandTest {
     }
 
     @Test
+    fun `an error, like a native library that doesn't load, exits with 2 too`() {
+        val adapter = FakeAdapter(failure = UnsatisfiedLinkError("no tree-sitter for this platform"))
+
+        val result = command(adapter).test(repo.toString())
+
+        assertEquals("", result.stdout)
+        assertEquals("Error: Unexpected failure: java.lang.UnsatisfiedLinkError: no tree-sitter for this platform\n", result.stderr)
+        assertEquals(2, result.statusCode)
+    }
+
+    @Test
     fun `an unknown format is a usage error with exit 2`() {
         val run = lector(FakeAdapter()).executeInProcess("verify", repo.toString(), "--format", "xml")
 
@@ -201,11 +213,24 @@ class VerifyCommandTest {
         private val verify: List<Diagnostic> = emptyList(),
         private val headRerun: List<Diagnostic> = emptyList(),
         private val baseRun: List<Diagnostic> = emptyList(),
-        private val failure: RuntimeException? = null,
+        private val failure: Throwable? = null,
     ) : EcosystemAdapter {
         var verifyCalls = 0
 
         override val ecosystem = "maven"
+
+        override val languageSupport = LanguageSupport { _, _ -> null }
+
+        override fun isEditable(file: String) = true
+
+        override fun testsRun(repo: Path): Int? = null
+
+        override fun testDisablingConfig(
+            file: String,
+            content: String,
+            line: Int,
+        ): String? = null
+
         override val versionScheme = MavenVersionScheme
         override val recipeRunner = null
         override val resolvedVersions = null

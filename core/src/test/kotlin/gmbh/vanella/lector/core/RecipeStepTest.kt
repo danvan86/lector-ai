@@ -66,6 +66,40 @@ class RecipeStepTest {
     }
 
     @Test
+    fun `a recipe that deletes a method is kept, because the guardrails check only the model's edits`() {
+        repo.resolve("App.java").writeText("void run() {}\nvoid stop() {}\n")
+        git("add", ".")
+        git("commit", "--quiet", "-m", "app")
+        val methods =
+            LanguageSupport { _, content ->
+                SourceFacts(
+                    methods =
+                        content.lines().filter { it.isNotEmpty() }.mapIndexed { index, line ->
+                            Method(
+                                "",
+                                line,
+                                LineRange(index + 1, index + 1),
+                                "",
+                            )
+                        },
+                )
+            }
+        val adapter =
+            FakeAdapter(
+                run = { dir ->
+                    dir.resolve("App.java").writeText("void run() {}\n")
+                    RecipeRun.Applied
+                },
+                languageSupport = methods,
+            )
+
+        val result = applyRecipe(change, adapter, index, repo, base = null)
+
+        assertEquals(RecipeOutcome.Applied(listOf("App.java"), emptyList()), result.outcome)
+        assertEquals("void run() {}\n", repo.resolve("App.java").readText())
+    }
+
+    @Test
     fun `a change that is not an upgrade runs no recipe`() {
         val adapter = FakeAdapter()
 
@@ -241,10 +275,22 @@ class RecipeStepTest {
         private val base: Map<String, String> = emptyMap(),
         private val unreadable: Set<Path> = emptySet(),
         private val run: (Path) -> RecipeRun = { RecipeRun.Applied },
+        override val languageSupport: LanguageSupport = LanguageSupport { _, _ -> null },
     ) : EcosystemAdapter {
         val runs = mutableListOf<Recipe>()
 
         override val ecosystem = "test"
+
+        override fun isEditable(file: String) = true
+
+        override fun testsRun(repo: Path): Int? = null
+
+        override fun testDisablingConfig(
+            file: String,
+            content: String,
+            line: Int,
+        ): String? = null
+
         override val versionScheme = DottedVersions
 
         override var recipeRunner: RecipeRunner? =

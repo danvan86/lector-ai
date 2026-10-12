@@ -19,20 +19,36 @@ internal object TestReports {
     private val reportPath = Regex("""^(?:(.+)/)?target/(surefire|failsafe)-reports/TEST-[^/]+\.xml$""")
     private val stackFrame = Regex("""^\s*at (?:\S+/)?([\w.$]+)\.[^.(]+\(([^:()]+):(\d+)\)""")
 
-    fun parse(repo: Path): List<Diagnostic> {
-        val reports =
-            Files.walk(repo).use { paths ->
+    fun parse(repo: Path): List<Diagnostic> =
+        reports(repo).flatMap { report ->
+            val (module, tool) = report.destructured
+            parseReport(repo, report.value, repo.resolve(module), tool)
+        }
+
+    /** The number of test cases in the reports, or null if there are none or one can't be read. */
+    fun count(repo: Path): Int? {
+        val reports = reports(repo)
+        return try {
+            reports.sumOf { testcases(repo.resolve(it.value)).length }.takeIf { reports.isNotEmpty() }
+        } catch (_: SAXException) {
+            null
+        } catch (_: IOException) {
+            null
+        }
+    }
+
+    private fun reports(repo: Path): List<MatchResult> =
+        Files
+            .walk(repo)
+            .use { paths ->
                 paths
                     .asSequence()
                     .filter { it.isRegularFile() }
                     .mapNotNull { reportPath.matchEntire(relativeTo(repo, it)) }
                     .toList()
-            }
-        return reports.sortedBy { it.value }.flatMap { report ->
-            val (module, tool) = report.destructured
-            parseReport(repo, report.value, repo.resolve(module), tool)
-        }
-    }
+            }.sortedBy { it.value }
+
+    private fun testcases(report: Path) = xmlDocumentBuilder().parse(report.toFile()).getElementsByTagName("testcase")
 
     private fun parseReport(
         repo: Path,
@@ -41,7 +57,7 @@ internal object TestReports {
         tool: String,
     ): List<Diagnostic> =
         try {
-            val testcases = xmlDocumentBuilder().parse(repo.resolve(report).toFile()).getElementsByTagName("testcase")
+            val testcases = testcases(repo.resolve(report))
             (0 until testcases.length)
                 .map { testcases.item(it) as Element }
                 .mapNotNull { failure(repo, module, tool, it) }

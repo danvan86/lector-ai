@@ -36,10 +36,10 @@ flowchart LR
 
 | Module | Contents | Depends on |
 |---|---|---|
-| `core` | Data model, ports, attribution, process runner (M1), recipe step (M2), fix loop (M3). Will also hold the pipeline and guardrails. | Nothing, by construction: its build file has no `project(…)` dependency. |
+| `core` | Data model, ports, attribution, process runner (M1), recipe step (M2), fix loop (M3), guardrails (M4). Will also hold the pipeline. | Nothing, by construction: its build file has no `project(…)` dependency. |
 | `recipes` | The recipe index (M2): generated at build time by its `generator` source set, read at run time by `BundledRecipeIndex`. | `core`, kotlinx-serialization-json, SLF4J API. OpenRewrite only in the `generator` source set, never at run time. |
 | `llm` | The Ollama client and the prompt (M3). | `core`, kotlinx-serialization-json, SLF4J API. No HTTP library: the JDK client. |
-| `ecosystems:jvm` | The Maven adapter (M1, recipe runner and resolved versions since M2, cluster keys and `javap` grounding since M3). | `core`, `maven-artifact`. |
+| `ecosystems:jvm` | The Maven adapter (M1, recipe runner and resolved versions since M2, cluster keys and `javap` grounding since M3, tree-sitter language support, scope, and build-file blocklist since M4). | `core`, `maven-artifact`, `tree-sitter` with the Java and Kotlin grammars (JNI). |
 | `cli` | `lector` command, version lookup, logging setup. The composition root. | `core`, `recipes`, `llm`, `ecosystems:jvm`, Clikt, kotlinx-serialization-json, SLF4J API (`slf4j-simple` at runtime). |
 | `buildSrc` | The convention plugin. Not a product module. | Kotlin, ktlint, detekt, and Kover Gradle plugins. |
 
@@ -209,4 +209,4 @@ flowchart LR
 | Full `clikt` artifact, not `clikt-core` | `clikt-core` exits with `0` and prints errors to stdout unless `main` wires streams and exit codes by hand. The full artifact pulls in Mordant with JNA and needs `--enable-native-access=ALL-UNNAMED` in the start script and test JVMs. | With the container image in M5 |
 | detekt 2.x alpha | detekt 1.x can't analyze Kotlin 2.4. | When 2.0 is stable |
 | foojay version in `settings.gradle.kts` | A settings `plugins {}` block can't read the version catalog. | — |
-| Domain types and ports arrive with the milestones that need them | M1 added `Diagnostic`, `Verification`, and `EcosystemAdapter`; M2 added `DependencyChange`, `VersionScheme`, and the recipe ports; M3 added `Edit`, `LlmClient`, and the adapter's `ground`, `clusterKey`, and `isBuildFile`. No type ahead of its first use. | Each milestone |
+| Domain types and ports arrive with the milestones that need them | M1 added `Diagnostic`, `Verification`, and `EcosystemAdapter`; M2 added `DependencyChange`, `VersionScheme`, and the recipe ports; M3 added `Edit`, `LlmClient`, and the adapter's `ground`, `clusterKey`, and `isBuildFile`; M4 added `LanguageSupport`, `SourceFacts`, `Guardrail`, and the adapter's `languageSupport`, `isEditable`, `testDisablingConfig`, and `testsRun`. No type ahead of its first use. | Each milestone |

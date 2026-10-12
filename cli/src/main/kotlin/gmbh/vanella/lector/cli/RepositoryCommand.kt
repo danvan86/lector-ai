@@ -49,22 +49,24 @@ internal abstract class RepositoryCommand(
         base: BaseCommit?,
     ): Report
 
-    // Exit 1 means "caused by the update". Anything else that goes wrong is the tool's failure, so it must exit with 2.
+    // Exit 1 means "caused by the update". Anything else that goes wrong is the tool's failure, so it must exit with 2:
+    // errors too, like a native library that doesn't load, which would otherwise end the JVM with 1.
     @Suppress("TooGenericExceptionCaught")
     final override fun run() {
         val report =
             try {
                 report()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 throw toolError(e)
             }
         echo(if (format == "json") report.json.toString() else report.text)
         if (report.verification.causedByUpdate.isNotEmpty()) throw ProgramResult(1)
     }
 
-    private fun toolError(e: Exception): CliktError {
+    private fun toolError(e: Throwable): CliktError {
         val message = if (e is ToolError) e.message else "Unexpected failure: $e"
-        return CliktError("Error: $message", e, statusCode = TOOL_ERROR)
+        // Clikt keeps only an Exception as the cause.
+        return CliktError("Error: $message", e as? Exception ?: RuntimeException(e), statusCode = TOOL_ERROR)
     }
 
     private fun report(): Report {

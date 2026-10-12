@@ -24,6 +24,8 @@ fun attribute(
     base: BaseCommit?,
 ): Verification {
     val (tests, buildProblems) = adapter.verify(repo).partition { it.test != null }
+    // Read before the reruns, which run only some tests.
+    val testsRun = adapter.testsRun(repo)
     val stillFailing =
         if (tests.isEmpty()) {
             tests
@@ -39,10 +41,10 @@ fun attribute(
             failedTests(base.checkout { adapter.runTests(it, stillFailing) }, "base commit")
         }
     if (failedOnBase == null) {
-        return Verification(causedByUpdate = buildProblems, flaky = flaky, unattributed = stillFailing)
+        return Verification(causedByUpdate = buildProblems, flaky = flaky, unattributed = stillFailing, testsRun = testsRun)
     }
     val (preExisting, broken) = stillFailing.partition { it.test in failedOnBase }
-    return Verification(causedByUpdate = buildProblems + broken, preExisting = preExisting, flaky = flaky)
+    return Verification(causedByUpdate = buildProblems + broken, preExisting = preExisting, flaky = flaky, testsRun = testsRun)
 }
 
 /**

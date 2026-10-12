@@ -6,13 +6,13 @@ Milestone: [M3](../features.md#m3--fix-loop-cli-only-no-ci-yet-) · Spec: [`m3-f
 >
 > - `lector heal <repo> --package … --from … --to …` runs M2's recipe step, commits the recipe's result, then runs `FixLoop` in `core`: one cluster of diagnostics caused by the update per attempt, a grounded `FixRequest` to the `LlmClient` port, search/replace `Edit`s back, applied, verified, and either committed or reset. The exit code follows the final verification, like `verify`.
 > - Ports: `LlmClient.propose(FixRequest): Proposal` (`LlmClient.kt`), and on `EcosystemAdapter` `ground`, `clusterKey`, `isBuildFile`. The only implementations are `OllamaClient` in the new module `llm` and `MavenAdapter` (`ClusterKeys`, `JavapGrounding`). `core` knows no LLM vendor and no language.
-> - An attempt is accepted only if `Progress` (build errors without a location, compile errors, test failures, compared in that order) gets lower. Accepted: one local commit by `lector` with the edited, tracked files only. Anything else: `GitWorkingTree.reset()`, also on a `ToolError` inside the attempt.
+> - An attempt is accepted only if `Progress` (build errors without a location, compile errors, test failures, compared in that order) gets lower. Accepted: one local commit by `lector` with the edited, tracked files only. Anything else: `GitWorkingTree.reset()`, also on any exception or error inside the attempt. Since M4, every attempt passes the [guardrails](guardrails.md) before it is verified.
 > - The prompt's limits live in `Prompt` (`CONTEXT_TOKENS`, `ANSWER_TOKENS`, `MAX_CHARS`), the answer's structure in `FixSchema`, the budget defaults in `Budgets`, the default model in `DEFAULT_MODEL` (`HealCommand.kt`), and the Ollama image for the real-model test in `gradle/libs.versions.toml`.
 > - Easiest rules to break: never send diagnostics that aren't `causedByUpdate` to the model; never trim the errors or the code in a request; never repair an edit that doesn't apply (rule 4); never stage more than the edited files in a fix commit (`git add --all` would take build output).
 
 ## Overview
 
-The recipe covers the known migration patterns; the fix loop handles what is left. It gives a local model the errors the update caused, the code around them, and the real API of the new version, and only allows small edits that are verified one attempt at a time. Every accepted fix is a commit of its own, so a reviewer sees each step and a rejected attempt is undone by Git. M3 runs from the CLI only: no guardrails (M4), no push or PR (M5).
+The recipe covers the known migration patterns; the fix loop handles what is left. It gives a local model the errors the update caused, the code around them, and the real API of the new version, and only allows small edits that are verified one attempt at a time. Every accepted fix is a commit of its own, so a reviewer sees each step and a rejected attempt is undone by Git. It runs from the CLI only: no push or PR (M5). The [guardrails](guardrails.md) (M4) check every attempt before it is verified.
 
 ```mermaid
 flowchart LR
@@ -45,7 +45,7 @@ flowchart LR
 | | `FixSchema.kt` | The answer's JSON schema (`analysis`, `rationale`, `edits`) and `parse()`, which strips code fences and turns every mismatch into `Proposal.Invalid`. |
 | `ecosystems:jvm` | `ClusterKeys.kt` | Cluster keys from javac, kotlinc, and Maven messages; `missingSymbol()` for grounding. |
 | | `JavapGrounding.kt` | `javap -public` on the new version's JARs in the local Maven repository. |
-| | `MavenAdapter.kt` | Wires both, and `isBuildFile`: `pom.xml` at any depth. Takes `localRepository` (default `~/.m2/repository`). |
+| | `MavenAdapter.kt` | Wires both, and `isBuildFile`: `pom.xml` at any depth (since M4 also `mvnw`, `mvnw.cmd`, and `.mvn/…`). Takes `localRepository` (default `~/.m2/repository`). |
 | `cli` | `HealCommand.kt` | The `heal` subcommand: clean check, recipe, recipe commit, fix loop, report. Ollama and budget options. |
 | | `UpdateCommand.kt` | `--package`, `--from`, `--to`, and `change(adapter)`, shared by `migrate` and `heal`. Extends `RepositoryCommand`. |
 | | `FixLoopReport.kt` | The fix-loop section in text and JSON; `SHORT_COMMIT`. |
@@ -107,10 +107,14 @@ flowchart TB
     req["FixRequest<br/>(temperature 0, or 0.3 on a retry)"] --> propose["llm.propose()"]
     propose --> invalid{"Proposal.Invalid<br/>or no edits?"}
     invalid -- yes --> rej["Rejected<br/>GitWorkingTree.reset()"]
-    invalid -- no --> before["build file touched?<br/>read resolved versions (once per loop)"]
+    invalid -- no --> scope{"scope guardrail<br/>(M4)"}
+    scope -- violation --> rej
+    scope -- ok --> before["build file touched?<br/>read resolved versions (once per loop)"]
     before --> apply["applyEdits()"]
     apply -- "doesn't apply,<br/>or changes nothing" --> rej
-    apply --> down{"build file touched:<br/>any package lower?"}
+    apply --> guard{"Guardrails<br/>(M4)"}
+    guard -- violation --> rej
+    guard -- ok --> down{"build file touched:<br/>any package lower?"}
     down -- yes --> rej
     down -- no --> verify["attribute(adapter, repo, base)"]
     verify --> prog{"Progress lower?"}
@@ -123,12 +127,13 @@ flowchart TB
 | Answer | `Proposal.Invalid` or an empty edit list | `the model's answer is invalid: …`, `the model proposed no edits` |
 | Versions before | Read with `resolvedVersions` before the loop's first build-file edit, then kept | `the resolved versions can't be read, so a downgrade can't be ruled out: …` |
 | Apply | Each `search` matches exactly once: first exactly, then line by line with whitespace ignored (indentation, trailing blanks, runs of spaces). The file must exist in the repository. Edits apply in order; if one fails, nothing is written. | `<file>: no such file in the repository`, `<file>: the search text is not in the file`, `… matches n times …`, `the edits change nothing` |
+| Guardrails | Scope on the edits' paths before anything is read or written, the other rules on the written files. See [Guardrails](guardrails.md). | `the edits break the guardrails:` and one `- [rule] file:line: reason` line per violation |
 | Downgrades | Only if an edit touched a build file. `downgrades(versionChanges(before, after))`, the PR's own package included. Removing a package is not a downgrade (review D2). | `the edits move packages to lower versions: …` |
 | Verify | M1's `attribute()` with the base commit: compile stage first, tests only once compile is clean. | — |
 | Progress | `Progress.of(after) < Progress.of(before)`, stage by stage. 1/0/0 → 0/50/0 is progress; 0/0/3 → 0/1/0 is not. | `no progress: <before> -> <after>` plus the first ten errors after the edits, with their whole message |
 | Commit | Subject: the rationale's first non-blank line, else `Fix <cluster>`. Body: `Addresses:` and the cluster's diagnostics. Staged: the edited files that Git tracks (an edit to an ignored file is applied but not committed). | — |
 
-A `ToolError` inside `judge` (a Maven timeout, a failing `git`) resets the tree and is rethrown: `heal` exits `2`, and the commits made so far stay. A `ToolError` from `propose` (Ollama unreachable) happens before any edit.
+Any `Throwable` inside `judge` (a Maven timeout, a failing `git`, a parser that doesn't load) resets the tree and is rethrown: `heal` exits `2`, and the commits made so far stay. A `ToolError` from `propose` (Ollama unreachable) happens before any edit.
 
 ### Budgets and stopping
 
@@ -160,15 +165,15 @@ The time budget is checked between attempts only; one attempt can take up to 15 
 |---|---|---|
 | `clusterKey` | `ClusterKeys.of()` | `artifact:<group>:<artifact>` from Maven's `Could not find artifact`; `package:<name>` from javac's `package … does not exist`; `symbol:<name>` from javac's `symbol:` line or kotlinc's `Unresolved reference` (2.x and 1.9). Test failures have no key. English messages only. |
 | `ground` | `JavapGrounding.ground()` | JARs: every artifact of the package's group at `toVersion` under `localRepository` (no sources, Javadoc, or test JARs). Classes: the erroring files' imports and qualified names in the messages, plus classes in those packages or anywhere in the JARs that declare or are named like the missing symbol, at most 300, nested classes left out. One `javap -public -cp <jars> <classes>` run, 2 min timeout; a failure is logged and yields what was parsed. Nothing is downloaded. |
-| `isBuildFile` | `MavenAdapter` | `pom.xml` or `*/pom.xml`. |
+| `isBuildFile` | `MavenAdapter` | `pom.xml` or `*/pom.xml`, and since M4 `mvnw`, `mvnw.cmd`, and `.mvn/…` at the root: Maven reads them on every run, and they can set properties. |
 
 Grounding is how `MoreObjects.firstNonNull` reaches the model for Guava's removed `Objects.firstNonNull`: the symbol `firstNonNull` is missing, and `MoreObjects` in the imported package declares it.
 
 ## CLI contract
 
-`lector heal <repo> --package <package> --from <version> --to <version> [--base <git-ref>] [--release-notes <file>] [--format text|json] [--maven-settings <file>] [--ollama-url <url>] [--model <name>] [--max-attempts-per-cluster <n>] [--max-attempts <n>] [--time-limit <minutes>] [--max-attempts-without-progress <n>]`
+`lector heal <repo> --package <package> --from <version> --to <version> [--base <git-ref>] [--release-notes <file>] [--format text|json] [--maven-settings <file>] [--ollama-url <url>] [--model <name>] [--max-attempts-per-cluster <n>] [--max-attempts <n>] [--time-limit <minutes>] [--max-attempts-without-progress <n>] [--max-changed-lines <n>]`
 
-Defaults: `--ollama-url http://localhost:11434`, `--model qwen2.5-coder:7b`, budgets as above. `heal --help` shows them.
+Defaults: `--ollama-url http://localhost:11434`, `--model qwen2.5-coder:7b`, budgets as above, `--max-changed-lines 50` (the [diff-size guardrail](guardrails.md#the-rules)). `heal --help` shows them.
 
 | Situation | stdout | stderr | Exit |
 |---|---|---|---|
@@ -191,9 +196,12 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
     2. symbol:firstNonNull, 1 diagnostics: accepted: 0 build errors, 1 compile errors, 0 test failures -> 0 build errors, 0 compile errors, 0 test failures
   Fixes (1):
     - 3f2a1b9 Use MoreObjects.firstNonNull
+  Rejections per guardrail (0):
+    none
+  Tests run in the final verify: unknown
 ```
 
-**JSON report:** one line, `{"recipe": {...}, "recipeCommit": "<sha>" | null, "fixLoop": {...}, "verification": {...}}`. `fixLoop` has `stopReason` (`nothingLeft`, `attemptBudget`, `timeBudget`, `noProgress`, `clusterBudgets`) and `attempts`, each with `cluster`, `diagnostics`, `edits` (`file`, `search`, `replace`), `outcome` (`accepted` / `rejected`), `reason`, `commit`, and `rationale` (both `null` when rejected). `recipe` and `verification` are M2's and M1's.
+**JSON report:** one line, `{"recipe": {...}, "recipeCommit": "<sha>" | null, "fixLoop": {...}, "verification": {...}}`. `fixLoop` has `stopReason` (`nothingLeft`, `attemptBudget`, `timeBudget`, `noProgress`, `clusterBudgets`) and `attempts`, each with `cluster`, `diagnostics`, `edits` (`file`, `search`, `replace`), `outcome` (`accepted` / `rejected`), `reason`, `violations` (M4), `commit`, and `rationale` (both `null` when rejected). Since M4, `fixLoop` also has `rejectionsPerGuardrail` and `testsRun` ([Guardrails](guardrails.md#report-and-cli)). `recipe` and `verification` are M2's and M1's.
 
 ## Git
 
@@ -226,9 +234,8 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
 | Feedback after no progress names the errors after the edits | With only the counts, the model repeated its edit. | — |
 | Clusters by the adapter's key, from English compiler messages | Error messages are language- and locale-specific. The container image must run Maven in English. | M5 image |
 | Grounding reads `~/.m2/repository` only | A `localRepository` in the Maven settings is not followed. | When a user's setup needs it |
-| Snippets are ±40 lines, not the enclosing method | Needs a parser. | M4 (tree-sitter) |
+| Snippets are ±40 lines, not the enclosing method | Needs a parser; M4's `LanguageSupport` reports methods, but snippets don't use it yet. | Open |
 | Time budget checked between attempts only | Needs a deadline for `verify` and `runTests` (review D1). | M5 |
-| Removing the PR's own package is not a downgrade | Open decision (review D2). | M4 |
+| Removing the PR's own package is not a downgrade | Open decision (review D2); M4 left the rule as it is. | Open |
 | Errors and code that don't fit are sent in full, with a warning | Open decision: send only as many diagnostics as fit (review D3). | M6 |
-| No guardrails, no check for generated or ignored files | M4. An edit to an ignored file is applied but not committed. | M4 |
 | Commits stay local, identity `lector` | No push, PR, or token before M5. | M5 |

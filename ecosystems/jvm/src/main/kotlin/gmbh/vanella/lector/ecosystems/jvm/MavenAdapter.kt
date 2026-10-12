@@ -3,6 +3,7 @@ package gmbh.vanella.lector.ecosystems.jvm
 import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
+import gmbh.vanella.lector.core.LanguageSupport
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.RecipeRun
 import gmbh.vanella.lector.core.RecipeRunner
@@ -77,12 +78,17 @@ class MavenAdapter(
             }
         }
 
+    override val languageSupport: LanguageSupport = JvmLanguageSupport
+
     override fun detect(repo: Path) = repo.resolve("pom.xml").isRegularFile()
 
     override fun verify(repo: Path): List<Diagnostic> {
         val root = repo.toRealPath()
         return maven(root, listOf("clean", "test-compile")).ifEmpty { maven(root, listOf("verify")) }
     }
+
+    /** The test cases in the surefire and failsafe reports that the last verify left. */
+    override fun testsRun(repo: Path) = TestReports.count(repo.toRealPath())
 
     /**
      * Reruns the classes of the given tests: unit tests with surefire (up to `test`), integration tests with failsafe
@@ -119,7 +125,20 @@ class MavenAdapter(
 
     override fun clusterKey(diagnostic: Diagnostic) = ClusterKeys.of(diagnostic)
 
-    override fun isBuildFile(file: String) = file == "pom.xml" || file.endsWith("/pom.xml")
+    /**
+     * The POMs, and what Maven reads at the root besides them: the wrapper and `.mvn/`. Both can set properties, so the
+     * blocklist and the downgrade check must see them.
+     */
+    override fun isBuildFile(file: String) =
+        file == "pom.xml" || file.endsWith("/pom.xml") || file == "mvnw" || file == "mvnw.cmd" || file.startsWith(".mvn/")
+
+    override fun isEditable(file: String) = JvmScope.isEditable(file)
+
+    override fun testDisablingConfig(
+        file: String,
+        content: String,
+        line: Int,
+    ) = MavenTestSkipping.reason(content, line)
 
     /** Runs Maven and collects the problems from its output and the test reports. */
     private fun maven(

@@ -47,9 +47,14 @@ class ClusterKeysTest {
     }
 
     @Test
-    fun `pom_xml is a build file, in every module`() {
+    fun `pom_xml in every module, the wrapper, and the Maven config are build files`() {
         assertEquals(true, adapter.isBuildFile("pom.xml"))
         assertEquals(true, adapter.isBuildFile("app/pom.xml"))
+        assertEquals(true, adapter.isBuildFile("mvnw"))
+        assertEquals(true, adapter.isBuildFile("mvnw.cmd"))
+        assertEquals(true, adapter.isBuildFile(".mvn/maven.config"))
+        assertEquals(true, adapter.isBuildFile(".mvn/wrapper/maven-wrapper.properties"))
+        assertEquals(false, adapter.isBuildFile("app/mvnw"), "Maven runs the wrapper at the root")
         assertEquals(false, adapter.isBuildFile("src/main/resources/pom.xml.template"))
         assertEquals(false, adapter.isBuildFile("src/main/java/App.java"))
     }

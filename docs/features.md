@@ -57,15 +57,15 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** at least one fixture repo goes from red to green using only the fix loop.
 
-## M4 – Guardrails ⬜
+## M4 – Guardrails ✅
 
 **Goal:** the LLM can't make the build green by deleting code.
 
-- `LanguageSupport` for JVM: tree-sitter grammar plus queries for methods, tests, assertions, suppressions
-- tree-sitter symbol comparison (no deleted methods)
-- Test protection: no deleted or skipped tests, no removed assertions, test count stays the same
-- Block stubs (`return null`, empty bodies) and new suppressions
-- Diff size limit, `editableScope` (no generated code)
+- `LanguageSupport` for JVM: tree-sitter grammars for Java and Kotlin plus queries for methods, tests, assertions, skips, suppressions, stubs
+- tree-sitter symbol comparison (no deleted methods; a method a current diagnostic points into may go only if it was empty or its body moves to a new method)
+- Test protection: no deleted or skipped tests, no removed or changed assertions, the static test count stays the same (Java and Kotlin)
+- Block stubs (`return null`, empty bodies, `TODO`) and new suppressions; reject edits that add parse errors
+- Diff size limit, `editableScope` (no generated code), build-file blocklist (no test-disabling config)
 - Close rule 5: reject edits to generated code (`editableScope`). Not enforced in M3
 
 **Done when:** every guardrail rule has a test that rejects a matching bad edit.

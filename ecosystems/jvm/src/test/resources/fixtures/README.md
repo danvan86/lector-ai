@@ -21,6 +21,11 @@ The effective POMs come from `help:effective-pom` (maven-help-plugin 3.5.2):
 They are cut down: only the first two entries of each `dependencyManagement` and `pluginManagement` are kept, and
 `properties`, `repositories`, `pluginRepositories`, and `reporting` are removed.
 
+## Source fixtures
+
+`language-facts/` holds one Java and one Kotlin file with each construct the guardrails look for (methods, test methods,
+assertions, skips, suppressions, stubs). They are only parsed, never compiled.
+
 ## How the output was captured
 
 Maven 3.9.12, JDK 25, English locale, run on a copy of the fixture:

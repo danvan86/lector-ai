@@ -15,6 +15,12 @@ potential-bugs:
   ElseCaseInsteadOfExhaustiveWhen:
     active: true
 
+complexity:
+  # An adapter implements every member of its port (EcosystemAdapter), which grows with the milestones. Those overrides
+  # are the port's size, not the class's.
+  TooManyFunctions:
+    ignoreOverridden: true
+
 style:
   # The migration steps are chains of checks that each may stop the run. Early exits keep them flat.
   ReturnCount:

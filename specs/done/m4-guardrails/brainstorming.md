@@ -148,7 +148,7 @@ The concept forbids "removed or weakened assertions". Changing an expected value
 |---|---|---|
 | Q1 | tree-sitter binding | `tree-sitter-ng` (prebuilt grammars for Java and Kotlin) |
 | Q2 | When guardrails run | Per attempt, before verify. Static test count per attempt (Q4); runtime count after the final verify, report only |
-| Q3 | Deleting a method | Allowed only if the method's name appears in a current `Diagnostic` |
+| Q3 | Deleting a method | ~~Allowed only if the method's name appears in a current `Diagnostic`~~ Revised in the review (F5): allowed only if a current `Diagnostic` points into the method and its logic survives (empty body, or the same body in a method the attempt added). A name in any message let unrelated methods go, javac's "does not override" names no method, and a diagnostic shows a method must change, not that its logic may go |
 | Q4 | Test-count baseline | Static count of test methods via tree-sitter must not drop; runtime count reported, not enforced |
 | Q5 | Stub/suppression scope | Only lines the attempt added or changed |
 | Q6 | Diff size | 50 changed lines per attempt, configurable |

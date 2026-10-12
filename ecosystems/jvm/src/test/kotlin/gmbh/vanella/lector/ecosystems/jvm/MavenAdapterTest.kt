@@ -175,6 +175,16 @@ class MavenAdapterTest {
     }
 
     @Test
+    fun `the tests run are counted from the reports the verify left`() {
+        repo
+            .resolve("lib/target/surefire-reports/TEST-com.example.FooTest.xml")
+            .createParentDirectories()
+            .writeText("<testsuite><testcase name=\"a\"/><testcase name=\"b\"/></testsuite>")
+
+        assertEquals(2, MavenAdapter(plugins = PLUGINS) { _, _ -> ProcessResult(0, "") }.testsRun(repo))
+    }
+
+    @Test
     fun `doesn't run the tests when the code doesn't compile`() {
         val diagnostics =
             adapter(
