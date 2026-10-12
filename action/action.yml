@@ -1,7 +1,8 @@
 # The GitHub Action: runs `lector pr` in the tool image of the same version, on the PR the workflow was started for.
-# The workflow provides the checkout of the PR's head, the Ollama sidecar, and the GitHub App token (docs/setup.md).
+# The workflow provides the checkout of the PR's head, the Ollama sidecar, the GitHub App token, and for Dependabot PRs the
+# output of dependabot/fetch-metadata (docs/setup.md).
 name: lector-ai
-description: Fixes the build and test errors that a Renovate PR causes, with OpenRewrite and a local model, and reports on the PR.
+description: Fixes the build and test errors that a dependency PR causes, with OpenRewrite and a local model, and reports on the PR.
 inputs:
   token:
     description: The GitHub App's installation token (actions/create-github-app-token). Pushes with it start the PR's checks.
@@ -14,7 +15,19 @@ inputs:
     required: true
   bot-logins:
     description: The bots whose PRs are fixed, comma-separated
-    default: renovate[bot]
+    default: renovate[bot],dependabot[bot]
+  dependabot-metadata:
+    description: The updated-dependencies-json output of dependabot/fetch-metadata, for a Dependabot PR. Empty for any other PR.
+    default: ""
+  mode:
+    description: Where the fixes go, in-place onto the PR's branch or into a companion PR. Empty for the source's default (Renovate in-place, Dependabot and labelled PRs companion).
+    default: ""
+  source:
+    description: The update source that must take the PR, renovate, dependabot, or fallback. Empty to try them in this order.
+    default: ""
+  fallback-label:
+    description: The label that opts any other dependency PR of the repository in
+    default: lector
   ollama-url:
     description: The Ollama sidecar
     default: http://ollama:11434
@@ -42,11 +55,12 @@ inputs:
 runs:
   using: docker
   image: docker://ghcr.io/danvan86/lector:0.1.0
-  # The token and the optional settings go through the environment: a token on the command line shows in process lists,
-  # and an empty argument is easy to lose.
+  # The token and the optional values go through the environment: a token on the command line shows in process lists,
+  # and an empty argument is easy to lose. The metadata is JSON of any length.
   env:
     LECTOR_GITHUB_TOKEN: ${{ inputs.token }}
     LECTOR_MAVEN_SETTINGS: ${{ inputs.maven-settings }}
+    LECTOR_DEPENDABOT_METADATA: ${{ inputs.dependabot-metadata }}
   args:
     - pr
     - --bot-name
@@ -55,6 +69,10 @@ runs:
     - ${{ inputs.bot-email }}
     - --bot-logins
     - ${{ inputs.bot-logins }}
+    - --mode=${{ inputs.mode }}
+    - --source=${{ inputs.source }}
+    - --fallback-label
+    - ${{ inputs.fallback-label }}
     - --ollama-url
     - ${{ inputs.ollama-url }}
     - --model

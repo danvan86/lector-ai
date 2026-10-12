@@ -136,7 +136,7 @@ class PrCommandTest {
     }
 
     @Test
-    fun `a Renovate PR goes into a companion PR with the mode companion, and an empty mode means the source's`() {
+    fun `a Renovate PR goes into a companion PR with the mode companion, and an empty mode or source means none`() {
         host.pr = host.pr.copy(body = table(PARENT, "3.3.5", "3.4.1"))
 
         command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot --mode companion", envvars = token)
@@ -144,9 +144,8 @@ class PrCommandTest {
         assertEquals(listOf("heal/renovate/spring-boot -> renovate/spring-boot"), host.created)
 
         git("reset", "--hard", "--quiet", host.pr.headSha)
-        command(
-            llm = ScriptedLlm(fix),
-        ).test(listOf(repo.toString(), "--event", event.toString()) + bot.split(" ") + listOf("--mode", ""), envvars = token)
+        // As the action passes them: attached, so that an empty value isn't lost.
+        command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot --mode= --source=", envvars = token)
 
         assertEquals(listOf("Call fixed() instead of broken()"), host.pushed)
     }
