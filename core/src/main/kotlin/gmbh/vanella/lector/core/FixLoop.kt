@@ -128,13 +128,15 @@ class FixLoop(
 
         private fun attemptsOn(key: String) = attempts.filter { it.cluster == key }
 
+        // Whatever ends the run inside an attempt, a build the edits made hang or a parser that doesn't load, must not
+        // leave the edits behind. The exception goes on unchanged.
+        @Suppress("TooGenericExceptionCaught")
         private fun attempt(cluster: Cluster) {
             val proposal = llm.propose(request(cluster))
             val outcome =
                 try {
                     judge(cluster, proposal)
-                } catch (e: ToolError) {
-                    // A build that the edits made hang must not leave them behind.
+                } catch (e: Throwable) {
                     GitWorkingTree.reset(repo)
                     throw e
                 }

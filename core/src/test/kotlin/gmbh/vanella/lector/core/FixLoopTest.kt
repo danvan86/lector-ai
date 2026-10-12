@@ -186,6 +186,18 @@ class FixLoopTest {
     }
 
     @Test
+    fun `any other failure inside an attempt resets the working tree too`() {
+        val adapter = FakeAdapter(languageSupport = { _, _ -> throw UnsatisfiedLinkError("no tree-sitter for this platform") })
+        val initial = adapter.initial()
+
+        val error = assertFailsWith<UnsatisfiedLinkError> { loop(adapter, ScriptedLlm(edits(fix))).run(repo, context, initial) }
+
+        assertEquals("no tree-sitter for this platform", error.message)
+        assertEquals("", git("status", "--porcelain"))
+        assertEquals(app, repo.resolve("App.java").readText())
+    }
+
+    @Test
     fun `the first request on a cluster has temperature 0 and everything the model needs`() {
         val llm = ScriptedLlm(edits(fix))
         val adapter = FakeAdapter()
@@ -580,12 +592,17 @@ class FixLoopTest {
         private val versions: ((Path) -> Map<String, String>)? = { dir ->
             dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
         },
+        override val languageSupport: LanguageSupport =
+            LanguageSupport {
+                file,
+                content,
+                ->
+                if (file.endsWith(".java")) facts(content) else null
+            },
     ) : EcosystemAdapter {
         var verifyCalls = 0
 
         override val ecosystem = "test"
-
-        override val languageSupport = LanguageSupport { file, content -> if (file.endsWith(".java")) facts(content) else null }
 
         override fun isEditable(file: String) = true
 
