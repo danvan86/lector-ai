@@ -65,7 +65,13 @@ Every fix attempt from the LLM passes a set of deterministic guardrails before i
 
 **Why:** reviewers see what the model tried. The rejection rate per rule is a benchmark metric (concept section 11, M6).
 
-### 5. Tests and fixtures
+### 5. Removing the PR's own package
+
+- M3's downgrade check also rejects an attempt after which the PR's own package no longer resolves. Removing any other dependency stays allowed (Q7).
+
+**Why:** dropping the updated package is the same cheat as reverting the bump, and Q7's concern, legitimate removals of other dependencies, doesn't apply to it ([M3 review](../../done/m3-fix-loop/review.md) D2).
+
+### 6. Tests and fixtures
 
 - **One test per rule that rejects a matching bad edit**, in Java and, for the language-specific rules, in Kotlin.
 - **One test per rule that lets a legitimate edit pass**, e.g. a compile fix inside an assertion that a diagnostic points into, deleting a method named in a diagnostic, a 50-line edit.
@@ -125,10 +131,11 @@ The review agent checks every criterion and reports it as *met*, *not met*, or *
 | AC24 | An attempt that adds a parse error to a Java or Kotlin file is rejected | 3 | Test |
 | AC25 | The report lists every guardrail rejection with rule, file, line, and reason, plus a count per rule | 4 | CLI test with a fake `LlmClient` |
 | AC26 | The report shows the runtime test count of the final verify, and a lower count doesn't change the exit code | 3, 4 | CLI test |
-| AC27 | Every rule has at least one test that rejects a matching bad edit | 5 | Test sources: one rejecting test per rule in the table |
-| AC28 | Query tests cover methods, test methods, assertions, skips, suppressions, and stubs for Java and Kotlin | 5 | Test sources |
+| AC27 | Every rule has at least one test that rejects a matching bad edit | 6 | Test sources: one rejecting test per rule in the table |
+| AC28 | Query tests cover methods, test methods, assertions, skips, suppressions, and stubs for Java and Kotlin | 6 | Test sources |
 | AC29 | No guardrail calls the `LlmClient` | Don't | Guardrail sources: no `LlmClient` reference |
 | AC30 | No grammar other than Java and Kotlin is added | Don't | Version catalog |
+| AC31 | An attempt that removes the PR's own package is rejected as a downgrade; removing another dependency is not | 5 | Fix-loop unit tests |
 
 ## Docs to update
 
