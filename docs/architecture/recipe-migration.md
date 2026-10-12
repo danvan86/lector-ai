@@ -34,8 +34,8 @@ flowchart LR
 | | `VersionScheme.kt` | The port for version syntax: `compare`, `contains(selector, version)`, `compareSelectors`, `updateType`. |
 | | `Recipe.kt` | `Recipe(name, artifact, license)`, `RecipeMatch`, `RecipeSelection(chosen, alternatives)`, and the ports `RecipeIndex`, `RecipeRunner` (returns `RecipeRun.Applied` or `Failed`), `ResolvedVersions` (`package → version`). |
 | | `EcosystemAdapter.kt` | Grew by `ecosystem`, `versionScheme` (required), `recipeRunner` and `resolvedVersions` (nullable). |
-| | `RecipeStep.kt` | `applyRecipe(change, adapter, index, repo, base)`: the three downgrade rules, the run, and `RecipeOutcome`. |
-| | `GitWorkingTree.kt` | `requireClean`, `changedFiles`, `reset` (`git reset --hard` + `git clean -d --force`). Ignored files are kept. M3 added `commit` and `diff` for `heal`. |
+| | `RecipeStep.kt` | `applyRecipe(change, adapter, index, repo, base)`: the three downgrade rules, the run, and `RecipeOutcome`. Since M5 in two parts that `lector pr` also calls: `recipeBlocker()` (rules 1 and 2) and `runRecipe()` (the run and rule 3). `RecipeOutcome.reason(change)` is the reason text of every outcome but `Applied`. |
+| | `GitWorkingTree.kt` | `requireClean`, `changedFiles`, `reset` (`git reset --hard` + `git clean -d --force`). Ignored files are kept. M3 added `commit` and `diff` for `heal`, M5 the commit identity and `head`, `authorEmail`, `hasCommit` for `pr`. |
 | `recipes` | `BundledRecipeIndex.kt` | The `RecipeIndex` that ships: `load()` reads `recipe-index.json` from the classpath; `find()` selects and ranks. |
 | | `IndexFormat.kt` | `IndexEntry` and the JSON format `{"entries": [...]}`. |
 | | `IndexBuilder.kt` | Build-time logic: walks `RecipeTree`s, collects the version leaves, counts skipped ones. No OpenRewrite types. |
@@ -48,8 +48,8 @@ flowchart LR
 | | `XmlDocumentBuilder.kt` | The hardened XML parser (no DOCTYPE, errors off stderr) shared by `EffectivePom` and `TestReports`. |
 | `cli` | `MigrateCommand.kt` | The `migrate` subcommand: clean check, change, recipe, verify, report. |
 | | `UpdateCommand.kt` | `--package`, `--from`, `--to`, and the `DependencyChange`, shared with `heal` (M3). |
-| | `RepositoryCommand.kt` | What `verify`, `migrate`, and `heal` share: `<repo>`, `--base`, `--format`, `--maven-settings`, adapter detection, exit codes. |
-| | `RecipeReport.kt` | The recipe section in text and JSON. |
+| | `RepositoryCommand.kt` | What `verify`, `migrate`, and `heal` share (`pr` has its own options): `<repo>`, `--base`, `--format`, `--maven-settings`, adapter detection, exit codes. |
+| | `RecipeReport.kt` | The recipe section in text and JSON, with the reason from `RecipeOutcome.reason()`. |
 | | `RootCommand.kt` | Wires `MigrateCommand` with `MavenAdapter` and `BundledRecipeIndex.load()`. |
 
 ```mermaid
@@ -200,7 +200,7 @@ Recipe (applied)
 |---|---|---|---|
 | Unit | `test` | Selection and ranking on a hand-written index; index building, format, and report on fake `RecipeTree`s; the downgrade rules with a fake adapter on a temporary Git repo; Maven version scheme; effective-POM parsing on captured output; runner command lines with a fake process runner; the command through Clikt's `test()` | `BundledRecipeIndexTest`, `IndexBuilderTest`, `IndexFormatTest`, `IndexReportTest`, `RecipeStepTest`, `GitWorkingTreeTest`, `MavenVersionSchemeTest`, `EffectivePomTest`, `MavenAdapterTest`, `MavenPluginsTest`, `MigrateCommandTest`, `RecipeReportsTest` |
 | Unit, generator | `:recipes:test` | The `generator` source set with OpenRewrite on the test classpath: `skipReason()`, scanning real recipe JARs. `GeneratedIndexTest` checks the index as it ships (`UpgradeSpringBoot_3_4`, `3.4.x`, depth 1, `rewrite-spring`, MSAL). | `GenerateRecipeIndexTest`, `GeneratedIndexTest` |
-| End-to-end | `endToEndTest` | The start script: `--help` lists exactly `verify`, `migrate`, and `heal`; missing `--package` and a dirty tree exit `2`; the bundled index finds `UpgradeSpringBoot_3_4` and calls the plugin through a fake `mvnw`; `--format json` is one object with `recipe` and `verification` | `LectorEndToEndTest` |
+| End-to-end | `endToEndTest` | The start script: `--help` lists exactly `verify`, `migrate`, `heal`, and `pr`; missing `--package` and a dirty tree exit `2`; the bundled index finds `UpgradeSpringBoot_3_4` and calls the plugin through a fake `mvnw`; `--format json` is one object with `recipe` and `verification` | `LectorEndToEndTest` |
 | Integration | `:cli:integrationTest` (opt-in) | Real Maven on `cli/src/test/resources/fixtures/spring-boot-upgrade` (base 3.3.5, head bumps the parent to 3.4.1): the recipe is chosen and applied, the type-based rename `setConnectTimeout` → `connectTimeout` happens, verify passes, `pom.xml` has no plugin, `HEAD` is unchanged, one worktree is left. Needs `mvn` and network. | `MigrateIntegrationTest` |
 
 Fixtures: `recipes/src/test/resources/.../test-recipe-index.json` (hand-written), `ecosystems/jvm/src/test/resources/maven-output/effective-pom-*.xml` (captured, cut down; see `fixtures/README.md`), `cli/src/test/resources/fixtures/spring-boot-upgrade/` (`base/` and the `head/` overlay, committed by `FixtureRepository`).
@@ -218,4 +218,4 @@ Gates: the `generator` source set has its own ktlint and detekt tasks (`detektGe
 | Version changes beyond the PR are kept and reported | Framework recipes move managed dependencies on purpose. Only downgrades are rejected. | — |
 | Resolved versions keep the highest per package across modules | The port is `package → version`. A downgrade in one module can hide behind a higher version in another (review F4). | M7, or a multi-module fixture that shows it |
 | Only a `ToolError` from the runner resets the tree | Any other exception exits `2`; CI throws the checkout away (review F6). | M5, when the run commits the result |
-| One change per run, from explicit options | Easy to test and benchmark. Diff detection and grouped changes come with source adapters. | M5, M8 |
+| One change per `migrate` run, from explicit options | Easy to test and benchmark. `lector pr` (M5) takes every change of a grouped PR from the source adapter and runs each distinct recipe once ([PR pipeline](pr-pipeline.md)). Diff detection for PRs without a source adapter comes later. | M8 |
