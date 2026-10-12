@@ -160,8 +160,7 @@ class PrPipeline(
         val recipes = recipeStep.applications
         val commits = recipeStep.commits
         val afterRecipes = if (commits.isEmpty()) verification else attribute(adapter, repo, base)
-        val recipeDiff = commits.joinToString("\n") { GitWorkingTree.diff(repo, it) }.ifEmpty { null }
-        val context = FixContext(changes, releaseNotes, recipeDiff)
+        val context = FixContext(changes, releaseNotes, recipeStep.diff(repo))
         val fixLoop = FixLoop(adapter, llm, base, settings.budgets, settings.identity).run(repo, context, afterRecipes)
         val anyCommit = commits.isNotEmpty() || fixLoop.fixes.isNotEmpty()
         if (anyCommit && !host.push(repo, pr)) {

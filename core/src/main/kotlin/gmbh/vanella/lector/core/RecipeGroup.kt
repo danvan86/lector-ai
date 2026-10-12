@@ -17,6 +17,9 @@ data class RecipeGroupResult(
 ) {
     /** The commits of the recipes that changed anything, in order. */
     val commits get() = applications.mapNotNull { it.commit }
+
+    /** What the recipes changed in [repo], as one unified diff, or null if they changed nothing. */
+    fun diff(repo: Path) = commits.joinToString("\n") { GitWorkingTree.diff(repo, it) }.ifEmpty { null }
 }
 
 /**
