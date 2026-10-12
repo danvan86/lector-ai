@@ -89,7 +89,7 @@ internal class HealCommand(
         val change = change(adapter)
         val recipe = applyRecipe(change, adapter, index(), repo, base)
         val recipeCommit = commitRecipe(change, recipe)
-        val context = FixContext(change, releaseNotes?.readText(), recipeCommit?.let { GitWorkingTree.diff(repo, it) })
+        val context = FixContext(listOf(change), releaseNotes?.readText(), recipeCommit?.let { GitWorkingTree.diff(repo, it) })
         val budgets = Budgets(attemptsPerCluster, attempts, timeLimit.minutes, attemptsWithoutProgress, maxChangedLines)
         val result = FixLoop(adapter, llm(ollamaUrl, model), base, budgets).run(repo, context, attribute(adapter, repo, base))
         val recipeText = RecipeReport.text(change, recipe) + recipeCommit?.let { "\n  Commit: ${it.take(SHORT_COMMIT)}" }.orEmpty()

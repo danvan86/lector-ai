@@ -56,7 +56,7 @@ class OllamaClientTest {
 
     private val request =
         FixRequest(
-            change = DependencyChange("maven", "com.google.guava:guava", "18.0", "21.0", UpdateType.MAJOR),
+            changes = listOf(DependencyChange("maven", "com.google.guava:guava", "18.0", "21.0", UpdateType.MAJOR)),
             diagnostics = listOf(Diagnostic("App.java", 3, 9, null, "cannot find symbol", Severity.ERROR, "javac")),
             snippets = emptyList(),
             grounding = "",

@@ -26,9 +26,12 @@ data class Budgets(
     val changedLinesPerAttempt: Int = DEFAULT_MAX_CHANGED_LINES,
 )
 
-/** What every request carries besides its cluster: the change, and the release notes and recipe diff, if any. */
+/**
+ * What every request carries besides its cluster: the [changes] (one, or a group the bot updated together), and the
+ * release notes and recipe diff, if any.
+ */
 data class FixContext(
-    val change: DependencyChange,
+    val changes: List<DependencyChange>,
     val releaseNotes: String?,
     val recipeDiff: String?,
 )
@@ -79,13 +82,14 @@ data class FixLoopResult(
  * Lets the model fix what the update broke, one cluster at a time (concept section 6). Each attempt is applied, checked
  * by the [Guardrails] and for downgrades if it touched a build file, and verified on its own. It is accepted only if it makes [Progress]: then
  * it becomes one local commit. Otherwise the working tree is reset, and the next request on that cluster gets the
- * attempt and why it failed. The working tree must be clean when the loop starts.
+ * attempt and why it failed. The working tree must be clean when the loop starts. Commits are made as [identity].
  */
 class FixLoop(
     private val adapter: EcosystemAdapter,
     private val llm: LlmClient,
     private val base: BaseCommit?,
     private val budgets: Budgets = Budgets(),
+    private val identity: CommitIdentity = CommitIdentity.TOOL,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     private val guardrails = Guardrails(adapter, budgets.changedLinesPerAttempt)
@@ -159,10 +163,14 @@ class FixLoop(
             val earlier = attemptsOn(cluster.key)
             val buildFiles = GitWorkingTree.trackedFiles(repo).filter(adapter::isBuildFile)
             return FixRequest(
-                change = context.change,
+                changes = context.changes,
                 diagnostics = cluster.diagnostics,
-                snippets = codeSnippets(repo, cluster.diagnostics, buildFiles, context.change.toVersion),
-                grounding = adapter.ground(repo, context.change, cluster.diagnostics),
+                snippets = codeSnippets(repo, cluster.diagnostics, buildFiles, context.changes.map { it.toVersion }),
+                grounding =
+                    context.changes
+                        .map { adapter.ground(repo, it, cluster.diagnostics) }
+                        .filter { it.isNotEmpty() }
+                        .joinToString("\n\n"),
                 releaseNotes = context.releaseNotes,
                 recipeDiff = context.recipeDiff,
                 previousAttempts =
@@ -244,7 +252,7 @@ class FixLoop(
                     .map { it.trim() }
                     .firstOrNull { it.isNotEmpty() } ?: "Fix ${cluster.key}"
             val body = "Addresses:\n" + cluster.diagnostics.joinToString("\n", transform = ::describe)
-            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", edited(repo, proposal.edits))
+            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", edited(repo, proposal.edits), identity)
             verification = after
             return AttemptOutcome.Accepted(commit, subject, progressBefore, progressAfter)
         }

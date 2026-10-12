@@ -19,17 +19,17 @@ data class Snippet(
  * Overlapping windows in one file become one snippet. An error without a line gets the start of its file.
  *
  * A build error without a location (a missing artifact, an unreadable parent) points to no file. For those, every file in
- * [buildFiles] that contains [anchor] (the new version) gets the window around the first line that has it.
+ * [buildFiles] that contains one of the [anchors] (the new versions) gets the window around the first line that has one.
  */
 fun codeSnippets(
     repo: Path,
     diagnostics: List<Diagnostic>,
     buildFiles: List<String>,
-    anchor: String,
+    anchors: List<String>,
 ): List<Snippet> {
     val located = diagnostics.mapNotNull { diagnostic -> diagnostic.file?.let { it to diagnostic.line } }
     val buildErrors = diagnostics.any { it.file == null && it.test == null }
-    val anchored = if (buildErrors) buildFiles.mapNotNull { file -> anchorLine(repo, file, anchor)?.let { file to it } } else emptyList()
+    val anchored = if (buildErrors) buildFiles.mapNotNull { file -> anchorLine(repo, file, anchors)?.let { file to it } } else emptyList()
     return (located + anchored)
         .groupBy({ it.first }, { it.second })
         .toSortedMap()
@@ -39,10 +39,10 @@ fun codeSnippets(
 private fun anchorLine(
     repo: Path,
     file: String,
-    anchor: String,
+    anchors: List<String>,
 ): Int? {
     val path = repoFile(repo, file) ?: return null
-    val index = path.readLines().indexOfFirst { anchor in it }
+    val index = path.readLines().indexOfFirst { line -> anchors.any { it in line } }
     return if (index < 0) null else index + 1
 }
 

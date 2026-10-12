@@ -66,15 +66,22 @@ fun applyRecipe(
     repo: Path,
     base: BaseCommit?,
 ): RecipeResult {
-    val versions = adapter.versionScheme
-    if (versions.compare(change.toVersion, change.fromVersion) <= 0) return RecipeResult(RecipeSelection.NONE, RecipeOutcome.NotAnUpgrade)
-    if (base != null) {
-        val outdated = outdated(change, adapter, base)
-        if (outdated != null) return RecipeResult(RecipeSelection.NONE, outdated)
-    }
-    val selection = index.find(change, versions)
+    recipeBlocker(change, adapter, base)?.let { return RecipeResult(RecipeSelection.NONE, it) }
+    val selection = index.find(change, adapter.versionScheme)
     logger.info("Recipe for {}: {}, alternatives: {}", change, selection.chosen, selection.alternatives)
-    return RecipeResult(selection, run(selection, adapter, repo))
+    val chosen = selection.chosen
+    val outcome = if (chosen == null) RecipeOutcome.NoMatch else runRecipe(chosen.recipe, adapter, repo)
+    return RecipeResult(selection, outcome)
+}
+
+/** Rules 1 and 2: the outcome that stops any recipe for [change] before one is looked up, or null if none does. */
+fun recipeBlocker(
+    change: DependencyChange,
+    adapter: EcosystemAdapter,
+    base: BaseCommit?,
+): RecipeOutcome? {
+    if (adapter.versionScheme.compare(change.toVersion, change.fromVersion) <= 0) return RecipeOutcome.NotAnUpgrade
+    return if (base == null) null else outdated(change, adapter, base)
 }
 
 /** Rule 2: the outcome that stops the recipe, or null if the PR is not outdated. */
@@ -92,12 +99,12 @@ private fun outdated(
     }
 }
 
-private fun run(
-    selection: RecipeSelection,
+/** Runs [recipe] on [repo] with rule 3. Every outcome but [RecipeOutcome.Applied] leaves the working tree as it was. */
+fun runRecipe(
+    recipe: Recipe,
     adapter: EcosystemAdapter,
     repo: Path,
 ): RecipeOutcome {
-    val recipe = (selection.chosen ?: return RecipeOutcome.NoMatch).recipe
     val runner = adapter.recipeRunner ?: return RecipeOutcome.NoRecipeRunner
     val before = readVersions(adapter, { it(repo) }) { return it }
     val run =

@@ -30,7 +30,7 @@ class PromptTest {
         Snippet("src/main/java/App.java", 1, 5, "class App {\n    String name() {\n        return Objects.firstNonNull(a, b);\n    }\n}\n")
     private val request =
         FixRequest(
-            change = change,
+            changes = listOf(change),
             diagnostics = listOf(error),
             snippets = listOf(snippet),
             grounding = "public final class com.google.common.base.MoreObjects {\n}",
@@ -45,6 +45,19 @@ class PromptTest {
                 ),
             temperature = 0.3,
         )
+
+    @Test
+    fun `a request for several changes names each of them`() {
+        val boot = DependencyChange("maven", "org.springframework.boot:spring-boot", "3.3.5", "3.4.1", UpdateType.MINOR)
+
+        val prompt = Prompt.user(request.copy(changes = listOf(change, boot)))
+
+        assertContains(
+            prompt,
+            "The update of com.google.guava:guava from 18.0 to 21.0 and org.springframework.boot:spring-boot from 3.3.5 to 3.4.1 " +
+                "broke this code.",
+        )
+    }
 
     @Test
     fun `the system prompt asks for search and replace edits in JSON, never whole files`() {
