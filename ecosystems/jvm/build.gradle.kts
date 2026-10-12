@@ -20,6 +20,33 @@ tasks.withType<Test>().configureEach {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
+// Tests tagged `integration` run real Gradle on the fixture repos and need network access, so they are opt-in and not
+// part of `check`.
+tasks.test {
+    useJUnitPlatform { excludeTags("integration") }
+}
+
+tasks.register<Test>("integrationTest") {
+    description = "Runs the Gradle adapter with real Gradle on the fixture repositories. Needs network access."
+    group = LifecycleBasePlugin.VERIFICATION_GROUP
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("integration") }
+    gradleFixtures()
+}
+
+// Kover would make `check` depend on every test task. The integration tests stay opt-in.
+kover {
+    currentProject {
+        instrumentation {
+            disabledForTestTasks.add("integrationTest")
+        }
+    }
+}
+
 // The adapter calls these Maven plugins by coordinates. Their versions come from the version catalog, through this
 // generated resource.
 val pluginResources = layout.buildDirectory.dir("generated/resources/maven-plugins")

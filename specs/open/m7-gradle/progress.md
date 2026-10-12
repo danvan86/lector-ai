@@ -13,6 +13,6 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 5 | Grounding from the query, Android/KMP and toolchain errors, daemon stopped after every run | ✅ |
 | 6 | Recipe runner: OpenRewrite Gradle plugin shipped with the tool, version check, image, licence | ✅ |
 | 7 | CLI and action: adapter wiring, `--gradle-init`, `gradle-init` input, Gradle user home | ✅ |
-| 8 | Tagged integration tests with real Gradle | ⬜ |
+| 8 | Tagged integration tests with real Gradle | ✅ |
 | 9 | Quality gates verified | ⬜ |
 | 10 | Docs in sync | ⬜ |

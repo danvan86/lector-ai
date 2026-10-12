@@ -117,6 +117,7 @@ tasks.register<Test>("integrationTest") {
     // Recipes in Gradle builds need the plugin, as in the tool image.
     dependsOn(syncRewriteGradlePlugin)
     environment("LECTOR_REWRITE_GRADLE_PLUGIN", rewriteGradlePluginDir.get().asFile.path)
+    gradleFixtures()
 }
 
 tasks.register<Test>("realModelTest") {
