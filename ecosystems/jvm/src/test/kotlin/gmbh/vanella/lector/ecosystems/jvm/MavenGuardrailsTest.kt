@@ -68,6 +68,60 @@ class MavenGuardrailsTest {
     }
 
     @Test
+    fun `test-skipping options in the Maven config and the wrapper disable tests`() {
+        assertEquals(
+            "`skipTests` skips tests or ignores their failures",
+            adapter.testDisablingConfig(".mvn/maven.config", "-B\n-DskipTests\n", 2),
+        )
+        assertEquals(
+            "`maven.test.skip` skips tests or ignores their failures",
+            adapter.testDisablingConfig("mvnw", "#!/bin/sh\nexec mvn -Dmaven.test.skip=true \"$@\"\n", 2),
+        )
+    }
+
+    @Test
+    fun `a line belongs to the plugin around it, whatever comes before it in the plugin`() {
+        val pom =
+            """
+            <plugin>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <dependencies>
+                <dependency>
+                  <artifactId>surefire-junit-platform</artifactId>
+                </dependency>
+              </dependencies>
+              <configuration>
+                <excludes><exclude>**/*</exclude></excludes>
+              </configuration>
+            </plugin>
+            <plugin>
+              <configuration>
+                <skip>true</skip>
+              </configuration>
+              <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+            """.trimIndent()
+
+        assertEquals("`<excludes>` in maven-surefire-plugin leaves tests out", adapter.testDisablingConfig("pom.xml", pom, 9))
+        assertEquals("`<skip>` in maven-failsafe-plugin leaves tests out", adapter.testDisablingConfig("pom.xml", pom, 14))
+    }
+
+    @Test
+    fun `includes, a test filter, groups, and every skip in surefire or failsafe leave tests out`() {
+        for (config in listOf(
+            "<includes><include>None</include></includes>",
+            "<test>None</test>",
+            "<groups>slow</groups>",
+            "<skipExec>true</skipExec>",
+            "<skipAfterFailureCount>1</skipAfterFailureCount>",
+        )) {
+            val pom = "<plugin>\n  <artifactId>maven-surefire-plugin</artifactId>\n  $config\n</plugin>\n"
+            val element = config.substringBefore('>') + ">"
+            assertEquals("`$element` in maven-surefire-plugin leaves tests out", adapter.testDisablingConfig("pom.xml", pom, 3), config)
+        }
+    }
+
+    @Test
     fun `an exclude elsewhere, and any other line, is fine`() {
         val pom =
             """
@@ -84,5 +138,9 @@ class MavenGuardrailsTest {
         assertNull(adapter.testDisablingConfig("pom.xml", pom, 1), "no plugin around it")
         assertNull(adapter.testDisablingConfig("pom.xml", pom, 5), "not a test plugin")
         assertNull(adapter.testDisablingConfig("pom.xml", pom, 8))
+        assertNull(
+            adapter.testDisablingConfig("pom.xml", "<plugin>\n  <artifactId>maven-surefire-plugin</artifactId>\n  <skip>true</skip>\n", 3),
+            "a plugin that never closes is no plugin; Maven rejects the POM anyway",
+        )
     }
 }

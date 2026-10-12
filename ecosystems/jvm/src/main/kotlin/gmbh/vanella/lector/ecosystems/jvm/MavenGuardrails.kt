@@ -17,12 +17,11 @@ internal object MavenTestSkipping {
     // Properties and parameters that skip tests or ignore their failures, wherever they are set.
     private val skipping = Regex("""skipTests|skipITs|maven\.test\.skip|testFailureIgnore|maven\.test\.failure\.ignore""")
 
-    // Elements that leave tests out, in the configuration of surefire or failsafe.
-    private val leavingOut = Regex("""<(exclude\w*|skip)>""")
-    private val artifactId = Regex("""<artifactId>\s*([^<\s]+)\s*</artifactId>""")
-    private val testPlugin = Regex("""maven-(surefire|failsafe)-plugin""")
+    // Parameters that leave tests out or run only some, in the configuration of surefire or failsafe.
+    private val leavingOut = Regex("""<(exclude\w*|include\w*|skip\w*|test|groups)>""")
+    private val testPlugin = Regex("""<artifactId>\s*(maven-(?:surefire|failsafe)-plugin)\s*</artifactId>""")
 
-    /** Why [line] (1-based) of the POM [content] disables tests, or null. The plugin of a line is the nearest `artifactId` above it. */
+    /** Why [line] (1-based) of the build file [content] disables tests, or null. */
     fun reason(
         content: String,
         line: Int,
@@ -31,11 +30,21 @@ internal object MavenTestSkipping {
         val text = lines[line - 1]
         val skip = skipping.find(text)?.value
         val element = leavingOut.find(text)?.value
-        val plugin = lines.take(line - 1).asReversed().firstNotNullOfOrNull { artifactId.find(it)?.groupValues[1] }
         return when {
             skip != null -> "`$skip` skips tests or ignores their failures"
-            element != null && plugin != null && testPlugin.matches(plugin) -> "`$element` in $plugin leaves tests out"
+            element != null -> testPlugin(lines, line)?.let { "`$element` in $it leaves tests out" }
             else -> null
         }
+    }
+
+    /** The test plugin whose `<plugin>` element holds [line], or null. Its children may come in any order. */
+    private fun testPlugin(
+        lines: List<String>,
+        line: Int,
+    ): String? {
+        val start = lines.take(line).indexOfLast { "<plugin>" in it }
+        val end = lines.drop(line - 1).indexOfFirst { "</plugin>" in it }
+        if (start < 0 || end < 0) return null
+        return testPlugin.find(lines.subList(start, line + end).joinToString("\n"))?.groupValues[1]
     }
 }

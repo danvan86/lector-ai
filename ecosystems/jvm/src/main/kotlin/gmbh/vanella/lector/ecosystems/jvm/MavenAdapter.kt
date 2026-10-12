@@ -125,7 +125,12 @@ class MavenAdapter(
 
     override fun clusterKey(diagnostic: Diagnostic) = ClusterKeys.of(diagnostic)
 
-    override fun isBuildFile(file: String) = file == "pom.xml" || file.endsWith("/pom.xml")
+    /**
+     * The POMs, and what Maven reads at the root besides them: the wrapper and `.mvn/`. Both can set properties, so the
+     * blocklist and the downgrade check must see them.
+     */
+    override fun isBuildFile(file: String) =
+        file == "pom.xml" || file.endsWith("/pom.xml") || file == "mvnw" || file == "mvnw.cmd" || file.startsWith(".mvn/")
 
     override fun isEditable(file: String) = JvmScope.isEditable(file)
 

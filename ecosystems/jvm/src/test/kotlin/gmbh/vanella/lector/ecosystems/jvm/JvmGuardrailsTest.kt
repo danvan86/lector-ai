@@ -197,6 +197,14 @@ class JvmGuardrailsTest {
     }
 
     @Test
+    fun `the build-file blocklist rejects a new skipTests in the Maven config`() {
+        assertEquals(
+            listOf(Violation("build-file", ".mvn/maven.config", 2, "`skipTests` skips tests or ignores their failures")),
+            violations(".mvn/maven.config", "-B\n", "-B\n-DskipTests\n"),
+        )
+    }
+
+    @Test
     fun `diff size counts the lines of every file`() {
         val big =
             java.replace(
