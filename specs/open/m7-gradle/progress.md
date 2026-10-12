@@ -16,6 +16,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 8 | Tagged integration tests with real Gradle | ✅ |
 | 9 | Quality gates verified | ✅ |
 | 10 | Docs in sync | ✅ |
+| 11 | Review and fixes ([`review.md`](review.md)) | ✅ |
 
 ## Decisions during implementation
 
@@ -46,10 +47,10 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 ## Quality gates
 
-`./gradlew clean build --rerun-tasks --no-build-cache` exits `0` with 559 unit tests (core 175, ecosystems:jvm 189,
-cli 106, recipes 37, sources 19, git 15, llm 18), 19 end-to-end tests, and 100 % lines and branches per module. The
-opt-in integration tests pass: `:ecosystems:jvm:integrationTest` (5, real Gradle 8.14.2 and 9.8.1) and
-`:cli:integrationTest` (4: the two Maven ones and two Gradle ones).
+After the review: `./gradlew clean build --rerun-tasks --no-build-cache` exits `0` with 561 unit tests (core 175,
+ecosystems:jvm 191, cli 106, recipes 37, sources 19, git 15, llm 18), 19 end-to-end tests, and 100 % lines and branches
+per module. The opt-in integration tests pass: `:ecosystems:jvm:integrationTest` (5, real Gradle 8.14.2 and 9.8.1) and
+`:cli:integrationTest` (4: the two Maven ones and two Gradle ones). detekt now also checks unused imports.
 
 Final check, each on its own after `clean`: `ktlintCheck`, `detektMain detektTest` (14 tasks), `test`,
 `:cli:endToEndTest`, `koverVerify`, and `clean build --rerun-tasks --no-build-cache` exit `0`. (A first `detektMain

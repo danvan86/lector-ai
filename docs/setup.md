@@ -175,7 +175,9 @@ With the 30B image, set `model: qwen3-coder:30b` in the action's inputs.
 - **Gradle:** no Android or Kotlin Multiplatform builds (the image has no Android SDK), no Gradle 7 or older, no build
   without a wrapper. Groovy sources (Spock tests) are never edited: their failures are reported, but the model can only
   fix the Java or Kotlin code they call. Linters bound to `check` (Spotless, Checkstyle, detekt) don't run: verify
-  compiles every source set and runs every `Test` task. PRs that only update the Gradle wrapper are skipped.
+  compiles every source set and runs every `Test` task. Test reports are read from `build/test-results/` in each
+  project's directory, Gradle's default: with another build directory, failing tests count as a build failure. PRs that
+  only update the Gradle wrapper are skipped.
 - **GitHub only**, and **Renovate only.** Dependabot and other PRs come with M8.
 - **Unsigned commits.** If your Renovate branches require signed commits, the push is rejected.
 - **The token is not isolated from the build.** Builds and tests run without the token in their environment, but in the

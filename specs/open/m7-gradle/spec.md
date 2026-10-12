@@ -76,7 +76,7 @@ The task compiles nothing, so it works when the code doesn't compile. If it fail
 
 ### 7. Fix loop and guardrails for Gradle
 
-- **Build files:** `*.gradle`, `*.gradle.kts`, `gradle/*.versions.toml`, `gradle.properties`, and the sources of `buildSrc` and of included build-logic builds.
+- **Build files:** `*.gradle`, `*.gradle.kts`, `gradle/*.versions.toml`, `gradle.properties`, and the sources of `buildSrc` and of every included build, whatever its name (the query task reports them; review F3).
 - **Build-file blocklist** (added or changed lines): disabling a `Test` task (`enabled = false`, `onlyIf`), `ignoreFailures`, and new `exclude`, `excludeTestsMatching`, or `excludeTags` filters.
 - **`editableScope`** excludes `build/`, `.gradle/`, `**/generated*/**`, `gradle/wrapper/**`, `gradlew`, `gradlew.bat`, and `*.groovy` sources that aren't build scripts.
 - Failures in Groovy tests are still verified, attributed, and reported.
