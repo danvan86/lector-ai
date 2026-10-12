@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
@@ -199,6 +200,38 @@ class FixLoopTest {
 
         assertEquals("no tree-sitter for this platform", error.message)
         assertEquals("", git("status", "--porcelain"))
+        assertEquals(app, repo.resolve("App.java").readText())
+    }
+
+    @Test
+    fun `a build that runs past the time budget is stopped, its attempt rejected and reset, and the loop stops on time`() {
+        val timeouts = mutableListOf<Duration>()
+        val adapter =
+            FakeAdapter(onVerify = { timeout ->
+                timeouts += timeout
+                time += timeout
+                throw ProcessTimedOut("mvn did not finish within $timeout")
+            })
+
+        val result = loop(adapter, ScriptedLlm(edits(fix))).run(repo, context, adapter.initial())
+
+        assertEquals(listOf(30.minutes), timeouts, "the build gets the time that is left")
+        assertEquals(StopReason.TIME_BUDGET, result.stopReason)
+        assertEquals(
+            AttemptOutcome.Rejected("the builds ran past the time budget: mvn did not finish within 30m"),
+            result.attempts.single().outcome,
+        )
+        assertEquals(app, repo.resolve("App.java").readText())
+        assertEquals("", git("status", "--porcelain"))
+    }
+
+    @Test
+    fun `a build that hits the adapter's own limit while time is left is still a tool error`() {
+        val adapter = FakeAdapter(onVerify = { throw ProcessTimedOut("mvn did not finish within 1h") })
+
+        val error = assertFailsWith<ProcessTimedOut> { loop(adapter, ScriptedLlm(edits(fix))).run(repo, context, adapter.initial()) }
+
+        assertEquals("mvn did not finish within 1h", error.message)
         assertEquals(app, repo.resolve("App.java").readText())
     }
 
@@ -639,6 +672,7 @@ class FixLoopTest {
     private inner class FakeAdapter(
         private val problems: (Path) -> List<Diagnostic> = ::compileErrors,
         private val grounding: (DependencyChange) -> String? = { null },
+        private val onVerify: (timeout: Duration) -> Unit = {},
         private val versions: ((Path) -> Map<String, String>)? = { dir ->
             dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
         },
@@ -672,14 +706,19 @@ class FixLoopTest {
 
         override fun detect(repo: Path) = true
 
-        override fun verify(repo: Path): List<Diagnostic> {
+        override fun verify(
+            repo: Path,
+            timeout: Duration,
+        ): List<Diagnostic> {
             verifyCalls++
+            onVerify(timeout)
             return problems(repo)
         }
 
         override fun runTests(
             repo: Path,
             tests: List<Diagnostic>,
+            timeout: Duration,
         ) = if (repo == baseCheckout) emptyList() else tests
 
         override fun ground(

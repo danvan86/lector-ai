@@ -140,21 +140,30 @@ class FixLoop(
             when {
                 verification.causedByUpdate.isEmpty() -> StopReason.NOTHING_LEFT
                 attempts.size >= budgets.attempts -> StopReason.ATTEMPT_BUDGET
-                started.elapsedNow() >= budgets.time -> StopReason.TIME_BUDGET
+                timeLeft <= Duration.ZERO -> StopReason.TIME_BUDGET
                 withoutProgress >= budgets.attemptsWithoutProgress -> StopReason.NO_PROGRESS
                 else -> null
             }
 
         private fun attemptsOn(key: String) = attempts.filter { it.cluster == key }
 
+        private val timeLeft get() = budgets.time - started.elapsedNow()
+
         // Whatever ends the run inside an attempt, a build the edits made hang or a parser that doesn't load, must not
-        // leave the edits behind. The exception goes on unchanged.
+        // leave the edits behind. The exception goes on unchanged, unless it is a build stopped by the time budget: that
+        // is a rejected attempt, and the loop stops on time with its report.
         @Suppress("TooGenericExceptionCaught")
         private fun attempt(cluster: Cluster) {
             val proposal = llm.propose(request(cluster))
             val outcome =
                 try {
                     judge(cluster, proposal)
+                } catch (e: ProcessTimedOut) {
+                    if (timeLeft > Duration.ZERO) {
+                        GitWorkingTree.reset(repo)
+                        throw e
+                    }
+                    rejected("the builds ran past the time budget: ${e.message}")
                 } catch (e: Throwable) {
                     GitWorkingTree.reset(repo)
                     throw e
@@ -257,7 +266,7 @@ class FixLoop(
             cluster: Cluster,
             proposal: Proposal.Edits,
         ): AttemptOutcome {
-            val after = attribute(adapter, repo, base)
+            val after = attribute(adapter, repo, base) { timeLeft }
             val progressBefore = Progress.of(verification.causedByUpdate)
             val progressAfter = Progress.of(after.causedByUpdate)
             if (progressAfter >= progressBefore) return rejected(noProgress(progressBefore, after.causedByUpdate))

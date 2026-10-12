@@ -19,6 +19,7 @@ import gmbh.vanella.lector.ecosystems.jvm.MavenVersionScheme
 import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import kotlin.time.Duration
 
 // The fakes of the command tests: a model with scripted edits, and a Maven-like adapter.
 
@@ -89,7 +90,10 @@ internal class FakeAdapter(
 
     override fun detect(repo: Path) = true
 
-    override fun verify(repo: Path): List<Diagnostic> =
+    override fun verify(
+        repo: Path,
+        timeout: Duration,
+    ): List<Diagnostic> =
         repo.resolve("App.java").readText().lines().withIndex().filter { "broken()" in it.value }.map { (index, _) ->
             Diagnostic("App.java", index + 1, null, null, "cannot find symbol broken", Severity.ERROR, "javac")
         }
@@ -97,6 +101,7 @@ internal class FakeAdapter(
     override fun runTests(
         repo: Path,
         tests: List<Diagnostic>,
+        timeout: Duration,
     ) = emptyList<Diagnostic>()
 
     override fun ground(

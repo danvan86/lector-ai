@@ -17,6 +17,7 @@ rejections.
 | 6 | `lector pr` in `cli`, with end-to-end tests | ✅ |
 | 7 | Container images, GitHub Action, release workflow | ✅ |
 | 8 | Setup guide and `docs/licensing.md` | ✅ |
+| 8b | Time budget as the deadline of an attempt's builds and test runs (AC37, added to the spec on `main` during M5) | ✅ |
 | 9 | Quality gates verified | ✅ |
 | 10 | Docs in sync | ✅ |
 
@@ -84,6 +85,7 @@ By hand:
 | AC34 | can't verify yet | needs a test repository on GitHub with Renovate, a GitHub App, and published images |
 | AC35 | met | only `RenovateSource` and `GitHubHost`; `BranchPolicy` has only `IN_PLACE` |
 | AC36 | met | `ProcessesTest`: `env` started with a token, `GITHUB_TOKEN`, and `INPUT_*` sees none of them |
+| AC37 | met | `FixLoopTest`: a build past the budget is stopped, rejected, reset, `TIME_BUDGET`; `PrPipelineTest`: the earlier fix is still pushed and reported; `AttributionTest`, `MavenAdapterTest`: each run gets the time left, at most an hour |
 
 ## Judgment calls
 
@@ -106,6 +108,12 @@ By hand:
   entry `ollama-image`, which nothing updated, is gone.
 - **The release workflow requires `**MSAL check:** done`** in `docs/licensing.md`, not only the file: the file exists,
   the check doesn't. For the same reason, "Legal check" stays in M5 in `docs/features.md`.
+
+- **AC37's deadline is a port parameter.** `EcosystemAdapter.verify` and `runTests` take a `timeout`, which `attribute`
+  fills with the time left before each run. A `ProcessTimedOut` (a `ToolError`) while time is left is still a tool
+  error: then it was the adapter's own one-hour limit.
+- **The M3 review's D2** (reject an attempt that removes the PR's own package) is assigned to M4's spec (AC31) and is not
+  in `main`'s code. It's not in M5's spec, so M5 doesn't add it.
 
 ## Open
 

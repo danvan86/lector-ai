@@ -20,6 +20,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 
 class MavenAdapterTest {
     @TempDir
@@ -72,7 +75,8 @@ class MavenAdapterTest {
 
     @Test
     fun `a recipe run that fails reports the end of Maven's output`() {
-        val adapter = MavenAdapter(plugins = PLUGINS) { _, _, _ -> ProcessResult(1, "[ERROR] Recipe not found: org.example.UpgradeBoot\n") }
+        val adapter =
+            MavenAdapter(plugins = PLUGINS) { _, _, _, _ -> ProcessResult(1, "[ERROR] Recipe not found: org.example.UpgradeBoot\n") }
 
         val run = adapter.recipeRunner.run(repo, Recipe("org.example.UpgradeBoot", "org.example:recipes:1.2.3", "Apache License 2.0"))
 
@@ -86,7 +90,7 @@ class MavenAdapterTest {
     fun `reads resolved versions from the effective POM, written to a file outside the repository`() {
         var output: Path? = null
         val adapter =
-            MavenAdapter(plugins = PLUGINS) { command, _, _ ->
+            MavenAdapter(plugins = PLUGINS) { command, _, _, _ ->
                 runs += command
                 val file = Path.of(command.single { it.startsWith("-Doutput=") }.removePrefix("-Doutput="))
                 file.writeText(effectivePom("org.example", "lib", "1.2.3"))
@@ -112,12 +116,12 @@ class MavenAdapterTest {
         val environments = mutableListOf<Map<String, String>>()
         val jdks = mapOf(17 to Path.of("/opt/java/17"), 21 to Path.of("/opt/java/21"))
         val adapter =
-            MavenAdapter(plugins = PLUGINS, jdks = jdks) { _, _, environment ->
+            MavenAdapter(plugins = PLUGINS, jdks = jdks) { _, _, environment, _ ->
                 environments += environment
                 ProcessResult(0, "")
             }
 
-        adapter.verify(repo)
+        adapter.verify(repo, 1.hours)
         adapter.recipeRunner.run(repo, Recipe("org.example.UpgradeBoot", "org.example:recipes:1.0", "Apache-2.0"))
 
         assertEquals(3, environments.size)
@@ -125,23 +129,47 @@ class MavenAdapterTest {
     }
 
     @Test
+    fun `builds and test runs get the given timeout, never more than an hour, and the other runs get an hour`() {
+        repo.resolve("pom.xml").writeText("<project/>")
+        val timeouts = mutableListOf<Pair<String, Duration>>()
+        val adapter =
+            MavenAdapter(plugins = PLUGINS) { command, _, _, timeout ->
+                timeouts += command[3] to timeout
+                ProcessResult(0, "")
+            }
+        val test = Diagnostic(null, null, null, null, "failed", Severity.ERROR, "surefire", "com.example.AppTest#runs")
+
+        adapter.verify(repo, 10.minutes)
+        adapter.runTests(repo, listOf(test), 3.hours)
+        adapter.recipeRunner.run(repo, Recipe("org.example.UpgradeBoot", "org.example:recipes:1.0", "Apache-2.0"))
+
+        assertEquals(
+            listOf("clean", "verify", "clean", "org.openrewrite.maven:rewrite-maven-plugin:9.9.9:runNoFork"),
+            timeouts.map { it.first },
+        )
+        assertEquals(10.minutes, timeouts[0].second)
+        assertTrue(timeouts[1].second in 9.minutes..10.minutes, "verify gets what test-compile left: ${timeouts[1].second}")
+        assertEquals(listOf(1.hours, 1.hours), timeouts.drop(2).map { it.second })
+    }
+
+    @Test
     fun `without installed JDKs, Maven runs with the environment's JAVA_HOME`() {
         repo.resolve("pom.xml").writeText("<project/>")
         val environments = mutableListOf<Map<String, String>>()
         val adapter =
-            MavenAdapter(plugins = PLUGINS) { _, _, environment ->
+            MavenAdapter(plugins = PLUGINS) { _, _, environment, _ ->
                 environments += environment
                 ProcessResult(0, "")
             }
 
-        adapter.verify(repo)
+        adapter.verify(repo, 1.hours)
 
         assertEquals(listOf(emptyMap()), environments.distinct())
     }
 
     @Test
     fun `resolved versions that Maven can't read are a tool error with the end of its output`() {
-        val adapter = MavenAdapter(plugins = PLUGINS) { _, _, _ -> ProcessResult(1, "[ERROR] Non-resolvable parent POM") }
+        val adapter = MavenAdapter(plugins = PLUGINS) { _, _, _, _ -> ProcessResult(1, "[ERROR] Non-resolvable parent POM") }
 
         val error = assertFailsWith<ToolError> { adapter.resolvedVersions.read(repo) }
 
@@ -165,7 +193,7 @@ class MavenAdapterTest {
 
     @Test
     fun `compiles first, then verifies, both in batch mode with fail-at-end`() {
-        val diagnostics = adapter().verify(repo)
+        val diagnostics = adapter().verify(repo, 1.hours)
 
         assertEquals(emptyList(), diagnostics)
         assertEquals(
@@ -181,7 +209,7 @@ class MavenAdapterTest {
     fun `uses the Maven wrapper when the repository has one`() {
         repo.resolve("mvnw").createFile()
 
-        adapter().verify(repo)
+        adapter().verify(repo, 1.hours)
 
         assertEquals(listOf("$root/mvnw", "$root/mvnw"), runs.map { it.first() })
     }
@@ -191,7 +219,7 @@ class MavenAdapterTest {
         repo.resolve("mvnw").writeText("#!/bin/sh\necho \"[ERROR] Failed to execute goal on project app: ran $*\"\nexit 1\n")
         repo.resolve("mvnw").toFile().setExecutable(true)
 
-        val diagnostics = MavenAdapter().verify(repo)
+        val diagnostics = MavenAdapter().verify(repo, 1.hours)
 
         assertEquals(listOf("Failed to execute goal on project app: ran -B -fae clean test-compile"), diagnostics.map { it.message })
     }
@@ -200,8 +228,8 @@ class MavenAdapterTest {
     fun `passes the Maven settings file to every run`() {
         val settings = repo.resolve("settings.xml")
 
-        adapter(settings = settings).verify(repo)
-        adapter(settings = settings).runTests(repo, listOf(testFailure("com.example.FooTest#bar")))
+        adapter(settings = settings).verify(repo, 1.hours)
+        adapter(settings = settings).runTests(repo, listOf(testFailure("com.example.FooTest#bar")), 1.hours)
 
         assertEquals(3, runs.size)
         runs.forEach { assertContains(it.joinToString(" "), "-B -fae --settings ${settings.toAbsolutePath()} ") }
@@ -214,7 +242,7 @@ class MavenAdapterTest {
             .createParentDirectories()
             .writeText("<testsuite><testcase name=\"a\"/><testcase name=\"b\"/></testsuite>")
 
-        assertEquals(2, MavenAdapter(plugins = PLUGINS) { _, _, _ -> ProcessResult(0, "") }.testsRun(repo))
+        assertEquals(2, MavenAdapter(plugins = PLUGINS) { _, _, _, _ -> ProcessResult(0, "") }.testsRun(repo))
     }
 
     @Test
@@ -223,7 +251,7 @@ class MavenAdapterTest {
             adapter(
                 compileExitCode = 1,
                 compileOutput = "[ERROR] $root/src/main/java/App.java:[3,5] cannot find symbol",
-            ).verify(repo)
+            ).verify(repo, 1.hours)
 
         assertEquals(listOf(Diagnostic("src/main/java/App.java", 3, 5, null, "cannot find symbol", Severity.ERROR, "javac")), diagnostics)
         assertEquals(1, runs.size)
@@ -231,7 +259,7 @@ class MavenAdapterTest {
 
     @Test
     fun `doesn't run the tests when the compile stage fails without an error it understands`() {
-        val diagnostics = adapter(compileExitCode = 1, compileOutput = "Error: could not download Maven").verify(repo)
+        val diagnostics = adapter(compileExitCode = 1, compileOutput = "Error: could not download Maven").verify(repo, 1.hours)
 
         val failure = diagnostics.single()
         assertEquals(null, failure.file)
@@ -244,14 +272,14 @@ class MavenAdapterTest {
     fun `reports test failures from the test reports of the verify stage`() {
         val adapter = adapter(onVerify = { writeFailingReport("com.example.FooTest", "bar") })
 
-        val diagnostics = adapter.verify(repo)
+        val diagnostics = adapter.verify(repo, 1.hours)
 
         assertEquals(listOf("com.example.FooTest#bar"), diagnostics.map { it.test })
     }
 
     @Test
     fun `the verify command never skips, filters, or ignores tests`() {
-        adapter().verify(repo)
+        adapter().verify(repo, 1.hours)
 
         val forbidden = listOf("skipTests", "maven.test.skip", "testFailureIgnore", "-Dtest=", "-Dit.test=", "skipITs")
         runs.flatten().forEach { argument -> forbidden.forEach { assertFalse(argument.contains(it), argument) } }
@@ -261,7 +289,7 @@ class MavenAdapterTest {
     fun `runs only the classes of the given unit tests, up to the test phase`() {
         val tests = listOf(testFailure("com.example.FooTest#a"), testFailure("com.example.FooTest#b"), testFailure("com.example.BarTest#c"))
 
-        adapter().runTests(repo, tests)
+        adapter().runTests(repo, tests, 1.hours)
 
         assertEquals(
             listOf(
@@ -283,7 +311,7 @@ class MavenAdapterTest {
     fun `runs the classes of integration tests with failsafe, up to the verify phase`() {
         val tests = listOf(testFailure("com.example.FooTest#a"), testFailure("com.example.AppIT#b", tool = "failsafe"))
 
-        adapter().runTests(repo, tests)
+        adapter().runTests(repo, tests, 1.hours)
 
         assertEquals(
             listOf(
@@ -305,7 +333,7 @@ class MavenAdapterTest {
 
     @Test
     fun `runs no unit tests when only integration tests are given`() {
-        adapter().runTests(repo, listOf(testFailure("com.example.AppIT#b", tool = "failsafe")))
+        adapter().runTests(repo, listOf(testFailure("com.example.AppIT#b", tool = "failsafe")), 1.hours)
 
         assertEquals(
             listOf(
@@ -329,7 +357,7 @@ class MavenAdapterTest {
     fun `runTests returns the failures of its run`() {
         val adapter = adapter(onVerify = { writeFailingReport("com.example.FooTest", "a") })
 
-        val diagnostics = adapter.runTests(repo, listOf(testFailure("com.example.FooTest#a")))
+        val diagnostics = adapter.runTests(repo, listOf(testFailure("com.example.FooTest#a")), 1.hours)
 
         assertEquals(listOf("com.example.FooTest#a"), diagnostics.map { it.test })
     }
@@ -361,7 +389,7 @@ class MavenAdapterTest {
         compileExitCode: Int = 0,
         compileOutput: String = "",
         onVerify: () -> Unit = {},
-    ) = MavenAdapter(settings, PLUGINS) { command, workDir, _ ->
+    ) = MavenAdapter(settings, PLUGINS) { command, workDir, _, _ ->
         assertEquals(root, workDir)
         runs += command
         if ("test-compile" in command) {

@@ -2,6 +2,7 @@ package gmbh.vanella.lector.core
 
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
+import kotlin.time.Duration
 
 private val logger = LoggerFactory.getLogger("gmbh.vanella.lector.core.Attribution")
 
@@ -17,20 +18,23 @@ interface BaseCommit {
  * - Failing tests are rerun once. A test that passes on the rerun is flaky.
  * - Tests that still fail run on the [base] commit, and only those. Failing there too means pre-existing, passing there
  *   means caused by the update. Without a base, or if the base doesn't build, they are unattributed.
+ *
+ * Each build and test run may take the time [timeLeft] returns when it starts.
  */
 fun attribute(
     adapter: EcosystemAdapter,
     repo: Path,
     base: BaseCommit?,
+    timeLeft: () -> Duration = { Duration.INFINITE },
 ): Verification {
-    val (tests, buildProblems) = adapter.verify(repo).partition { it.test != null }
+    val (tests, buildProblems) = adapter.verify(repo, timeLeft()).partition { it.test != null }
     // Read before the reruns, which run only some tests.
     val testsRun = adapter.testsRun(repo)
     val stillFailing =
         if (tests.isEmpty()) {
             tests
         } else {
-            val failedAgain = failedTests(adapter.runTests(repo, tests), "rerun")
+            val failedAgain = failedTests(adapter.runTests(repo, tests, timeLeft()), "rerun")
             tests.filter { failedAgain == null || it.test in failedAgain }
         }
     val flaky = tests - stillFailing.toSet()
@@ -38,7 +42,7 @@ fun attribute(
         if (stillFailing.isEmpty() || base == null) {
             null
         } else {
-            failedTests(base.checkout { adapter.runTests(it, stillFailing) }, "base commit")
+            failedTests(base.checkout { adapter.runTests(it, stillFailing, timeLeft()) }, "base commit")
         }
     if (failedOnBase == null) {
         return Verification(causedByUpdate = buildProblems, flaky = flaky, unattributed = stillFailing, testsRun = testsRun)

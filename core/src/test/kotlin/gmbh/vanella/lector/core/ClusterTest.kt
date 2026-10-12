@@ -4,6 +4,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 
 class ClusterTest {
     private val adapter = KeyedAdapter()
@@ -86,11 +87,15 @@ class ClusterTest {
 
         override fun detect(repo: Path) = true
 
-        override fun verify(repo: Path) = emptyList<Diagnostic>()
+        override fun verify(
+            repo: Path,
+            timeout: Duration,
+        ) = emptyList<Diagnostic>()
 
         override fun runTests(
             repo: Path,
             tests: List<Diagnostic>,
+            timeout: Duration,
         ) = emptyList<Diagnostic>()
 
         override fun ground(

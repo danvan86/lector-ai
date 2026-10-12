@@ -12,10 +12,15 @@ import kotlin.time.Duration
 private val logger = LoggerFactory.getLogger("gmbh.vanella.lector.core.Processes")
 
 /** A failure of the tool, not of the repository: a missing program, a timeout, an invalid argument. */
-class ToolError(
+open class ToolError(
     override val message: String,
     cause: Throwable? = null,
 ) : RuntimeException(message, cause)
+
+/** A process ran longer than its timeout and was killed. */
+class ProcessTimedOut(
+    message: String,
+) : ToolError(message)
 
 data class ProcessResult(
     val exitCode: Int,
@@ -83,7 +88,7 @@ fun runProcess(
         if (!process.waitFor(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)) {
             process.descendants().forEach { it.destroyForcibly() }
             process.destroyForcibly().waitFor()
-            throw ToolError("${command.first()} did not finish within $timeout")
+            throw ProcessTimedOut("${command.first()} did not finish within $timeout")
         }
         val output = log.readText()
         logger.debug("{} exited with {}:\n{}", command.first(), process.exitValue(), output)

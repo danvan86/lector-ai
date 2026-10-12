@@ -16,7 +16,9 @@ import java.nio.file.Path
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.TimeSource
 
 private val MAVEN_TIMEOUT = 1.hours
 private const val OUTPUT_TAIL_LINES = 20
@@ -44,8 +46,9 @@ class MavenAdapter(
         command: List<String>,
         workDir: Path,
         environment: Map<String, String>,
-    ) -> ProcessResult = { command, workDir, environment ->
-        runProcess(command, workDir, MAVEN_TIMEOUT, environment)
+        timeout: Duration,
+    ) -> ProcessResult = { command, workDir, environment, timeout ->
+        runProcess(command, workDir, timeout, environment)
     },
 ) : EcosystemAdapter {
     private val grounding = JavapGrounding(localRepository)
@@ -90,9 +93,15 @@ class MavenAdapter(
 
     override fun detect(repo: Path) = repo.resolve("pom.xml").isRegularFile()
 
-    override fun verify(repo: Path): List<Diagnostic> {
+    override fun verify(
+        repo: Path,
+        timeout: Duration,
+    ): List<Diagnostic> {
         val root = repo.toRealPath()
-        return problems(root, listOf("clean", "test-compile")).ifEmpty { problems(root, listOf("verify")) }
+        val started = TimeSource.Monotonic.markNow()
+        return problems(root, listOf("clean", "test-compile"), timeout).ifEmpty {
+            problems(root, listOf("verify"), timeout - started.elapsedNow())
+        }
     }
 
     /** The test cases in the surefire and failsafe reports that the last verify left. */
@@ -109,6 +118,7 @@ class MavenAdapter(
     override fun runTests(
         repo: Path,
         tests: List<Diagnostic>,
+        timeout: Duration,
     ): List<Diagnostic> {
         val (integrationTests, unitTests) = tests.partition { it.tool == "failsafe" }
         val goals =
@@ -122,7 +132,7 @@ class MavenAdapter(
                     add("-Dit.failIfNoSpecifiedTests=false")
                 }
             }
-        return problems(repo.toRealPath(), goals)
+        return problems(repo.toRealPath(), goals, timeout)
     }
 
     override fun ground(
@@ -152,21 +162,23 @@ class MavenAdapter(
     private fun problems(
         root: Path,
         goals: List<String>,
+        timeout: Duration,
     ): List<Diagnostic> {
-        val result = maven(root, goals)
+        val result = maven(root, goals, timeout)
         val problems = MavenConsole.parse(result.output, root) + TestReports.parse(root)
         if (result.exitCode != 0 && problems.isEmpty()) return listOf(unexplainedFailure(result))
         return problems
     }
 
-    /** Runs Maven with [goals] in [root], on the JDK the project needs. */
+    /** Runs Maven with [goals] in [root], on the JDK the project needs, for at most [timeout] and never more than an hour. */
     private fun maven(
         root: Path,
         goals: List<String>,
+        timeout: Duration = MAVEN_TIMEOUT,
     ): ProcessResult {
         val javaHome = jdkSelection.javaHome(root)
         val environment = if (javaHome == null) emptyMap() else mapOf("JAVA_HOME" to javaHome.toString())
-        return run(command(root) + goals, root, environment)
+        return run(command(root) + goals, root, environment, minOf(timeout, MAVEN_TIMEOUT))
     }
 
     private fun command(root: Path): List<String> {

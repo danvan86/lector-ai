@@ -4,6 +4,8 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 
 class AttributionTest {
     private val head = Path.of("/work/head")
@@ -13,6 +15,25 @@ class AttributionTest {
     private val buildError = Diagnostic(null, null, null, null, "Could not resolve dependencies", Severity.ERROR, "maven")
     private val brokenTest = testFailure("com.example.BrokenTest#fails")
     private val oldBug = testFailure("com.example.OldBugTest#fails")
+
+    @Test
+    fun `every build and test run gets the time that is left when it starts, on the base too`() {
+        val adapter = FakeAdapter(headVerify = listOf(brokenTest), headRerun = listOf(brokenTest), baseRun = emptyList())
+        val left = ArrayDeque(listOf(30.minutes, 20.minutes, 10.minutes))
+
+        attribute(adapter, head, FakeBase(baseCheckout)) { left.removeFirst() }
+
+        assertEquals(listOf(30.minutes, 20.minutes, 10.minutes), adapter.timeouts)
+    }
+
+    @Test
+    fun `without a time limit every run may take as long as it takes`() {
+        val adapter = FakeAdapter(headVerify = listOf(brokenTest), headRerun = listOf(brokenTest), baseRun = emptyList())
+
+        attribute(adapter, head, FakeBase(baseCheckout))
+
+        assertEquals(listOf(Duration.INFINITE, Duration.INFINITE, Duration.INFINITE), adapter.timeouts)
+    }
 
     @Test
     fun `a clean build has nothing to report and runs no tests again`() {
@@ -183,6 +204,7 @@ class AttributionTest {
         private val testsRun: (calls: Int) -> Int? = { null },
     ) : EcosystemAdapter {
         val runTestsCalls = mutableListOf<Pair<Path, List<Diagnostic>>>()
+        val timeouts = mutableListOf<Duration>()
 
         override val ecosystem = "test"
 
@@ -204,13 +226,18 @@ class AttributionTest {
 
         override fun detect(repo: Path) = true
 
-        override fun verify(repo: Path) = headVerify
+        override fun verify(
+            repo: Path,
+            timeout: Duration,
+        ) = headVerify.also { timeouts += timeout }
 
         override fun runTests(
             repo: Path,
             tests: List<Diagnostic>,
+            timeout: Duration,
         ): List<Diagnostic> {
             runTestsCalls += repo to tests
+            timeouts += timeout
             return if (repo == head) headRerun else baseRun
         }
 

@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.core
 
 import java.nio.file.Path
+import kotlin.time.Duration
 
 /** An adapter for the guardrails: every file is editable, none is a build file, and no language is known. */
 object EditableEverywhere : EcosystemAdapter {
@@ -12,11 +13,15 @@ object EditableEverywhere : EcosystemAdapter {
 
     override fun detect(repo: Path) = false
 
-    override fun verify(repo: Path) = emptyList<Diagnostic>()
+    override fun verify(
+        repo: Path,
+        timeout: Duration,
+    ) = emptyList<Diagnostic>()
 
     override fun runTests(
         repo: Path,
         tests: List<Diagnostic>,
+        timeout: Duration,
     ) = emptyList<Diagnostic>()
 
     override fun ground(

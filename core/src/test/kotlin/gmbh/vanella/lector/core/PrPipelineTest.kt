@@ -3,6 +3,7 @@ package gmbh.vanella.lector.core
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import kotlin.io.path.readLines
+import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -11,6 +12,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -30,6 +32,7 @@ class PrPipelineTest {
     private val fix = Edit("App.java", "broken();", "fixed();")
     private val broken = "class App {\n    void run() {\n        broken();\n    }\n}\n"
 
+    private var budgets = Budgets(attemptsWithoutProgress = 2)
     private var baseSha = ""
     private var headSha = ""
 
@@ -252,6 +255,23 @@ class PrPipelineTest {
     }
 
     @Test
+    fun `a build past the time budget ends the loop, and the earlier fixes are still pushed and reported`() {
+        val host = host(pr(), app = broken + "class Gone {\n    void run() {\n        missing();\n    }\n}\n")
+        val adapter = FakeAdapter(slowWhen = "gone();")
+        val llm = ScriptedLlm(edits(fix, rationale = "Call fixed()"), edits(Edit("App.java", "missing();", "gone();")))
+
+        budgets = Budgets(time = 3.seconds)
+
+        val outcome = pipeline(host, adapter = adapter, llm = llm).run(repo)
+
+        val report = assertIs<PrOutcome.Reported>(outcome).report
+        assertEquals(StopReason.TIME_BUDGET, report.fixLoop.stopReason)
+        assertEquals(listOf("Call fixed()"), host.pushes.single())
+        assertContains(host.comments.single().first, "stopped: the time budget is used up")
+        assertEquals("", git("status", "--porcelain"))
+    }
+
+    @Test
     fun `a rejected push ends the run without a comment or a label`() {
         val host = host(pr(), acceptsPush = false)
 
@@ -351,7 +371,7 @@ class PrPipelineTest {
                 ?: RecipeSelection.NONE
         },
         llm = llm,
-        settings = PrSettings(botLogins = setOf("renovate[bot]"), identity = bot, budgets = Budgets(attemptsWithoutProgress = 2)),
+        settings = PrSettings(botLogins = setOf("renovate[bot]"), identity = bot, budgets = budgets),
     )
 
     private fun recipe(name: String) = Recipe(name, "org.example:recipes:1.0", "Apache-2.0")
@@ -456,10 +476,11 @@ class PrPipelineTest {
     /**
      * Every line of `App.java` that calls `broken()` or `missing()` is a compile error, keyed by the symbol. Versions are
      * the `package version` lines of `pom.xml`. A recipe appends its name to `recipes.txt`, unless its name says it fails or
-     * does nothing.
+     * does nothing. A build of code with [slowWhen] in it runs until its timeout, like a build that hangs.
      */
     private class FakeAdapter(
         private val detects: Boolean = true,
+        private val slowWhen: String? = null,
     ) : EcosystemAdapter {
         val recipeRuns = mutableListOf<String>()
 
@@ -489,18 +510,28 @@ class PrPipelineTest {
 
         override fun detect(repo: Path) = detects
 
-        override fun verify(repo: Path): List<Diagnostic> =
-            repo.resolve("App.java").readLines().withIndex().mapNotNull { (index, line) ->
+        override fun verify(
+            repo: Path,
+            timeout: Duration,
+        ): List<Diagnostic> {
+            val code = repo.resolve("App.java").readText()
+            if (slowWhen != null && slowWhen in code) {
+                Thread.sleep(timeout.inWholeMilliseconds.coerceAtLeast(0))
+                throw ProcessTimedOut("mvn did not finish within $timeout")
+            }
+            return code.lines().withIndex().mapNotNull { (index, line) ->
                 listOf("broken", "missing").firstOrNull { "$it()" in line }?.let {
                     Diagnostic("App.java", index + 1, 9, "symbol:$it", "cannot find symbol $it", Severity.ERROR, "javac")
                 }
             }
+        }
 
         override fun testsRun(repo: Path): Int? = null
 
         override fun runTests(
             repo: Path,
             tests: List<Diagnostic>,
+            timeout: Duration,
         ) = tests
 
         override fun ground(

@@ -50,7 +50,7 @@ class ProcessesTest {
 
     @Test
     fun `a process that runs too long is killed and is a tool error`() {
-        lateinit var error: ToolError
+        lateinit var error: ProcessTimedOut
         val elapsed = measureTime { error = assertFailsWith { runProcess(listOf("sleep", "30"), dir, 200.milliseconds) } }
 
         assertEquals("sleep did not finish within 200ms", error.message)
