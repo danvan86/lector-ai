@@ -72,7 +72,7 @@ class MavenAdapterTest {
 
     @Test
     fun `a recipe run that fails reports the end of Maven's output`() {
-        val adapter = MavenAdapter(plugins = PLUGINS) { _, _ -> ProcessResult(1, "[ERROR] Recipe not found: org.example.UpgradeBoot\n") }
+        val adapter = MavenAdapter(plugins = PLUGINS) { _, _, _ -> ProcessResult(1, "[ERROR] Recipe not found: org.example.UpgradeBoot\n") }
 
         val run = adapter.recipeRunner.run(repo, Recipe("org.example.UpgradeBoot", "org.example:recipes:1.2.3", "Apache License 2.0"))
 
@@ -86,7 +86,7 @@ class MavenAdapterTest {
     fun `reads resolved versions from the effective POM, written to a file outside the repository`() {
         var output: Path? = null
         val adapter =
-            MavenAdapter(plugins = PLUGINS) { command, _ ->
+            MavenAdapter(plugins = PLUGINS) { command, _, _ ->
                 runs += command
                 val file = Path.of(command.single { it.startsWith("-Doutput=") }.removePrefix("-Doutput="))
                 file.writeText(effectivePom("org.example", "lib", "1.2.3"))
@@ -107,8 +107,41 @@ class MavenAdapterTest {
     }
 
     @Test
+    fun `every Maven run gets the JDK the project needs as JAVA_HOME, and recipe runs too`() {
+        repo.resolve("pom.xml").writeText("<project><properties><java.version>17</java.version></properties></project>")
+        val environments = mutableListOf<Map<String, String>>()
+        val jdks = mapOf(17 to Path.of("/opt/java/17"), 21 to Path.of("/opt/java/21"))
+        val adapter =
+            MavenAdapter(plugins = PLUGINS, jdks = jdks) { _, _, environment ->
+                environments += environment
+                ProcessResult(0, "")
+            }
+
+        adapter.verify(repo)
+        adapter.recipeRunner.run(repo, Recipe("org.example.UpgradeBoot", "org.example:recipes:1.0", "Apache-2.0"))
+
+        assertEquals(3, environments.size)
+        assertEquals(listOf(mapOf("JAVA_HOME" to "/opt/java/17")), environments.distinct())
+    }
+
+    @Test
+    fun `without installed JDKs, Maven runs with the environment's JAVA_HOME`() {
+        repo.resolve("pom.xml").writeText("<project/>")
+        val environments = mutableListOf<Map<String, String>>()
+        val adapter =
+            MavenAdapter(plugins = PLUGINS) { _, _, environment ->
+                environments += environment
+                ProcessResult(0, "")
+            }
+
+        adapter.verify(repo)
+
+        assertEquals(listOf(emptyMap()), environments.distinct())
+    }
+
+    @Test
     fun `resolved versions that Maven can't read are a tool error with the end of its output`() {
-        val adapter = MavenAdapter(plugins = PLUGINS) { _, _ -> ProcessResult(1, "[ERROR] Non-resolvable parent POM") }
+        val adapter = MavenAdapter(plugins = PLUGINS) { _, _, _ -> ProcessResult(1, "[ERROR] Non-resolvable parent POM") }
 
         val error = assertFailsWith<ToolError> { adapter.resolvedVersions.read(repo) }
 
@@ -181,7 +214,7 @@ class MavenAdapterTest {
             .createParentDirectories()
             .writeText("<testsuite><testcase name=\"a\"/><testcase name=\"b\"/></testsuite>")
 
-        assertEquals(2, MavenAdapter(plugins = PLUGINS) { _, _ -> ProcessResult(0, "") }.testsRun(repo))
+        assertEquals(2, MavenAdapter(plugins = PLUGINS) { _, _, _ -> ProcessResult(0, "") }.testsRun(repo))
     }
 
     @Test
@@ -328,7 +361,7 @@ class MavenAdapterTest {
         compileExitCode: Int = 0,
         compileOutput: String = "",
         onVerify: () -> Unit = {},
-    ) = MavenAdapter(settings, PLUGINS) { command, workDir ->
+    ) = MavenAdapter(settings, PLUGINS) { command, workDir, _ ->
         assertEquals(root, workDir)
         runs += command
         if ("test-compile" in command) {
