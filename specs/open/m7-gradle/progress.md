@@ -51,6 +51,10 @@ cli 106, recipes 37, sources 19, git 15, llm 18), 19 end-to-end tests, and 100 %
 opt-in integration tests pass: `:ecosystems:jvm:integrationTest` (5, real Gradle 8.14.2 and 9.8.1) and
 `:cli:integrationTest` (4: the two Maven ones and two Gradle ones).
 
+Final check, each on its own after `clean`: `ktlintCheck`, `detektMain detektTest` (14 tasks), `test`,
+`:cli:endToEndTest`, `koverVerify`, and `clean build --rerun-tasks --no-build-cache` exit `0`. (A first `detektMain
+detektTest` exit `1` was the zsh loop again, as in M5: it passed both names as one task.)
+
 Probes, each failing on its own gate, then reverted:
 
 | Gate | Probe | Failed with |
