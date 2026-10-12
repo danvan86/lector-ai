@@ -39,14 +39,20 @@ inputs:
   maven-settings:
     description: Maven settings file in the workspace, e.g. for a mirror. Empty for none.
     default: ""
+  gradle-init:
+    description: Gradle init script in the workspace, passed to every Gradle run, e.g. for a mirror. Empty for none.
+    default: ""
 runs:
   using: docker
   image: docker://ghcr.io/danvan86/lector:0.1.0
-  # The token and the optional settings go through the environment: a token on the command line shows in process lists,
-  # and an empty argument is easy to lose.
+  # The token and the optional files go through the environment: a token on the command line shows in process lists,
+  # and an empty argument is easy to lose. The Gradle user home is in the job's home directory, which GitHub mounts from
+  # the runner (its temp directory, `_github_home`), so a workflow can cache it.
   env:
     LECTOR_GITHUB_TOKEN: ${{ inputs.token }}
     LECTOR_MAVEN_SETTINGS: ${{ inputs.maven-settings }}
+    LECTOR_GRADLE_INIT: ${{ inputs.gradle-init }}
+    GRADLE_USER_HOME: /github/home/.gradle
   args:
     - pr
     - --bot-name

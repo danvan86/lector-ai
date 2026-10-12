@@ -10,7 +10,7 @@ import java.nio.file.Path
 /** A stage that works on one dependency update, given as `--package … --from … --to …`. */
 internal abstract class UpdateCommand(
     name: String,
-    adapters: (mavenSettings: Path?) -> List<EcosystemAdapter>,
+    adapters: (BuildConfig) -> List<EcosystemAdapter>,
     baseCommit: (repo: Path, ref: String) -> BaseCommit,
 ) : RepositoryCommand(name, adapters, baseCommit) {
     private val packageName by option("--package", metavar = "<package>", help = "The updated package, e.g. group:artifact").required()

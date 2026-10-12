@@ -9,7 +9,7 @@ import java.nio.file.Path
 
 /** `lector verify <repo>`: builds and tests the repository, attributes every problem, and prints the report. */
 internal class VerifyCommand(
-    adapters: (mavenSettings: Path?) -> List<EcosystemAdapter>,
+    adapters: (BuildConfig) -> List<EcosystemAdapter>,
     baseCommit: (repo: Path, ref: String) -> BaseCommit = GitBaseCommit::resolve,
 ) : RepositoryCommand("verify", adapters, baseCommit) {
     override fun help(context: Context) = "Tells whether a dependency update broke the build or the tests, and where."
