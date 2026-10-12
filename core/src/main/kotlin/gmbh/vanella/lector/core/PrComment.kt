@@ -3,6 +3,9 @@ package gmbh.vanella.lector.core
 // A comment has a size limit, and a reviewer reads the first errors anyway.
 private const val MAX_ITEMS = 50
 
+// A labelled PR can change hundreds of transitive packages. Most of them have no recipe.
+private const val MAX_WITHOUT_RECIPE = 10
+
 /**
  * The report comment on the PR, in Markdown (concept section 8.3): what the run did, what the update left broken, and
  * what isn't the update's fault, so a reviewer sees all of it in one place.
@@ -67,10 +70,11 @@ object PrComment {
                 "- `${application.recipe.name}` for $changes: $result"
             }
         val without =
-            report.withoutRecipe.map { (change, outcome) ->
+            report.withoutRecipe.take(MAX_WITHOUT_RECIPE).map { (change, outcome) ->
                 "- No recipe for ${change(change)}: ${result(outcome, change, null)}"
             }
-        return applied + without
+        val more = report.withoutRecipe.size - MAX_WITHOUT_RECIPE
+        return applied + without + if (more > 0) listOf("- and ${count(more, "more change")} without a recipe") else emptyList()
     }
 
     /** What became of a recipe: its commit, or the first line of why it didn't run or was discarded. */
@@ -87,7 +91,7 @@ object PrComment {
         }
     }
 
-    private fun change(change: DependencyChange) = "${change.`package`} ${change.fromVersion} → ${change.toVersion}"
+    private fun change(change: DependencyChange) = change.describe()
 
     private fun count(
         number: Int,

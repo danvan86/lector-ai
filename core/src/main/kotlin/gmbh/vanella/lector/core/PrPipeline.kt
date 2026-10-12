@@ -167,7 +167,11 @@ class PrPipeline(
         val (pr, repo, adapter) = run
         val base = run.base
         val changes = run.changes
-        val lookups = changes.map { it to lookUp(it, adapter, base) }
+        val lookups =
+            changes.zip(recipeBlockers(changes, adapter, base)).map { (change, blocker) ->
+                change to
+                    lookUp(change, blocker, adapter)
+            }
         val withoutRecipe = lookups.mapNotNull { (change, lookup) -> (lookup as? Lookup.Stopped)?.let { change to it.outcome } }
         val recipes =
             lookups
@@ -190,13 +194,12 @@ class PrPipeline(
         return PrOutcome.Reported(report)
     }
 
-    /** Rules 1 and 2 of the recipe step, then the index. */
+    /** The index, for a change that rules 1 and 2 of the recipe step didn't [block][blocker]. */
     private fun lookUp(
         change: DependencyChange,
+        blocker: RecipeOutcome?,
         adapter: EcosystemAdapter,
-        base: BaseCommit,
     ): Lookup {
-        val blocker = recipeBlocker(change, adapter, base)
         if (blocker != null) return Lookup.Stopped(blocker)
         val chosen = index.find(change, adapter.versionScheme).chosen
         return if (chosen == null) Lookup.Stopped(RecipeOutcome.NoMatch) else Lookup.Found(chosen.recipe)

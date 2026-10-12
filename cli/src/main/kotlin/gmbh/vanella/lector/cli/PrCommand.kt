@@ -14,6 +14,7 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.path
 import gmbh.vanella.lector.core.CommitIdentity
+import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.GitHost
 import gmbh.vanella.lector.core.LlmClient
@@ -37,13 +38,15 @@ import kotlin.io.path.isRegularFile
 private const val TOKEN_VARIABLE = "LECTOR_GITHUB_TOKEN"
 private const val DEFAULT_API_URL = "https://api.github.com"
 private const val DEFAULT_SERVER_URL = "https://github.com"
+private const val DEFAULT_FALLBACK_LABEL = "lector"
 private val DEFAULT_BOT_LOGINS = listOf("renovate[bot]", "dependabot[bot]")
 private val SOURCE_NAMES = listOf("renovate", "dependabot", "fallback")
 
 /** What the update sources are built from: the options of the run that concern them. */
 internal data class SourceOptions(
     val botLogins: Set<String>,
-    val dependabotMetadata: List<DependabotDependency>? = null,
+    val fallbackLabel: String,
+    val dependabotMetadata: List<DependabotDependency>?,
 )
 
 /**
@@ -97,6 +100,12 @@ internal class PrCommand(
         envvar = "LECTOR_MAVEN_SETTINGS",
         help = "Maven settings file, passed to Maven. Empty for none.",
     ).path()
+    private val fallbackLabel by option(
+        "--fallback-label",
+        metavar = "<label>",
+        help = "The label that opts any other dependency PR of the repository in",
+    ).default(DEFAULT_FALLBACK_LABEL)
+        .check("must not be blank") { it.isNotBlank() }
     private val dependabotMetadata by option(
         "--dependabot-metadata",
         metavar = "<json>",
@@ -145,7 +154,7 @@ internal class PrCommand(
             PrPipeline(
                 // The App's bot commits under its login, so its name is also the author of the report comment.
                 host = host(event, apiUrl, serverUrl, token, botName),
-                sources = sources(SourceOptions(botLogins.toSet(), metadata())),
+                sources = sources(SourceOptions(botLogins.toSet(), fallbackLabel, metadata())),
                 adapters = adapters(settings),
                 index = index(),
                 llm = llm(fixLoop.ollamaUrl, fixLoop.model),
@@ -173,7 +182,13 @@ internal class PrCommand(
             }
 
             is PrOutcome.Reported -> {
-                PrComment.render(outcome.report)
+                PrComment.render(outcome.report) + allChanges(outcome.report.changes)
             }
         }
+
+    // The comment cuts long lists; the CI log has every change, e.g. the transitive ones of a labelled PR.
+    private fun allChanges(changes: List<DependencyChange>): String {
+        if (changes.size == 1) return ""
+        return "\n\nAll ${changes.size} changes:\n" + changes.joinToString("\n") { "- ${it.describe()}" }
+    }
 }

@@ -52,7 +52,7 @@ data class RecipeResult(
  * Finds the recipe for [change] and applies it to [repo] in place, unless that could move a dependency back
  * (concept section 4):
  *
- * 1. A change that isn't an upgrade runs no recipe.
+ * 1. A change that isn't an upgrade runs no recipe. A new or a removed package isn't one.
  * 2. With a [base]: if the base already resolves the package higher than the change's target, the PR is outdated.
  * 3. If any package resolves lower after the recipe than before, the recipe's result is discarded.
  *
@@ -79,24 +79,37 @@ fun recipeBlocker(
     change: DependencyChange,
     adapter: EcosystemAdapter,
     base: BaseCommit?,
-): RecipeOutcome? {
-    if (adapter.versionScheme.compare(change.toVersion, change.fromVersion) <= 0) return RecipeOutcome.NotAnUpgrade
-    return if (base == null) null else outdated(change, adapter, base)
+): RecipeOutcome? = recipeBlockers(listOf(change), adapter, base).single()
+
+/**
+ * Rules 1 and 2 for each of [changes]: the outcome that stops its recipe, or null. Reads the base's versions once, and
+ * only if a change is an upgrade: a PR can change hundreds of packages.
+ */
+fun recipeBlockers(
+    changes: List<DependencyChange>,
+    adapter: EcosystemAdapter,
+    base: BaseCommit?,
+): List<RecipeOutcome?> {
+    val upgrades = changes.map { isUpgrade(it, adapter.versionScheme) }
+    val ruleOne = upgrades.map { if (it) null else RecipeOutcome.NotAnUpgrade }
+    if (base == null || upgrades.none { it }) return ruleOne
+    val baseVersions = readVersions(adapter, base::checkout) { unreadable -> return ruleOne.map { it ?: unreadable } }
+    return changes.zip(ruleOne).map { (change, blocker) -> blocker ?: outdated(change, adapter.versionScheme, baseVersions) }
 }
+
+private fun isUpgrade(
+    change: DependencyChange,
+    versions: VersionScheme,
+) = change.fromVersion.isNotEmpty() && change.toVersion.isNotEmpty() && versions.compare(change.toVersion, change.fromVersion) > 0
 
 /** Rule 2: the outcome that stops the recipe, or null if the PR is not outdated. */
 private fun outdated(
     change: DependencyChange,
-    adapter: EcosystemAdapter,
-    base: BaseCommit,
+    versions: VersionScheme,
+    baseVersions: Map<String, String>,
 ): RecipeOutcome? {
-    val baseVersions = readVersions(adapter, base::checkout) { return it }
     val baseVersion = baseVersions[change.`package`] ?: return null
-    return if (adapter.versionScheme.compare(baseVersion, change.toVersion) > 0) {
-        RecipeOutcome.PrOutdated(baseVersion, change.toVersion)
-    } else {
-        null
-    }
+    return if (versions.compare(baseVersion, change.toVersion) > 0) RecipeOutcome.PrOutdated(baseVersion, change.toVersion) else null
 }
 
 /** Runs [recipe] on [repo] with rule 3. Every outcome but [RecipeOutcome.Applied] leaves the working tree as it was. */
@@ -139,7 +152,7 @@ private fun checkVersions(
 }
 
 /** Every package whose version differs between [before] and [after], sorted by package. */
-internal fun versionChanges(
+fun versionChanges(
     before: Map<String, String>,
     after: Map<String, String>,
 ): List<VersionChange> =
@@ -181,7 +194,11 @@ fun RecipeOutcome.reason(change: DependencyChange): String? =
         }
 
         RecipeOutcome.NotAnUpgrade -> {
-            "${change.toVersion} is not higher than ${change.fromVersion}, so this is not an upgrade"
+            when {
+                change.fromVersion.isEmpty() -> "the package is new, so this is not an upgrade"
+                change.toVersion.isEmpty() -> "the package is gone, so this is not an upgrade"
+                else -> "${change.toVersion} is not higher than ${change.fromVersion}, so this is not an upgrade"
+            }
         }
 
         is RecipeOutcome.PrOutdated -> {

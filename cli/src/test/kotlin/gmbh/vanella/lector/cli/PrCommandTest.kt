@@ -18,6 +18,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.time.Duration.Companion.seconds
 
 class PrCommandTest {
@@ -60,6 +61,7 @@ class PrCommandTest {
 
         assertEquals(0, result.statusCode, result.stderr)
         assertContains(result.stdout, "### lector-ai\n\nThe update of 2 packages broke the build. lector-ai pushed 1 commit;")
+        assertContains(result.stdout, "\n\nAll 2 changes:\n- $PARENT 3.3.5 → 3.4.1\n- org.example:other 1.0 → 2.0\n")
         assertEquals(listOf("Call fixed() instead of broken()"), host.pushed)
         assertEquals(listOf("ai-assisted"), host.labels)
         assertEquals("lector-ai[bot]", git("log", "-1", "--format=%an").trim())
@@ -95,7 +97,7 @@ class PrCommandTest {
         val result = command().test("$repo --event $event $bot --bot-logins 'renovate[bot], my-renovate[bot] ,'", envvars = token)
 
         assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
-        assertEquals(listOf(SourceOptions(setOf("renovate[bot]", "my-renovate[bot]"))), sourceOptions)
+        assertEquals(listOf(setOf("renovate[bot]", "my-renovate[bot]")), sourceOptions.map { it.botLogins })
     }
 
     @Test
@@ -125,6 +127,44 @@ class PrCommandTest {
 
         val dependency = DependabotDependency(PARENT, "maven", "3.3.5", "3.4.1")
         assertEquals(listOf(listOf(dependency), listOf(dependency), null), sourceOptions.map { it.dependabotMetadata })
+    }
+
+    @Test
+    fun `a labelled PR by anyone gets its changes from the resolved versions of base and head, read in a worktree removed afterwards`() {
+        host.pr = host.pr.copy(author = "alice", headBranch = "bump-boot", labels = setOf("lector"))
+
+        val result = command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot", envvars = token)
+
+        assertEquals(0, result.statusCode, result.stderr)
+        assertContains(result.stdout, "The update of $PARENT 3.3.5 → 3.4.1 broke the build.")
+        assertFalse("All 1 changes" in result.stdout)
+        assertEquals(listOf("Call fixed() instead of broken()"), host.pushed)
+        assertEquals(1, git("worktree", "list").lines().count { it.isNotEmpty() })
+    }
+
+    @Test
+    fun `the opt-in label can be set`() {
+        host.pr = host.pr.copy(author = "alice", headBranch = "bump-boot", labels = setOf("upgrade"))
+
+        val result = command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot --fallback-label upgrade", envvars = token)
+
+        assertEquals(listOf("upgrade"), sourceOptions.map { it.fallbackLabel })
+        assertEquals(listOf("Call fixed() instead of broken()"), host.pushed, result.stderr)
+    }
+
+    @Test
+    fun `a labelled PR whose resolved versions can't be read is a tool error with exit 2, and the comment says why`() {
+        host.pr = host.pr.copy(author = "alice", headBranch = "bump-boot", labels = setOf("lector"))
+
+        val result = command(adapter = FakeAdapter(versionsReadable = false)).test("$repo --event $event $bot", envvars = token)
+
+        val reason =
+            "The resolved versions of the base commit can't be read, so lector-ai can't tell what the PR changes: " +
+                "mvn could not resolve the parent POM"
+        assertEquals(2, result.statusCode)
+        assertContains(result.stderr, "Error: $reason")
+        assertEquals(listOf("### lector-ai\n\nlector-ai can't tell what the PR changes, so it changed nothing: $reason"), host.comments)
+        assertEquals(emptyList<String>(), host.pushed)
     }
 
     @Test
@@ -275,6 +315,7 @@ class PrCommandTest {
                 "invalid value for --event: file \"${repo.resolve("missing.json")}\" does not exist",
             "$repo --event $repo $bot" to "invalid value for --event: file \"$repo\" is a directory",
             "$repo --event $event $bot --bot-logins ' , '" to "invalid value for --bot-logins: must name at least one bot",
+            "$repo --event $event $bot --fallback-label ' '" to "invalid value for --fallback-label: must not be blank",
             "$repo --event $event $bot --source snyk" to "invalid value for --source: must be one of renovate, dependabot, fallback",
             "$repo --event $event $bot --dependabot-metadata {}" to
                 "invalid value for --dependabot-metadata: The Dependabot metadata is not fetch-metadata's updated-dependencies-json: not a JSON array",
@@ -307,10 +348,11 @@ class PrCommandTest {
     private fun command(
         llm: LlmClient = ScriptedLlm(),
         index: RecipeIndex = RecipeIndex { _, _ -> RecipeSelection.NONE },
+        adapter: FakeAdapter = FakeAdapter(),
     ) = PrCommand(
         adapters = { mavenSettings ->
             settings += mavenSettings
-            listOf(FakeAdapter())
+            listOf(adapter)
         },
         sources = { options ->
             sourceOptions += options

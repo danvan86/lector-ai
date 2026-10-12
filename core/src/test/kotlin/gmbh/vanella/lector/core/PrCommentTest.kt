@@ -192,6 +192,33 @@ class PrCommentTest {
     }
 
     @Test
+    fun `many changes without a recipe are cut to the first ten, with the number left out, and a missing version shows as none`() {
+        val added = guava.copy(`package` = "org.example:new", fromVersion = "")
+        val removed = guava.copy(`package` = "org.example:gone", toVersion = "")
+        val transitive = (1..12).map { guava.copy(`package` = "org.example:lib$it") }
+        val changes = listOf(added, removed) + transitive
+        val report =
+            PrReport(
+                changes,
+                changes.map { it to RecipeOutcome.NoMatch },
+                emptyList(),
+                FixLoopResult(emptyList(), StopReason.ATTEMPT_BUDGET, Verification(listOf(missing))),
+                false,
+            )
+
+        val comment = PrComment.render(report)
+
+        assertContains(comment, "The update of 14 packages broke the build.")
+        assertContains(comment, "- No recipe for org.example:new none → 33.0.0-jre: no recipe matches\n")
+        assertContains(comment, "- No recipe for org.example:gone 32.1.3-jre → none: no recipe matches\n")
+        assertContains(
+            comment,
+            "- No recipe for org.example:lib8 32.1.3-jre → 33.0.0-jre: no recipe matches\n- and 4 more changes without a recipe",
+        )
+        assertFalse("org.example:lib9 " in comment)
+    }
+
+    @Test
     fun `a green run names the commit and lists only what isn't the update's fault`() {
         assertEquals(
             """

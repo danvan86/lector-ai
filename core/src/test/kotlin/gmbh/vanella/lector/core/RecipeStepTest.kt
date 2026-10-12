@@ -111,6 +111,50 @@ class RecipeStepTest {
     }
 
     @Test
+    fun `a new or a removed package is not an upgrade`() {
+        val adapter = FakeAdapter()
+
+        listOf(change.copy(fromVersion = ""), change.copy(toVersion = "")).forEach {
+            assertEquals(RecipeOutcome.NotAnUpgrade, applyRecipe(it, adapter, index, repo, base = null).outcome, it.toString())
+        }
+        assertTrue(adapter.runs.isEmpty())
+    }
+
+    @Test
+    fun `the blockers of many changes read the base versions once, and not at all if no change is an upgrade`() {
+        val adapter = FakeAdapter(base = mapOf(boot to "3.4.5"))
+        val base = FakeBase(baseCheckout)
+        val other = change.copy(`package` = "org.example:other")
+        val downgrade = change.copy(fromVersion = "3.4.1", toVersion = "3.3.5")
+
+        val blockers = recipeBlockers(listOf(change, other, downgrade), adapter, base)
+
+        assertEquals(listOf(RecipeOutcome.PrOutdated("3.4.5", "3.4.1"), null, RecipeOutcome.NotAnUpgrade), blockers)
+        assertEquals(1, base.checkouts)
+
+        assertEquals(listOf(RecipeOutcome.NotAnUpgrade), recipeBlockers(listOf(downgrade), adapter, base))
+        assertEquals(1, base.checkouts)
+    }
+
+    @Test
+    fun `unreadable base versions, or none, block every upgrade of many changes`() {
+        val adapter = FakeAdapter(unreadable = setOf(baseCheckout))
+        val downgrade = change.copy(fromVersion = "3.4.1", toVersion = "3.3.5")
+
+        val blockers = recipeBlockers(listOf(change, downgrade), adapter, FakeBase(baseCheckout))
+
+        assertEquals(listOf(RecipeOutcome.VersionsUnreadable("resolution failed in $baseCheckout"), RecipeOutcome.NotAnUpgrade), blockers)
+
+        val withoutVersions =
+            recipeBlockers(listOf(change, downgrade), FakeAdapter().apply { resolvedVersions = null }, FakeBase(baseCheckout))
+
+        assertEquals(
+            listOf(RecipeOutcome.VersionsUnreadable("test can't read resolved versions"), RecipeOutcome.NotAnUpgrade),
+            withoutVersions,
+        )
+    }
+
+    @Test
     fun `a base that already has a higher version makes the PR outdated`() {
         val adapter = FakeAdapter(base = mapOf(boot to "3.4.5"))
 
@@ -339,6 +383,11 @@ class RecipeStepTest {
     private class FakeBase(
         private val checkout: Path,
     ) : BaseCommit {
-        override fun <T> checkout(block: (Path) -> T) = block(checkout)
+        var checkouts = 0
+
+        override fun <T> checkout(block: (Path) -> T): T {
+            checkouts++
+            return block(checkout)
+        }
     }
 }
