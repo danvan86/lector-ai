@@ -119,7 +119,7 @@ class PrPipeline(
         changes: List<DependencyChange>,
         releaseNotes: String?,
     ): PrOutcome {
-        if (!GitWorkingTree.hasCommit(repo, pr.baseSha)) host.fetch(repo, pr.baseSha)
+        if (!GitWorkingTree.hasCommit(repo, pr.baseSha)) host.fetch(repo, pr, pr.baseSha)
         val base = GitBaseCommit.resolve(repo, pr.baseSha)
         val verification = attribute(adapter, repo, base)
         if (verification.causedByUpdate.isNotEmpty()) return heal(pr, repo, adapter, base, changes, releaseNotes, verification)

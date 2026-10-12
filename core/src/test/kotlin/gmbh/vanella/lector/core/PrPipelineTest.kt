@@ -400,6 +400,7 @@ class PrPipelineTest {
 
         override fun fetch(
             repo: Path,
+            pr: PullRequest,
             commit: String,
         ) {
             fetches += commit

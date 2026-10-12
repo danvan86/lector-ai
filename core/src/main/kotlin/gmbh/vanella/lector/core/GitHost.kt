@@ -10,9 +10,10 @@ interface GitHost {
     /** The PR the run is for, as the event that started the run shows it. */
     fun pullRequest(): PullRequest
 
-    /** Fetches [commit] into [repo], e.g. a base commit that a shallow clone left out. */
+    /** Fetches [commit] of [pr]'s repository into [repo], e.g. a base commit that a shallow clone left out. */
     fun fetch(
         repo: Path,
+        pr: PullRequest,
         commit: String,
     )
 
