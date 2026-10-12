@@ -182,21 +182,21 @@ class FixLoop(
                 is Proposal.Edits -> apply(proposal.edits) ?: verify(cluster, proposal)
             }
 
-        /** Writes [edits] unless they break a guardrail or lower a version. Returns the rejection, or null. */
+        /**
+         * Writes [edits] unless they break a guardrail or lower a version. Returns the rejection, or null. The scope is
+         * checked before anything is read or written: a reset doesn't restore ignored files.
+         */
         private fun apply(edits: List<Edit>): AttemptOutcome.Rejected? {
             if (edits.isEmpty()) return rejected("the model proposed no edits")
+            val outOfScope = guardrails.checkScope(repo, edits.map { it.file })
+            if (outOfScope.isNotEmpty()) return violated(outOfScope)
             val touchesBuildFile = edited(repo, edits).any(adapter::isBuildFile)
             val before = if (touchesBuildFile) versionsBefore().getOrElse { return rejected(unreadable(it)) } else null
             return write(edits) ?: before?.let(::downgradesSince)?.let(::rejected)
         }
 
-        /**
-         * Writes [edits] if they stay in the scope, and checks what they changed with the guardrails. Returns the
-         * rejection, or null. The scope is checked before anything is written: a reset doesn't restore ignored files.
-         */
+        /** Writes [edits] and checks what they changed with the guardrails. Returns the rejection, or null. */
         private fun write(edits: List<Edit>): AttemptOutcome.Rejected? {
-            val outOfScope = guardrails.checkScope(repo, edits.map { it.file })
-            if (outOfScope.isNotEmpty()) return violated(outOfScope)
             val files = edited(repo, edits)
             val before = files.associateWith { repo.resolve(it).readText() }
             val failure = applyEdits(repo, edits)

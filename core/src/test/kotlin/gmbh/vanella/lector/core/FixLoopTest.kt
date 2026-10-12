@@ -381,6 +381,18 @@ class FixLoopTest {
     }
 
     @Test
+    fun `an attempt out of scope is rejected for its scope before the versions are read`() {
+        val raise = Edit("pom.xml", "org.example:other 3.0", "org.example:other 3.1")
+        val adapter = FakeAdapter(versions = { throw ToolError("resolution failed") })
+
+        val result =
+            loop(adapter, ScriptedLlm(edits(raise, Edit("untracked.txt", "a", "b"))), Budgets(attempts = 1))
+                .run(repo, context, adapter.initial())
+
+        assertEquals(listOf("scope"), (result.attempts.single().outcome as AttemptOutcome.Rejected).violations.map { it.rule })
+    }
+
+    @Test
     fun `without readable versions a build-file edit is rejected`() {
         val raise = Edit("pom.xml", "org.example:other 3.0", "org.example:other 3.1")
         val cantRead = FakeAdapter(versions = null)
