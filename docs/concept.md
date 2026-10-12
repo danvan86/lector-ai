@@ -128,13 +128,15 @@ Each source turns its PR into the same normalized input: `DependencyChange[]`, r
 
 | | Renovate | Dependabot | Fallback (any PR) |
 |---|---|---|---|
-| **Dependency info** | Branch name, PR body, `postUpgradeTasks` | `dependabot/fetch-metadata`: `package-ecosystem`, `previous-version`, `new-version`, `update-type`; `updated-dependencies-json` for grouped PRs | Ecosystem adapter compares manifests and lockfiles between base and head |
-| **Release notes** | PR body | PR body (release notes, changelog, commits) | Registry or GitHub releases |
-| **Recognized by** | Bot author plus branch prefix `renovate/` | PR author `dependabot[bot]` plus branch prefix `dependabot/` | — |
+| **Dependency info** | Branch name, PR body, `postUpgradeTasks` | `dependabot/fetch-metadata`: `updated-dependencies-json`, every entry of a grouped PR (`packageEcosystem`, `prevVersion`, `newVersion`). The update type comes from the adapter's version scheme. | The ecosystem adapter's resolved versions of base and head: every package whose version differs, transitive ones included |
+| **Release notes** | PR body | PR body (release notes, changelog) | None |
+| **Recognized by** | Bot author plus branch prefix `renovate/` | PR author `dependabot[bot]` plus branch prefix `dependabot/` | The opt-in label (`lector`) on a PR from the same repository |
 | **Default branch policy** | In-place commits (with `gitIgnoredAuthors`) | Companion PR | Companion PR |
 | **Platforms** | GitHub, GitLab, and others | GitHub | Any |
 
-The fallback makes the tool independent of whoever opened the PR, including Snyk, manual bumps, and future bots.
+The fallback makes the tool independent of whoever opened the PR, including Snyk, manual bumps, and future bots. It runs only on PRs someone labelled: a feature PR that touches the build gets no commits nobody asked for. Resolved versions catch changes made through properties, BOM imports, parents, catalogs, and plugins; if they can't be read on either side, the tool can't tell what changed and does nothing.
+
+The sources are tried in this order: Renovate, Dependabot, fallback. An optional `source` input names the one that must take the PR; its own checks still apply.
 
 ### 3.1 Source-specific details
 
@@ -146,9 +148,9 @@ The fallback makes the tool independent of whoever opened the PR, including Snyk
 **Dependabot**
 - Dependabot stops rebasing after foreign commits, and `@dependabot rebase` or `recreate`, or a superseding version, overwrites them. Two strategies, configurable:
   - **In-place:** accept that Dependabot no longer rebases. The pipeline is idempotent and reruns on every new head SHA.
-  - **Companion PR (default):** the Dependabot branch stays untouched. The tool opens a stacked PR `heal/<dependabot-branch>` and closes and regenerates it when Dependabot updates or supersedes its PR.
+  - **Companion PR (default):** the Dependabot branch stays untouched. The tool puts its commits onto `heal/<dependabot-branch>`, on top of the PR's head, and opens one stacked PR from it into the Dependabot branch. When Dependabot updates its PR, the companion branch is rebuilt from the new head and force-pushed; the companion PR stays, so its review discussion stays in one place. A superseding PR has a new branch and gets its own companion. The companion PR is closed and its branch deleted when the source PR is closed or merged, or found green. Only `heal/*` is ever force-pushed.
 - Workflows triggered by Dependabot get a read-only `GITHUB_TOKEN` and can only read **Dependabot secrets**. They need `permissions: contents: write` or a GitHub App token whose key is stored as a Dependabot secret.
-- Map `package-ecosystem` values (`maven`, `gradle`, `npm`, `pip`, `nuget`, `terraform`, …) to ecosystem adapters with a lookup table.
+- Map `package-ecosystem` values (`maven`, `gradle`, `npm`, `pip`, `nuget`, `terraform`, …) to ecosystems with a lookup table (`maven` and `gradle` → `maven`). A Gradle plugin, named by its id, maps to its marker artifact `<id>:<id>.gradle.plugin`; the Gradle wrapper is no package.
 
 ## 4. Recipe selection: deterministic and maintenance-free
 
@@ -206,10 +208,9 @@ EcosystemAdapter
   Optional capabilities (absent = the step is skipped):
   recipeRunner?.run(repo, recipe)    → Applied | Failed(reason)   (in place, on a clean working tree)
   resolvedVersions?.read(repo)       → package → version          (effective versions, also when the code doesn't compile)
-  manifestDiff?.diff(base, head)     → DependencyChange[]   (fallback source)
 ```
 
-The recipe runner is optional because the recipe is optional (section 4). Resolved versions are what the downgrade rules and the version list in the report need; without them no recipe runs. The manifest diff is only needed by the fallback source.
+The recipe runner is optional because the recipe is optional (section 4). Resolved versions are what the downgrade rules, the version list in the report, and the fallback source need; without them no recipe runs, and the fallback can't tell what a PR changed.
 
 ### Attribution: what did the update break?
 
@@ -310,7 +311,7 @@ Each rule is a small `Guardrail` implementation in a list, tested on its own. Th
 
 - Run on **every** bot PR, and verify first. If nothing the update caused fails, stop: no recipe, no commit, the PR stays as the bot made it. A broken patch update gets fixed too, and a green PR costs one build.
 - Use `pull_request`, **not** `pull_request_target` with a checkout of the PR code.
-- **Security:** don't gate on `github.actor`. The actor is whoever triggered the most recent event, and this has been exploited. Check instead that the PR author is the expected bot **and** the head repo is the same repo, not a fork.
+- **Security:** don't gate on `github.actor`. The actor is whoever triggered the most recent event, and this has been exploited. Check instead that the PR author is the expected bot, or the PR carries the opt-in label (only people with write access can add labels), **and** the head repo is the same repo, not a fork.
 
 ### 8.2 Tokens
 
@@ -327,14 +328,14 @@ Separate, traceable commits:
 2. The OpenRewrite recipe output
 3. One commit per AI fix, with the error it addressed and a one-line rationale
 
-`heal` creates the commits for 2 and 3 locally, with the tool identity `lector`. In CI (`lector pr`, M5) they are made by the GitHub App's bot and pushed onto the bot's branch with a plain `git push`, never by force: if the branch moved on, nothing is pushed, and the new head gets its own run.
+`heal` creates the commits for 2 and 3 locally, with the tool identity `lector`. In CI (`lector pr`, M5) they are made by the GitHub App's bot. In place, they are pushed onto the bot's branch with a plain `git push`, never by force: if the branch moved on, nothing is pushed, and the new head gets its own run. In companion mode (M8, section 3.1), they go onto `heal/<branch>` with a companion PR into the bot's branch. The branch policy comes from the source (Renovate in place, Dependabot and the fallback companion) unless the `mode` input sets it.
 
 A grouped PR gets one commit per **distinct** recipe, in the order of the PR's table: the packages of a monorepo group usually map to the same recipe. One fix loop then works on everything the update caused.
 
 Also:
-- Label the PR `ai-assisted` when something was pushed. **It is never auto-merged.**
+- Label the PR that carries the commits `ai-assisted` when something was pushed: the bot's PR in place, the companion PR otherwise. **It is never auto-merged.**
 - **Partial results:** the recipe commits **and** every accepted fix commit are pushed: accepted fixes passed the guardrails and made measurable progress. The remaining diagnostics are reported.
-- **One report comment** per PR, found by a hidden marker and updated on every run: recipes, fixes, what is left, what isn't the update's fault, and the guardrail rejections per rule.
+- **One report comment** per PR, found by a hidden marker and updated on every run: recipes, fixes, what is left, what isn't the update's fault, and the guardrail rejections per rule. It stays on the source PR in companion mode too, and links the companion PR, whose description has the same summary.
 
 ### 8.4 Infrastructure
 
