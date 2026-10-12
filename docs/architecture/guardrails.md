@@ -1,6 +1,6 @@
 # Architecture – Guardrails
 
-Milestone: [M4](../features.md#m4--guardrails-) · Spec: [`m4-guardrails/spec.md`](../../specs/open/m4-guardrails/spec.md) · Review: [`review.md`](../../specs/open/m4-guardrails/review.md)
+Milestone: [M4](../features.md#m4--guardrails-) · Spec: [`m4-guardrails/spec.md`](../../specs/done/m4-guardrails/spec.md) · Review: [`review.md`](../../specs/done/m4-guardrails/review.md)
 
 > **Summary for agents**
 >
