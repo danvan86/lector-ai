@@ -8,7 +8,7 @@ plugins {
 ktlint {
     version = libs.versions.ktlint.asProvider()
     kotlinScriptAdditionalPaths {
-        include(fileTree("buildSrc") { include("**/*.kts").exclude("build/**") })
+        include(fileTree("buildSrc") { include("**/*.kts", "**/*.kt").exclude("build/**") })
     }
 }
 
