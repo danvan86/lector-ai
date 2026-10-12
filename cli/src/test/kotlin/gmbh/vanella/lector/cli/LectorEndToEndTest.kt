@@ -301,6 +301,70 @@ class LectorEndToEndTest {
     }
 
     @Test
+    fun `pr with Dependabot metadata that isn't fetch-metadata's JSON exits with 2 before anything runs`(
+        @TempDir repo: Path,
+    ) {
+        val event = event(author = "dependabot[bot]", head = "1111111", base = "2222222")
+
+        val run =
+            lector(
+                "pr",
+                repo.toString(),
+                *BOT,
+                environment =
+                    mapOf(
+                        "GITHUB_EVENT_PATH" to event.toString(),
+                        "LECTOR_GITHUB_TOKEN" to "t",
+                        "LECTOR_DEPENDABOT_METADATA" to """{"dependencyName": "a:b"}""",
+                    ),
+            )
+
+        assertEquals("", run.stdout)
+        assertContains(
+            run.stderr,
+            "invalid value for --dependabot-metadata: The Dependabot metadata is not fetch-metadata's updated-dependencies-json: not a JSON array",
+        )
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `pr of a closed PR without a companion PR looks for one on GitHub and exits with 0`(
+        @TempDir repo: Path,
+    ) {
+        val requests = mutableListOf<String>()
+        val github = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        github.createContext("/") { exchange ->
+            requests += "${exchange.requestMethod} ${exchange.requestURI.path}"
+            val answer = "[]".encodeToByteArray()
+            exchange.sendResponseHeaders(200, answer.size.toLong())
+            exchange.responseBody.use { it.write(answer) }
+        }
+        github.start()
+        val event = event(author = "dependabot[bot]", head = "1111111", base = "2222222", state = "closed")
+
+        val run =
+            try {
+                lector(
+                    "pr",
+                    repo.toString(),
+                    *BOT,
+                    environment =
+                        mapOf(
+                            "GITHUB_EVENT_PATH" to event.toString(),
+                            "GITHUB_API_URL" to "http://127.0.0.1:${github.address.port}",
+                            "LECTOR_GITHUB_TOKEN" to "t",
+                        ),
+                )
+            } finally {
+                github.stop(0)
+            }
+
+        assertEquals("The PR is closed. It has no companion PR.\n", run.stdout)
+        assertEquals(listOf("GET /repos/acme/app/pulls"), requests)
+        assertEquals(0, run.exitCode, run.stderr)
+    }
+
+    @Test
     fun `pr without the token exits with 2`(
         @TempDir repo: Path,
     ) {
@@ -365,6 +429,7 @@ class LectorEndToEndTest {
         author: String,
         head: String,
         base: String,
+        state: String = "open",
     ): Path {
         val body = "This PR contains the following updates:\n\n| Package | Change |\n|---|---|\n| $PARENT | `3.3.5` → `3.4.1` |"
         val event =
@@ -373,7 +438,7 @@ class LectorEndToEndTest {
                     "pull_request",
                     buildJsonObject {
                         put("number", 7)
-                        put("state", "open")
+                        put("state", state)
                         put("merged", false)
                         put("labels", buildJsonArray {})
                         put("body", body)
