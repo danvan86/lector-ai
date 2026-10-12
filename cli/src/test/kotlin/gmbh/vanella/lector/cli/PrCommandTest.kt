@@ -9,7 +9,7 @@ import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.RecipeIndex
 import gmbh.vanella.lector.core.RecipeSelection
 import gmbh.vanella.lector.core.runProcess
-import gmbh.vanella.lector.sources.RenovateSource
+import gmbh.vanella.lector.sources.DependabotDependency
 import org.junit.jupiter.api.io.TempDir
 import java.net.URI
 import java.nio.file.Path
@@ -96,6 +96,35 @@ class PrCommandTest {
 
         assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
         assertEquals(listOf(SourceOptions(setOf("renovate[bot]", "my-renovate[bot]"))), sourceOptions)
+    }
+
+    @Test
+    fun `a Dependabot PR without its metadata is a tool error with exit 2 that names the setup step, also in the comment`() {
+        host.pr = host.pr.copy(author = "dependabot[bot]", headBranch = "dependabot/maven/org.springframework.boot-3.4.1")
+
+        val result = command().test("$repo --event $event $bot", envvars = token)
+
+        assertEquals(2, result.statusCode)
+        assertContains(result.stderr, "Error: The Dependabot PR comes without its metadata.")
+        assertContains(result.stderr, "dependabot-metadata input, as the setup guide shows (docs/setup.md, section 3).")
+        assertContains(host.comments.single(), "lector-ai can't tell what the PR changes, so it changed nothing: The Dependabot PR")
+    }
+
+    @Test
+    fun `the Dependabot metadata comes from the environment or the option, and an empty value means none`() {
+        host.pr = host.pr.copy(author = "mallory")
+        val metadata =
+            """[{"dependencyName": "$PARENT", "packageEcosystem": "maven", "prevVersion": "3.3.5", "newVersion": "3.4.1"}]"""
+
+        command().test("$repo --event $event $bot", envvars = token + mapOf("LECTOR_DEPENDABOT_METADATA" to metadata))
+        command().test(
+            listOf(repo.toString(), "--event", event.toString()) + bot.split(" ") + listOf("--dependabot-metadata", metadata),
+            envvars = token,
+        )
+        command().test("$repo --event $event $bot", envvars = token + mapOf("LECTOR_DEPENDABOT_METADATA" to ""))
+
+        val dependency = DependabotDependency(PARENT, "maven", "3.3.5", "3.4.1")
+        assertEquals(listOf(listOf(dependency), listOf(dependency), null), sourceOptions.map { it.dependabotMetadata })
     }
 
     @Test
@@ -247,6 +276,8 @@ class PrCommandTest {
             "$repo --event $repo $bot" to "invalid value for --event: file \"$repo\" is a directory",
             "$repo --event $event $bot --bot-logins ' , '" to "invalid value for --bot-logins: must name at least one bot",
             "$repo --event $event $bot --source snyk" to "invalid value for --source: must be one of renovate, dependabot, fallback",
+            "$repo --event $event $bot --dependabot-metadata {}" to
+                "invalid value for --dependabot-metadata: The Dependabot metadata is not fetch-metadata's updated-dependencies-json: not a JSON array",
         ).forEach { (args, error) ->
             val run = LectorCommand("1.2.3").subcommands(command()).executeInProcess("pr", *split(args))
 
@@ -283,7 +314,7 @@ class PrCommandTest {
         },
         sources = { options ->
             sourceOptions += options
-            listOf(RenovateSource(options.botLogins))
+            sources(options)
         },
         index = { index },
         llm = { url, model ->

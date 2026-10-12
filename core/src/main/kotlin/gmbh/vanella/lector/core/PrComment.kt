@@ -20,8 +20,8 @@ object PrComment {
                 "#### Recipes\n" + recipes(report).ifEmpty { listOf("- none") }.joinToString("\n"),
                 "#### Fixes\n" + fixes(fixLoop).ifEmpty { listOf("- none") }.joinToString("\n"),
                 "The fix loop made ${count(fixLoop.attempts.size, "attempt")} and stopped: ${fixLoop.stopReason.description}.",
-                if (left.isEmpty()) null else "#### Left to fix\n" + items(left),
-                notCausedByUpdate(report.verification),
+                if (left.isEmpty()) null else "#### Left to fix\n" + DiagnosticItems.items(left),
+                DiagnosticItems.notCausedByUpdate(report.verification),
                 fixLoop.rejectionsPerRule().map { (rule, count) -> "- $rule: $count" }.ifEmpty { null }?.let {
                     "#### Guardrail rejections\n" + it.joinToString("\n")
                 },
@@ -36,8 +36,11 @@ object PrComment {
         commit: String,
     ): String {
         val headline = "Verify is green on ${commit.take(SHORT_COMMIT)}: nothing caused by the update. lector-ai changed nothing."
-        return listOfNotNull(TITLE, headline, notCausedByUpdate(verification)).joinToString("\n\n")
+        return listOfNotNull(TITLE, headline, DiagnosticItems.notCausedByUpdate(verification)).joinToString("\n\n")
     }
+
+    /** The comment of a run that couldn't read what the PR changes, for the [reason] the source gave. */
+    fun unreadable(reason: String) = "$TITLE\n\nlector-ai can't tell what the PR changes, so it changed nothing: $reason"
 
     private fun headline(report: PrReport): String {
         val single = report.changes.singleOrNull()
@@ -84,7 +87,17 @@ object PrComment {
         }
     }
 
-    private fun notCausedByUpdate(verification: Verification): String? {
+    private fun change(change: DependencyChange) = "${change.`package`} ${change.fromVersion} → ${change.toVersion}"
+
+    private fun count(
+        number: Int,
+        noun: String,
+    ) = if (number == 1) "1 $noun" else "$number ${noun}s"
+}
+
+/** The diagnostics in a comment: one line each, at most [MAX_ITEMS] per list. */
+private object DiagnosticItems {
+    fun notCausedByUpdate(verification: Verification): String? {
         val groups =
             listOf(
                 "Pre-existing (fail on the base commit too)" to verification.preExisting,
@@ -95,7 +108,7 @@ object PrComment {
         return "#### Not caused by the update\n" + groups.joinToString("\n\n") { (title, diagnostics) -> "$title:\n" + items(diagnostics) }
     }
 
-    private fun items(diagnostics: List<Diagnostic>): String {
+    fun items(diagnostics: List<Diagnostic>): String {
         val shown = diagnostics.take(MAX_ITEMS).map(::item)
         val more = if (diagnostics.size > MAX_ITEMS) listOf("- and ${diagnostics.size - MAX_ITEMS} more") else emptyList()
         return (shown + more).joinToString("\n")
@@ -107,11 +120,4 @@ object PrComment {
         val message = diagnostic.message.lines().first()
         return "- `[${diagnostic.tool}]` " + if (subject.isEmpty()) message else "$subject: $message"
     }
-
-    private fun change(change: DependencyChange) = "${change.`package`} ${change.fromVersion} → ${change.toVersion}"
-
-    private fun count(
-        number: Int,
-        noun: String,
-    ) = if (number == 1) "1 $noun" else "$number ${noun}s"
 }

@@ -1,8 +1,10 @@
 package gmbh.vanella.lector.cli
 
 import com.github.ajalt.clikt.core.subcommands
+import gmbh.vanella.lector.core.UpdateSource
 import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
 import gmbh.vanella.lector.recipes.BundledRecipeIndex
+import gmbh.vanella.lector.sources.DependabotSource
 import gmbh.vanella.lector.sources.RenovateSource
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -18,9 +20,13 @@ internal fun rootCommand(version: String): LectorCommand {
         VerifyCommand(adapters),
         MigrateCommand(adapters, index = { BundledRecipeIndex.load() }),
         HealCommand(adapters, index = { BundledRecipeIndex.load() }),
-        PrCommand(adapters, sources = { listOf(RenovateSource(it.botLogins)) }, index = { BundledRecipeIndex.load() }),
+        PrCommand(adapters, sources = ::sources, index = { BundledRecipeIndex.load() }),
     )
 }
+
+/** The update sources in the order they are tried: the bots first, by author and branch. */
+internal fun sources(options: SourceOptions): List<UpdateSource> =
+    listOf(RenovateSource(options.botLogins), DependabotSource(options.botLogins, options.dependabotMetadata))
 
 /** The JDKs the container image installs for the projects it builds, by release: `LECTOR_JDK_<release>=<JAVA_HOME>`. */
 internal fun installedJdks(environment: Map<String, String>): Map<Int, Path> =

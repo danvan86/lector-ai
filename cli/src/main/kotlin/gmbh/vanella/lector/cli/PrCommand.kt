@@ -11,6 +11,7 @@ import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
+import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.path
 import gmbh.vanella.lector.core.CommitIdentity
 import gmbh.vanella.lector.core.EcosystemAdapter
@@ -21,9 +22,12 @@ import gmbh.vanella.lector.core.PrOutcome
 import gmbh.vanella.lector.core.PrPipeline
 import gmbh.vanella.lector.core.PrSettings
 import gmbh.vanella.lector.core.RecipeIndex
+import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.UpdateSource
 import gmbh.vanella.lector.git.GitHubHost
 import gmbh.vanella.lector.llm.OllamaClient
+import gmbh.vanella.lector.sources.DependabotDependency
+import gmbh.vanella.lector.sources.DependabotSource
 import java.net.URI
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
@@ -39,6 +43,7 @@ private val SOURCE_NAMES = listOf("renovate", "dependabot", "fallback")
 /** What the update sources are built from: the options of the run that concern them. */
 internal data class SourceOptions(
     val botLogins: Set<String>,
+    val dependabotMetadata: List<DependabotDependency>? = null,
 )
 
 /**
@@ -92,6 +97,18 @@ internal class PrCommand(
         envvar = "LECTOR_MAVEN_SETTINGS",
         help = "Maven settings file, passed to Maven. Empty for none.",
     ).path()
+    private val dependabotMetadata by option(
+        "--dependabot-metadata",
+        metavar = "<json>",
+        envvar = "LECTOR_DEPENDABOT_METADATA",
+        help = "The updated-dependencies-json output of dependabot/fetch-metadata, for a Dependabot PR. Empty for none.",
+    ).validate { json ->
+        try {
+            if (json.isNotBlank()) DependabotSource.parseMetadata(json)
+        } catch (e: ToolError) {
+            fail(e.message)
+        }
+    }
     private val fixLoop by FixLoopOptions()
 
     override fun help(context: Context) =
@@ -128,7 +145,7 @@ internal class PrCommand(
             PrPipeline(
                 // The App's bot commits under its login, so its name is also the author of the report comment.
                 host = host(event, apiUrl, serverUrl, token, botName),
-                sources = sources(SourceOptions(botLogins.toSet())),
+                sources = sources(SourceOptions(botLogins.toSet(), metadata())),
                 adapters = adapters(settings),
                 index = index(),
                 llm = llm(fixLoop.ollamaUrl, fixLoop.model),
@@ -136,6 +153,9 @@ internal class PrCommand(
             )
         return pipeline.run(repo)
     }
+
+    // The action passes an empty value when the workflow ran no fetch-metadata. The option was validated when parsed.
+    private fun metadata() = dependabotMetadata?.takeIf { it.isNotBlank() }?.let(DependabotSource::parseMetadata)
 
     private fun text(outcome: PrOutcome) =
         when (outcome) {

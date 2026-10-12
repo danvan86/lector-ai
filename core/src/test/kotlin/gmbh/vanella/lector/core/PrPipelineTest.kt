@@ -143,6 +143,32 @@ class PrPipelineTest {
     }
 
     @Test
+    fun `a source that can't read the changes fails the run, before verify, and the comment says why`() {
+        val host = host(pr())
+        val adapter = FakeAdapter()
+        val source =
+            object : UpdateSource by FakeSource("bot", update = SourceUpdate(listOf(lib), null)) {
+                override fun read(
+                    pr: PullRequest,
+                    context: SourceContext,
+                ): SourceUpdate = throw ToolError("The resolved versions of the base commit can't be read: mvn failed")
+            }
+
+        val error = assertFailsWith<ToolError> { pipeline(host, adapter = adapter, sources = listOf(source)).run(repo) }
+
+        assertEquals("The resolved versions of the base commit can't be read: mvn failed", error.message)
+        assertEquals(0, adapter.verifies)
+        assertEquals(
+            listOf(
+                "### lector-ai\n\nlector-ai can't tell what the PR changes, so it changed nothing: " +
+                    "The resolved versions of the base commit can't be read: mvn failed" to true,
+            ),
+            host.comments,
+        )
+        assertEquals(emptyList(), host.pushes)
+    }
+
+    @Test
     fun `a PR whose head commit is the tool's own is skipped without a comment`() {
         val host = host(pr(), headAuthor = bot)
 
@@ -575,6 +601,7 @@ class PrPipelineTest {
         readsVersions: Boolean = true,
     ) : EcosystemAdapter {
         val recipeRuns = mutableListOf<String>()
+        var verifies = 0
 
         override val ecosystem = "test"
         override val versionScheme = DottedVersions
@@ -612,6 +639,7 @@ class PrPipelineTest {
             repo: Path,
             timeout: Duration,
         ): List<Diagnostic> {
+            verifies++
             val code = repo.resolve("App.java").readText()
             if (slowWhen != null && slowWhen in code) {
                 // Until the timeout has passed on the loop's clock: a sleep in whole milliseconds can end just before it.
