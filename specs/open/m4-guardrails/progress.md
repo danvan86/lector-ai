@@ -17,7 +17,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 ## Quality gates
 
-After the review: `clean build --rerun-tasks --no-build-cache` exits `0` with 378 unit tests (core 137, jvm 110, cli 81,
+After the review: `clean build --rerun-tasks --no-build-cache` exits `0` with 382 unit tests (core 139, jvm 112, cli 81,
 llm 17, recipes 33), 16 end-to-end tests, and 100 % lines and branches per module.
 
 Before the review: each on its own from a clean state: `ktlintCheck`, `detektMain detektTest`, `test` (368 unit tests),

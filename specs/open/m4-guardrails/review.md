@@ -11,7 +11,8 @@ Severity: **High** = breaks a requirement or the external contract · **Medium**
 
 ## Summary
 
-- 30 of 30 acceptance criteria are met; AC19, AC21, and AC22 only with caveats (F1, F2, F3). Loading tree-sitter on
+- 30 of 30 acceptance criteria are met; AC19, AC21, and AC22 only with caveats (F1, F2, F3). AC12 was rewritten
+  after the review (F5). Loading tree-sitter on
   Linux can't be verified until CI runs the branch.
 - The main rule gap: stubbing and suppression reject a placeholder that was already there when the line around it
   changes, so a signature fix of an empty no-op override can never pass (F1).
@@ -100,8 +101,13 @@ unrelated error elsewhere allows deleting every method of that name. The spec's 
 diagnostic") allows this; the legitimate case it is for (an `@Override` of a removed method) is always reported in the
 method's own file.
 
-Outcome: **Needs decision.** A: only diagnostics in the same file (recommended; narrower than the spec's wording, so
-the spec changes with it). B: keep it as specified.
+Outcome: **Fixed, with a spec change (decided in chat).** A diagnostic shows a method has to change, not that its
+logic may go: deleting `configure(HttpSecurity)` in a Spring Security 6 upgrade compiles and drops every access rule.
+Also, javac's "method does not override or implement a method from a supertype" names no method, so the Java case the
+exception was for never passed. Now a method may go only if a current diagnostic in its file points into its lines and
+its body was empty or comes back in a method the attempt added (rename, move). `Method` carries its `body`; spec Q3,
+AC12, concept section 7, and features.md are updated. A rename or move that also adapts the body is rejected and left
+to a human; M6's rejections per rule show whether that blocks too much.
 
 ### Robustness and contracts
 
