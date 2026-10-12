@@ -54,7 +54,7 @@ Save this as `.github/workflows/lector-ai.yml` and fill in the bot's name (twice
 ```yaml
 name: lector-ai
 
-# pull_request, never pull_request_target: the PR's code must never run with the base repository's secrets.
+# Only pull_request (concept 8.1): the PR's code must never run with the base repository's secrets.
 on:
   pull_request:
     types: [opened, synchronize, reopened]

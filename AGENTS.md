@@ -22,17 +22,18 @@ A CI tool that takes a dependency-update PR (Renovate, Dependabot, or any other)
 
 ## Project layout
 
-Planned Gradle modules. Create them as needed; don't scaffold empty ones.
+Gradle modules, and the files that ship them. Create new modules as needed; don't scaffold empty ones.
 
 ```
 core/          data model, ports (interfaces), pipeline, fix loop, guardrails
 recipes/       recipe index built from OpenRewrite metadata
 llm/           Ollama client, prompts
-sources/       update-source adapters (renovate, dependabot, fallback)
+sources/       update-source adapters (renovate; later dependabot, fallback)
 ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
-action/        GitHub Action wrapper
+action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
+docker/        Dockerfiles of the tool image and the Ollama image (not Gradle modules)
 ```
 
 Adapters are compile-time plugins: modules that implement a `core` interface and are registered in `cli`. No dynamic loading. See concept section 2.
@@ -50,7 +51,12 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
 ./gradlew :cli:installDist # start script at cli/build/install/lector/bin/lector
+docker build -f docker/lector/Dockerfile -t lector .   # tool image, after :cli:installDist
+docker build --build-arg MODEL=qwen2.5-coder:7b -t lector-ollama docker/ollama   # Ollama image with the model baked in
 ```
+
+The setup for users is in [`docs/setup.md`](docs/setup.md). A version tag (`v<version>`) publishes both images to GHCR
+(`.github/workflows/release.yml`); it is refused until the MSAL check in [`docs/licensing.md`](docs/licensing.md) is done.
 
 The build uses a JDK 25 toolchain; Gradle downloads it if it's missing.
 
