@@ -3,6 +3,7 @@ package gmbh.vanella.lector.cli
 import com.github.ajalt.clikt.core.subcommands
 import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
 import gmbh.vanella.lector.recipes.BundledRecipeIndex
+import gmbh.vanella.lector.sources.RenovateSource
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
 
@@ -17,6 +18,7 @@ internal fun rootCommand(version: String): LectorCommand {
         VerifyCommand(adapters),
         MigrateCommand(adapters, index = { BundledRecipeIndex.load() }),
         HealCommand(adapters, index = { BundledRecipeIndex.load() }),
+        PrCommand(adapters, sources = listOf(RenovateSource()), index = { BundledRecipeIndex.load() }),
     )
 }
 

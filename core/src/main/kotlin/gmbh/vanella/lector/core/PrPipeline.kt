@@ -60,8 +60,8 @@ sealed interface PrOutcome {
 /**
  * The pipeline for one dependency PR (concept section 8), the same for every source, ecosystem, and host:
  *
- * 1. Trigger checks: a bot login opened the PR from the same repository, on a branch its source recognizes, and the
- *    head commit isn't the tool's own. Otherwise the run is skipped.
+ * 1. Trigger checks: a bot login opened the PR from the same repository, on a branch one of the [sources] recognizes,
+ *    and the head commit isn't the tool's own. Otherwise the run is skipped.
  * 2. Verify the PR's head against its base. Green means stop: the PR stays as the bot made it.
  * 3. Run each distinct recipe of the PR's changes once, in the PR's order, one commit each. Then the fix loop.
  * 4. Push the commits, never by force, then the report comment, and the `ai-assisted` label if anything was pushed.
@@ -70,7 +70,7 @@ sealed interface PrOutcome {
  */
 class PrPipeline(
     private val host: GitHost,
-    private val source: UpdateSource,
+    private val sources: List<UpdateSource>,
     private val adapters: List<EcosystemAdapter>,
     private val index: RecipeIndex,
     private val llm: LlmClient,
@@ -80,6 +80,7 @@ class PrPipeline(
         val pr = host.pullRequest()
         val skip = skipReason(pr) ?: ownCommit(pr, repo)
         if (skip != null) return skipped(skip)
+        val source = sources.first { it.recognizes(pr) }
         val adapter = adapters.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in $repo")
         val update = source.read(pr)
         val changes =
@@ -137,8 +138,8 @@ class PrPipeline(
                 "the PR comes from ${pr.headRepository}, not from ${pr.baseRepository}"
             }
 
-            !source.recognizes(pr) -> {
-                "the update source doesn't recognize the branch ${pr.headBranch}"
+            sources.none { it.recognizes(pr) } -> {
+                "no update source recognizes the branch ${pr.headBranch}"
             }
 
             else -> {

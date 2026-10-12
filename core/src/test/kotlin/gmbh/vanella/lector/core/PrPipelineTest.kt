@@ -59,7 +59,7 @@ class PrPipelineTest {
 
         val outcome = pipeline(host).run(repo)
 
-        assertEquals(PrOutcome.Skipped("the update source doesn't recognize the branch feature/bump"), outcome)
+        assertEquals(PrOutcome.Skipped("no update source recognizes the branch feature/bump"), outcome)
         assertNothingHappened(host)
     }
 
@@ -344,7 +344,7 @@ class PrPipelineTest {
         recipes: Map<String, Recipe> = emptyMap(),
     ) = PrPipeline(
         host = host,
-        source = FakeSource(SourceUpdate(updates, "lib 2.0 renames broken() to fixed()", BranchPolicy.IN_PLACE)),
+        sources = listOf(FakeSource(SourceUpdate(updates, "lib 2.0 renames broken() to fixed()", BranchPolicy.IN_PLACE))),
         adapters = listOf(adapter),
         index = { change, _ ->
             recipes[change.`package`]?.let { RecipeSelection(RecipeMatch(it, it.name, 1), emptyList()) }
