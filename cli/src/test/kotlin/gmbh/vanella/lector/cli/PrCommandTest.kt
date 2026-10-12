@@ -157,8 +157,10 @@ class PrCommandTest {
             envvars = token,
         )
         command().test("$repo --event $event $bot --maven-settings $file", envvars = token)
+        command().test("$repo --event $event $bot", envvars = token + mapOf("LECTOR_MAVEN_SETTINGS" to ""))
+        command().test("$repo --event $event $bot", envvars = token + mapOf("LECTOR_MAVEN_SETTINGS" to file.toString()))
 
-        assertEquals(listOf(null, file), settings)
+        assertEquals(listOf(null, file, null, file), settings)
     }
 
     @Test

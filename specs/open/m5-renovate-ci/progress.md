@@ -15,7 +15,7 @@ rejections.
 | 4 | Renovate adapter in `sources` | ✅ |
 | 5 | GitHub adapter in `git`: event, comment, label, fetch, push | ✅ |
 | 6 | `lector pr` in `cli`, with end-to-end tests | ✅ |
-| 7 | Container images, GitHub Action, release workflow | ⬜ |
-| 8 | Setup guide and `docs/licensing.md` | ⬜ |
+| 7 | Container images, GitHub Action, release workflow | ✅ |
+| 8 | Setup guide and `docs/licensing.md` | ✅ |
 | 9 | Quality gates verified | ⬜ |
 | 10 | Docs in sync | ⬜ |

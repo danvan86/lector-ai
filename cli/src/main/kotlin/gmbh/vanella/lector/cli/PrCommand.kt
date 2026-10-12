@@ -76,6 +76,7 @@ internal class PrCommand(
     private val mavenSettings by option(
         "--maven-settings",
         metavar = "<file>",
+        envvar = "LECTOR_MAVEN_SETTINGS",
         help = "Maven settings file, passed to Maven. Empty for none.",
     ).path()
     private val fixLoop by FixLoopOptions()
