@@ -18,6 +18,7 @@ The release workflow refuses a version tag until the line above says `done`, tog
 | Kotlin standard library, JetBrains annotations, kotlinx.serialization, Clikt, Mordant | Apache License 2.0 |
 | colormath (Mordant's colors), SLF4J | MIT |
 | `maven-artifact`, `plexus-utils` | Apache License 2.0 |
+| OpenRewrite Gradle plugin (`org.openrewrite:plugin`, in `rewrite-gradle-plugin/`), with the Kotlin standard library and JetBrains annotations it needs | Apache License 2.0 (the plugin's POM on the Gradle Plugin Portal) |
 | JNA (Clikt's terminal detection) | Apache License 2.0 or LGPL 2.1 or later |
 | tree-sitter-ng with the Java and Kotlin grammars (`io.github.bonede`) | MIT |
 | The recipe index and its license report: recipe names, the packages and versions they cover, and their artifacts and licenses, generated from `rewrite-recipe-bom` | see the MSAL check |
@@ -27,7 +28,8 @@ The release workflow refuses a version tag until the line above says `done`, tog
 | Ubuntu 24.04 (the `eclipse-temurin` base) | the licenses of its packages |
 
 No OpenRewrite recipe JARs are in the image, the distribution, or a pre-filled Maven cache. The organisation's own Maven
-fetches them when a recipe runs (M2).
+or Gradle fetches them when a recipe runs (M2). That includes the OpenRewrite libraries the Gradle plugin loads: the
+image ships only the plugin itself, about 100 KB (M7).
 
 ### Ollama image (`ghcr.io/<owner>/lector-ollama`)
 
