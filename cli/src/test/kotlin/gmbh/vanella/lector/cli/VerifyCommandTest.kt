@@ -20,7 +20,6 @@ import kotlin.io.path.createFile
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import kotlin.time.Duration
 
 class VerifyCommandTest {

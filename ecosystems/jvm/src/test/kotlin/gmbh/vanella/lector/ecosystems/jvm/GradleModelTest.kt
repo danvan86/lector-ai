@@ -3,21 +3,15 @@ package gmbh.vanella.lector.ecosystems.jvm
 import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.ProcessResult
-import gmbh.vanella.lector.core.ProcessTimedOut
 import gmbh.vanella.lector.core.Recipe
 import gmbh.vanella.lector.core.RecipeRun
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.UpdateType
-import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
-import kotlin.io.path.createDirectories
 import kotlin.io.path.createParentDirectories
-import kotlin.io.path.deleteExisting
-import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -26,9 +20,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.minutes
 
 /** The query task's model, grounding, unsupported builds, test reports, and recipes. */
 class GradleModelTest : FakeGradleTest() {
