@@ -11,9 +11,9 @@ rejections.
 |---|---|---|
 | 1 | Core groundwork: scrubbed environment for every process, commit identity, several changes per fix loop, recipe lookup and run split | ✅ |
 | 2 | JDK selection in the Maven adapter | ✅ |
-| 3 | `UpdateSource` port and the Renovate adapter in `sources` | ⬜ |
-| 4 | `GitHost` port and the GitHub adapter in `git`: event, comment, label, fetch, push | ⬜ |
-| 5 | PR pipeline in `core`: trigger checks, verify first, recipes, fix loop, push, comment, label | ⬜ |
+| 3 | Ports `UpdateSource` and `GitHost`, and the PR pipeline in `core`: trigger checks, verify first, recipes, fix loop, push, comment, label | ✅ |
+| 4 | Renovate adapter in `sources` | ✅ |
+| 5 | GitHub adapter in `git`: event, comment, label, fetch, push | ⬜ |
 | 6 | `lector pr` in `cli`, with end-to-end tests | ⬜ |
 | 7 | Container images, GitHub Action, release workflow | ⬜ |
 | 8 | Setup guide and `docs/licensing.md` | ⬜ |
