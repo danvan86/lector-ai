@@ -172,3 +172,39 @@ private inline fun readVersions(
         unreadable(RecipeOutcome.VersionsUnreadable(e.message))
     }
 }
+
+/** Why [change] got no recipe, or why its recipe's result was discarded. Null if it was applied. */
+fun RecipeOutcome.reason(change: DependencyChange): String? =
+    when (val outcome = this) {
+        is RecipeOutcome.Applied -> {
+            null
+        }
+
+        RecipeOutcome.NotAnUpgrade -> {
+            "${change.toVersion} is not higher than ${change.fromVersion}, so this is not an upgrade"
+        }
+
+        is RecipeOutcome.PrOutdated -> {
+            "PR outdated: the base already resolves ${change.`package`} to ${outcome.baseVersion}, higher than ${outcome.toVersion}"
+        }
+
+        RecipeOutcome.NoMatch -> {
+            "no recipe matches"
+        }
+
+        RecipeOutcome.NoRecipeRunner -> {
+            "the ${change.ecosystem} ecosystem has no recipe runner"
+        }
+
+        is RecipeOutcome.VersionsUnreadable -> {
+            "the resolved versions can't be read, so a downgrade can't be ruled out: ${outcome.reason}"
+        }
+
+        is RecipeOutcome.RunFailed -> {
+            "the recipe run failed: ${outcome.reason}"
+        }
+
+        is RecipeOutcome.DowngradeDetected -> {
+            "the recipe moved packages to lower versions, so its result was discarded"
+        }
+    }

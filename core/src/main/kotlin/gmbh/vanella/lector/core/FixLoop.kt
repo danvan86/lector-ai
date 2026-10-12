@@ -63,12 +63,14 @@ sealed interface AttemptOutcome {
     ) : AttemptOutcome
 }
 
-enum class StopReason {
-    NOTHING_LEFT,
-    ATTEMPT_BUDGET,
-    TIME_BUDGET,
-    NO_PROGRESS,
-    CLUSTER_BUDGETS,
+enum class StopReason(
+    val description: String,
+) {
+    NOTHING_LEFT("nothing caused by the update is left"),
+    ATTEMPT_BUDGET("the attempt budget is used up"),
+    TIME_BUDGET("the time budget is used up"),
+    NO_PROGRESS("no progress in the last attempts"),
+    CLUSTER_BUDGETS("every cluster used its attempts"),
 }
 
 /** Every attempt, why the loop stopped, and the verification of the last commit. */
@@ -76,7 +78,20 @@ data class FixLoopResult(
     val attempts: List<Attempt>,
     val stopReason: StopReason,
     val verification: Verification,
-)
+) {
+    /** The accepted attempts, in order. */
+    val fixes get() = attempts.map { it.outcome }.filterIsInstance<AttemptOutcome.Accepted>()
+
+    /** How many attempts each guardrail rule rejected, by rule. */
+    fun rejectionsPerRule(): Map<String, Int> =
+        attempts
+            .map { it.outcome }
+            .filterIsInstance<AttemptOutcome.Rejected>()
+            .flatMap { rejected -> rejected.violations.map { it.rule }.distinct() }
+            .groupingBy { it }
+            .eachCount()
+            .toSortedMap()
+}
 
 /**
  * Lets the model fix what the update broke, one cluster at a time (concept section 6). Each attempt is applied, checked

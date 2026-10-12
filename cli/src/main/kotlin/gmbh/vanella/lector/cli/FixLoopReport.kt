@@ -18,26 +18,16 @@ internal const val SHORT_COMMIT = 7
  */
 internal object FixLoopReport {
     fun text(result: FixLoopResult): String {
-        val fixes = result.attempts.map { it.outcome }.filterIsInstance<AttemptOutcome.Accepted>()
+        val fixes = result.fixes
         val attempts = result.attempts.mapIndexed(::line)
         val lines =
-            listOf("Fix loop (${result.attempts.size} attempts, ${fixes.size} accepted; stopped: ${stopReason(result.stopReason)})") +
+            listOf("Fix loop (${result.attempts.size} attempts, ${fixes.size} accepted; stopped: ${result.stopReason.description})") +
                 list("Attempts", attempts) +
                 list("Fixes", fixes.map { "- ${it.commit.take(SHORT_COMMIT)} ${it.rationale}" }) +
-                list("Rejections per guardrail", rejectionsPerRule(result).map { (rule, count) -> "- $rule: $count" }) +
+                list("Rejections per guardrail", result.rejectionsPerRule().map { (rule, count) -> "- $rule: $count" }) +
                 "  Tests run in the final verify: ${result.verification.testsRun ?: "unknown"}"
         return lines.joinToString("\n")
     }
-
-    /** How many attempts each guardrail rule rejected, by rule. */
-    private fun rejectionsPerRule(result: FixLoopResult) =
-        result.attempts
-            .map { it.outcome }
-            .filterIsInstance<AttemptOutcome.Rejected>()
-            .flatMap { rejected -> rejected.violations.map { it.rule }.distinct() }
-            .groupingBy { it }
-            .eachCount()
-            .toSortedMap()
 
     private fun line(
         index: Int,
@@ -49,7 +39,7 @@ internal object FixLoopReport {
             mapOf(
                 "stopReason" to JsonPrimitive(name(result.stopReason)),
                 "attempts" to JsonArray(result.attempts.map(::json)),
-                "rejectionsPerGuardrail" to JsonObject(rejectionsPerRule(result).mapValues { JsonPrimitive(it.value) }),
+                "rejectionsPerGuardrail" to JsonObject(result.rejectionsPerRule().mapValues { JsonPrimitive(it.value) }),
                 "testsRun" to JsonPrimitive(result.verification.testsRun),
             ),
         )
@@ -101,15 +91,6 @@ internal object FixLoopReport {
         when (outcome) {
             is AttemptOutcome.Accepted -> "${outcome.before} -> ${outcome.after}"
             is AttemptOutcome.Rejected -> outcome.reason
-        }
-
-    private fun stopReason(reason: StopReason) =
-        when (reason) {
-            StopReason.NOTHING_LEFT -> "nothing caused by the update is left"
-            StopReason.ATTEMPT_BUDGET -> "the attempt budget is used up"
-            StopReason.TIME_BUDGET -> "the time budget is used up"
-            StopReason.NO_PROGRESS -> "no progress in the last attempts"
-            StopReason.CLUSTER_BUDGETS -> "every cluster used its attempts"
         }
 
     private fun name(reason: StopReason) =
