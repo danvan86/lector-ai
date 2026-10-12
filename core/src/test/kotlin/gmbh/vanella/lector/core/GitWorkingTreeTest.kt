@@ -123,6 +123,27 @@ class GitWorkingTreeTest {
     }
 
     @Test
+    fun `commit uses the given identity, like the GitHub App's bot`() {
+        repo.resolve("pom.txt").writeText("v2\n")
+        val bot = CommitIdentity("lector-ai[bot]", "123+lector-ai[bot]@users.noreply.github.com")
+
+        GitWorkingTree.commit(repo, "Raise the version", listOf("pom.txt"), bot)
+
+        assertEquals("lector-ai[bot] <123+lector-ai[bot]@users.noreply.github.com>", git("log", "-1", "--format=%an <%ae>").trim())
+        assertEquals("lector-ai[bot] <123+lector-ai[bot]@users.noreply.github.com>", git("log", "-1", "--format=%cn <%ce>").trim())
+        assertEquals(bot.email, GitWorkingTree.authorEmail(repo, "HEAD"))
+    }
+
+    @Test
+    fun `head is the current commit, and only commits in the repository exist`() {
+        val head = git("rev-parse", "HEAD").trim()
+
+        assertEquals(head, GitWorkingTree.head(repo))
+        assertTrue(GitWorkingTree.hasCommit(repo, head))
+        assertFalse(GitWorkingTree.hasCommit(repo, "0123456789abcdef0123456789abcdef01234567"))
+    }
+
+    @Test
     fun `commit records only the given files and leaves the rest of the working tree as it is`() {
         repo.resolve("pom.txt").writeText("v2\n")
         repo.resolve("test-output.log").writeText("written by the build\n")

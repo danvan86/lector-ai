@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.core
 
 import java.nio.file.Path
+import kotlin.time.Duration
 
 /** The extension point every ecosystem implements, one adapter per build tool. It grows when a milestone needs more. */
 interface EcosystemAdapter {
@@ -21,19 +22,27 @@ interface EcosystemAdapter {
     /** Whether this adapter handles the repository. */
     fun detect(repo: Path): Boolean
 
-    /** Builds the repository and runs its tests. Returns every problem found; empty means green. */
-    fun verify(repo: Path): List<Diagnostic>
+    /**
+     * Builds the repository and runs its tests. Returns every problem found; empty means green. A build that runs longer
+     * than [timeout] is stopped with a [ProcessTimedOut].
+     */
+    fun verify(
+        repo: Path,
+        timeout: Duration,
+    ): List<Diagnostic>
 
     /** The number of tests the last [verify] of [repo] ran, or null if it can't tell, e.g. because no test ran. */
     fun testsRun(repo: Path): Int?
 
     /**
      * Runs only the tests that the given test failures come from. Returns the problems of that run: the tests that
-     * still fail, and any build problem that kept the tests from running.
+     * still fail, and any build problem that kept the tests from running. A run longer than [timeout] is stopped with a
+     * [ProcessTimedOut].
      */
     fun runTests(
         repo: Path,
         tests: List<Diagnostic>,
+        timeout: Duration,
     ): List<Diagnostic>
 
     /**

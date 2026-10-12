@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
@@ -26,7 +27,7 @@ class FixLoopTest {
     private val lib = "org.example:lib"
     private val change = DependencyChange("test", lib, "1.0", "2.0", UpdateType.MAJOR)
     private val context =
-        FixContext(change, releaseNotes = "2.0 renames broken() to fixed()", recipeDiff = "diff --git a/pom.xml b/pom.xml")
+        FixContext(listOf(change), releaseNotes = "2.0 renames broken() to fixed()", recipeDiff = "diff --git a/pom.xml b/pom.xml")
     private val time = TestTimeSource()
     private val fix = Edit("App.java", "broken();", "fixed();")
     private val app =
@@ -203,6 +204,38 @@ class FixLoopTest {
     }
 
     @Test
+    fun `a build that runs past the time budget is stopped, its attempt rejected and reset, and the loop stops on time`() {
+        val timeouts = mutableListOf<Duration>()
+        val adapter =
+            FakeAdapter(onVerify = { timeout ->
+                timeouts += timeout
+                time += timeout
+                throw ProcessTimedOut("mvn did not finish within $timeout")
+            })
+
+        val result = loop(adapter, ScriptedLlm(edits(fix))).run(repo, context, adapter.initial())
+
+        assertEquals(listOf(30.minutes), timeouts, "the build gets the time that is left")
+        assertEquals(StopReason.TIME_BUDGET, result.stopReason)
+        assertEquals(
+            AttemptOutcome.Rejected("the builds ran past the time budget: mvn did not finish within 30m"),
+            result.attempts.single().outcome,
+        )
+        assertEquals(app, repo.resolve("App.java").readText())
+        assertEquals("", git("status", "--porcelain"))
+    }
+
+    @Test
+    fun `a build that hits the adapter's own limit while time is left is still a tool error`() {
+        val adapter = FakeAdapter(onVerify = { throw ProcessTimedOut("mvn did not finish within 1h") })
+
+        val error = assertFailsWith<ProcessTimedOut> { loop(adapter, ScriptedLlm(edits(fix))).run(repo, context, adapter.initial()) }
+
+        assertEquals("mvn did not finish within 1h", error.message)
+        assertEquals(app, repo.resolve("App.java").readText())
+    }
+
+    @Test
     fun `the first request on a cluster has temperature 0 and everything the model needs`() {
         val llm = ScriptedLlm(edits(fix))
         val adapter = FakeAdapter()
@@ -210,7 +243,7 @@ class FixLoopTest {
         loop(adapter, llm).run(repo, context, adapter.initial())
 
         val request = llm.requests.single()
-        assertEquals(change, request.change)
+        assertEquals(listOf(change), request.changes)
         assertEquals(listOf(compileError(3)), request.diagnostics)
         assertEquals(listOf(Snippet("App.java", 1, 5, app)), request.snippets)
         assertEquals("API of $lib 2.0 for 1 diagnostics", request.grounding)
@@ -218,6 +251,38 @@ class FixLoopTest {
         assertEquals("diff --git a/pom.xml b/pom.xml", request.recipeDiff)
         assertEquals(emptyList(), request.previousAttempts)
         assertEquals(0.0, request.temperature)
+    }
+
+    @Test
+    fun `with several changes, the request names them all and grounds each, and commits use the given identity`() {
+        val other = DependencyChange("test", "org.example:other", "2.0", "3.0", UpdateType.MAJOR)
+        val llm = ScriptedLlm(edits(fix))
+        val adapter = FakeAdapter()
+        val bot = CommitIdentity("lector-ai[bot]", "1+lector-ai[bot]@users.noreply.github.com")
+
+        FixLoop(
+            adapter,
+            llm,
+            null,
+            identity = bot,
+            timeSource = time,
+        ).run(repo, context.copy(changes = listOf(change, other)), adapter.initial())
+
+        val request = llm.requests.single()
+        assertEquals(listOf(change, other), request.changes)
+        assertEquals("API of $lib 2.0 for 1 diagnostics\n\nAPI of org.example:other 3.0 for 1 diagnostics", request.grounding)
+        assertEquals("${bot.name} <${bot.email}>", git("log", "-1", "--format=%an <%ae>").trim())
+    }
+
+    @Test
+    fun `a change without grounding adds nothing to the request's grounding`() {
+        val llm = ScriptedLlm(edits(fix))
+        val adapter = FakeAdapter(grounding = { change -> if (change.`package` == lib) "" else "API of ${change.`package`}" })
+        val other = DependencyChange("test", "org.example:other", "2.0", "3.0", UpdateType.MAJOR)
+
+        loop(adapter, llm).run(repo, context.copy(changes = listOf(change, other)), adapter.initial())
+
+        assertEquals("API of org.example:other", llm.requests.single().grounding)
     }
 
     @Test
@@ -565,7 +630,7 @@ class FixLoopTest {
         llm: LlmClient,
         budgets: Budgets = Budgets(),
         base: BaseCommit? = null,
-    ) = FixLoop(adapter, llm, base, budgets, time)
+    ) = FixLoop(adapter, llm, base, budgets, timeSource = time)
 
     private fun edits(
         vararg edits: Edit,
@@ -606,6 +671,8 @@ class FixLoopTest {
      */
     private inner class FakeAdapter(
         private val problems: (Path) -> List<Diagnostic> = ::compileErrors,
+        private val grounding: (DependencyChange) -> String? = { null },
+        private val onVerify: (timeout: Duration) -> Unit = {},
         private val versions: ((Path) -> Map<String, String>)? = { dir ->
             dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
         },
@@ -639,21 +706,26 @@ class FixLoopTest {
 
         override fun detect(repo: Path) = true
 
-        override fun verify(repo: Path): List<Diagnostic> {
+        override fun verify(
+            repo: Path,
+            timeout: Duration,
+        ): List<Diagnostic> {
             verifyCalls++
+            onVerify(timeout)
             return problems(repo)
         }
 
         override fun runTests(
             repo: Path,
             tests: List<Diagnostic>,
+            timeout: Duration,
         ) = if (repo == baseCheckout) emptyList() else tests
 
         override fun ground(
             repo: Path,
             change: DependencyChange,
             diagnostics: List<Diagnostic>,
-        ) = "API of ${change.`package`} ${change.toVersion} for ${diagnostics.size} diagnostics"
+        ) = grounding(change) ?: "API of ${change.`package`} ${change.toVersion} for ${diagnostics.size} diagnostics"
 
         override fun clusterKey(diagnostic: Diagnostic) = diagnostic.code
 

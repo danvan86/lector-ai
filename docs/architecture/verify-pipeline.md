@@ -7,7 +7,7 @@ Milestone: [M1](../features.md#m1--verify-and-report-jvmmaven-no-ai-) · Spec: [
 > - `lector verify <repo>` builds and tests a repository through an `EcosystemAdapter`, then `attribute()` in `core` sorts every `Diagnostic` into the four lists of a `Verification`: caused by the update, pre-existing, flaky, unattributed.
 > - The contract: the report goes to stdout (text, or one line of JSON with `--format json`), logs go to stderr. Exit `0` when nothing is caused by the update, `1` when something is, `2` on a tool error.
 > - `core` knows no build tool: it holds the data model, the port, attribution, the process runner, and the Git worktree for the base commit. Everything Maven-specific is in `ecosystems:jvm`. Only `cli` (`RootCommand.kt`) knows `MavenAdapter`.
-> - A new ecosystem is a new `ecosystems:*` module that implements `EcosystemAdapter` (`detect`, `verify`, `runTests`, plus `ecosystem` and `versionScheme` and the optional recipe capabilities since M2, see [Recipe migration](recipe-migration.md), `ground`, `clusterKey`, `isBuildFile` since M3, see [Fix loop](fix-loop.md), and `languageSupport`, `isEditable`, `testDisablingConfig`, `testsRun` since M4, see [Guardrails](guardrails.md)), registered in the adapter list in `rootCommand()`. Its parsers are tested on output captured from real runs.
+> - A new ecosystem is a new `ecosystems:*` module that implements `EcosystemAdapter` (`detect`, `verify`, `runTests`, both with a `timeout` since M5, plus `ecosystem` and `versionScheme` and the optional recipe capabilities since M2, see [Recipe migration](recipe-migration.md), `ground`, `clusterKey`, `isBuildFile` since M3, see [Fix loop](fix-loop.md), and `languageSupport`, `isEditable`, `testDisablingConfig`, `testsRun` since M4, see [Guardrails](guardrails.md)), registered in the adapter list in `rootCommand()`. Its parsers are tested on output captured from real runs.
 > - Easiest rule to break: test failures carry `Diagnostic.test`, everything else has `test == null`, and attribution relies on it. A run with any `test == null` diagnostic says nothing about the tests. Never skip or filter tests in `verify`; `-Dtest` belongs in `runTests` only.
 
 ## Overview
@@ -31,17 +31,18 @@ flowchart LR
 |---|---|---|
 | `core` | `Diagnostic.kt` | `Diagnostic(file, line, column, code, message, severity, tool, test)`. `file` is relative to the repository root with `/`. `file`, `line`, `column`, `code`, and `test` are nullable. `Severity` has only `ERROR`: warnings aren't collected. |
 | | `Verification.kt` | The four lists. No classification lives on `Diagnostic`. |
-| | `EcosystemAdapter.kt` | The port: `detect(repo)`, `verify(repo)`, `runTests(repo, tests: List<Diagnostic>)`. M2 added the members for recipes, M3 those for the fix loop. |
-| | `Attribution.kt` | `attribute(adapter, repo, base)` and the `BaseCommit` fun interface. |
-| | `Processes.kt` | `runProcess(command, workDir, timeout)` and `ToolError`. |
+| | `EcosystemAdapter.kt` | The port: `detect(repo)`, `verify(repo, timeout)`, `runTests(repo, tests: List<Diagnostic>, timeout)`. A run longer than `timeout` is stopped with a `ProcessTimedOut`. M2 added the members for recipes, M3 those for the fix loop, M4 those for the guardrails. |
+| | `Attribution.kt` | `attribute(adapter, repo, base, timeLeft)` and the `BaseCommit` interface. `timeLeft` gives each build and test run its timeout when it starts (default: no limit; the fix loop passes its time budget). |
+| | `Processes.kt` | `runProcess(command, workDir, timeout, environment)`, `ToolError`, and `ProcessTimedOut` (a `ToolError`). The process gets a scrubbed environment, see [Processes](#processes). |
 | | `GitBaseCommit.kt` | `GitBaseCommit.resolve(repo, ref)` and `checkout { }` in a temporary worktree. |
 | `ecosystems:jvm` | `MavenAdapter.kt` | Detects `pom.xml` at the root, builds the Maven command lines, runs Maven, collects diagnostics. |
+| | `JdkSelection.kt` | Picks the `JAVA_HOME` for a project from the installed JDKs (M5). |
 | | `MavenConsole.kt` | Console output → javac and kotlinc errors, failed goals, unreadable POMs. |
 | | `TestReports.kt` | surefire and failsafe XML reports → test failures, parsed with the shared `xmlDocumentBuilder()` (`XmlDocumentBuilder.kt`). |
 | `cli` | `VerifyCommand.kt` | The `verify` subcommand: attribution and report. |
-| | `RepositoryCommand.kt` | Shared with `migrate` and `heal`: `<repo>`, `--base`, `--format`, `--maven-settings`, validation, adapter detection, exit code. |
+| | `RepositoryCommand.kt` | Shared with `migrate` and `heal`: `<repo>`, `--base`, `--format`, `--maven-settings`, validation, adapter detection, exit code. `ensure()` and `toolError()` are also used by `pr`. |
 | | `Reports.kt` | `TextReport` and `JsonReport`. |
-| | `RootCommand.kt` | Wires `VerifyCommand` (and `MigrateCommand`) with `MavenAdapter`. |
+| | `RootCommand.kt` | Wires `VerifyCommand` (and the other subcommands) with `MavenAdapter`, and gives it the JDKs from `installedJdks()`: every `LECTOR_JDK_<release>` environment variable. |
 
 ```mermaid
 flowchart TB
@@ -81,7 +82,9 @@ flowchart TB
 
 ## Maven adapter
 
-`MavenAdapter` runs `<repo>/mvnw` if it exists, otherwise `mvn` from `PATH`, in the repository's real path (`toRealPath()`, so macOS `/var` → `/private/var` doesn't break relative paths). The JDK is whatever `JAVA_HOME` says. Every run gets `-B -fae`, plus `--settings <absolute path>` if `--maven-settings` is given.
+`MavenAdapter` runs `<repo>/mvnw` if it exists, otherwise `mvn` from `PATH`, in the repository's real path (`toRealPath()`, so macOS `/var` → `/private/var` doesn't break relative paths). Every run gets `-B -fae`, plus `--settings <absolute path>` if `--maven-settings` is given.
+
+**JDK selection** (`JdkSelection`, M5): with installed JDKs (`MavenAdapter(jdks = …)`, release → `JAVA_HOME`), each run gets `JAVA_HOME` of the smallest JDK that is at least the release the root `pom.xml` declares in `maven.compiler.release`, else `java.version` (a `${…}` reference to another property is resolved, `1.8` is `8`), else 21. A project that needs a newer JDK than any installed is a `ToolError`. Without installed JDKs (outside the tool image), the environment's `JAVA_HOME` applies. The tool image sets `LECTOR_JDK_17`, `LECTOR_JDK_21`, and `LECTOR_JDK_25`.
 
 | Call | Goals and properties |
 |---|---|
@@ -90,7 +93,7 @@ flowchart TB
 | `runTests` with only surefire tests | `clean test -Dtest=<classes> -Dsurefire.failIfNoSpecifiedTests=false` |
 | `runTests` with failsafe tests | `clean verify -Dtest=<classes> -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=<classes> -Dit.failIfNoSpecifiedTests=false`. Without surefire tests, `-Dtest=lector.NoUnitTests`, a filter that matches no class |
 
-`runTests` reruns whole test classes (fully qualified), because surefire can't select every method by name (parameterized tests). Surefire always gets a filter: `verify` runs surefire before failsafe, and without one it would run every unit test, on the base commit too, and a failing unit test would stop failsafe in its module. After every run, the adapter parses the console output and the test reports. A run that exits non-zero without any parsed diagnostic becomes one `maven` diagnostic with the last 20 lines of output, so a failure never looks green. Each Maven run has a one-hour timeout (`MAVEN_TIMEOUT`).
+`runTests` reruns whole test classes (fully qualified), because surefire can't select every method by name (parameterized tests). Surefire always gets a filter: `verify` runs surefire before failsafe, and without one it would run every unit test, on the base commit too, and a failing unit test would stop failsafe in its module. After every run, the adapter parses the console output and the test reports. A run that exits non-zero without any parsed diagnostic becomes one `maven` diagnostic with the last 20 lines of output, so a failure never looks green. Each Maven run is stopped after the `timeout` the caller gives, and never runs longer than an hour (`MAVEN_TIMEOUT`); stage 2 of `verify` gets what stage 1 left. Recipe runs and `effective-pom` get the hour.
 
 ### Parsers
 
@@ -103,6 +106,10 @@ flowchart TB
 | An unreadable report (malformed, with a DOCTYPE, or can't be opened) | — | `maven` build error, so no failure gets lost |
 
 Only `[ERROR]` lines count; warnings are ignored. Paths outside the repository stay absolute. Message text comes from the tools in the runner's locale.
+
+### Processes
+
+`runProcess()` starts every process (Maven, `git`, `javap`) without the tool's environment: builds and tests run code from the updated dependency, so they must not see the push token or the action's inputs. A process gets only the allowlisted variables (`PATH`, `HOME`, `USER`, `TMPDIR`, `TZ`, `LANG`, `LANGUAGE`, `JAVA_HOME`, `CI`, the proxy variables in both cases, and anything starting with `LC_` or `MAVEN_`), plus the `environment` the caller adds: the selected `JAVA_HOME` for Maven, the token for `GitHubHost`'s own `git fetch` and `git push` ([PR pipeline](pr-pipeline.md)). Stdin is closed, stdout and stderr go to a temporary file, and a process past its timeout is killed with its children and becomes a `ProcessTimedOut`.
 
 ## CLI contract
 
@@ -147,8 +154,8 @@ sequenceDiagram
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
-| Unit | `test` | Attribution with a fake adapter and a fake base; parsers on captured output; adapter command lines with a fake process runner; the command through Clikt's `test()` and `executeInProcess()` | `AttributionTest`, `MavenConsoleTest`, `TestReportsTest`, `MavenAdapterTest`, `VerifyCommandTest`, `ReportsTest` |
-| Unit, real processes | `test` | `runProcess` with `sh`, `GitBaseCommit` on a temporary Git repository, `MavenAdapter` with a fake `mvnw` script | `ProcessesTest`, `GitBaseCommitTest` |
+| Unit | `test` | Attribution with a fake adapter and a fake base; parsers on captured output; adapter command lines, `JAVA_HOME`, and timeouts with a fake process runner; JDK selection on POMs in temporary directories; the command through Clikt's `test()` and `executeInProcess()` | `AttributionTest`, `MavenConsoleTest`, `TestReportsTest`, `MavenAdapterTest`, `JdkSelectionTest`, `VerifyCommandTest`, `ReportsTest` |
+| Unit, real processes | `test` | `runProcess` with `sh` (timeouts, and `env` started with a token, `GITHUB_TOKEN`, and `INPUT_*` sees none of them), `GitBaseCommit` on a temporary Git repository, `MavenAdapter` with a fake `mvnw` script | `ProcessesTest`, `GitBaseCommitTest` |
 | End-to-end | `endToEndTest` (in `check`) | The start script: `verify` exits `2` for invalid usage, for an unsupported repository, and for an invalid `--base` | `LectorEndToEndTest` |
 | Integration | `:cli:integrationTest` (opt-in, not in `check`) | Real Maven on a base/head repository: the head bumps commons-lang3 3.12.0 → 3.18.0. One test breaks, one fails on both commits. Checks the lists, exit `1`, one worktree left, clean `git status`. Needs `mvn` and network. | `VerifyIntegrationTest` |
 
@@ -163,5 +170,5 @@ Fixtures: `ecosystems/jvm/src/test/resources/fixtures/` (Maven projects that bre
 | `clean` before compile and reruns | Removes stale test reports from earlier runs. Costs a recompile per rerun. | M3, if the fix loop needs faster cycles |
 | Source files found only in the standard layout | `src/<set>/<lang>/<package>/<File>`. Otherwise a test failure has no location. | When a fixture needs it |
 | Only errors, no warnings | An old warning would otherwise fail the job. | With baseline comparison of warnings |
-| Messages in the runner's locale | Maven, javac, and kotlinc print localized text. The parsers only use locale-independent markers. | M5, container image |
+| Messages in the runner's locale | Maven, javac, and kotlinc print localized text. The parsers only use locale-independent markers. The tool image sets `LANG=C.UTF-8`, which the JDK reads as English (`user.language=en`). | — |
 | Unix paths only | The parsers expect absolute `/…` paths. CI runs Linux. | If Windows runners are needed |

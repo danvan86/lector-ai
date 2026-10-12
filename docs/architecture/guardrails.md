@@ -4,7 +4,7 @@ Milestone: [M4](../features.md#m4--guardrails-) · Spec: [`m4-guardrails/spec.md
 
 > **Summary for agents**
 >
-> - Every attempt of the fix loop passes `Guardrails` (`core/…/Guardrails.kt`) before the downgrade check and the verify. A violation rejects the attempt: the tree is reset, the attempt counts against the budgets, and each `Violation(rule, file, line, reason)` goes into the retry request and the `heal` report (with a count per rule). Recipe output is never checked.
+> - Every attempt of the fix loop passes `Guardrails` (`core/…/Guardrails.kt`) before the downgrade check and the verify. A violation rejects the attempt: the tree is reset, the attempt counts against the budgets, and each `Violation(rule, file, line, reason)` goes into the retry request and the `heal` report (with a count per rule); the `pr` comment has the count per rule. Recipe output is never checked.
 > - The rules are generic and live in `core`: `Scope`, `DiffSize`, `BuildFileBlocklist` in `FileRules.kt`, the rules on source facts in `SourceRules.kt`. They see only `FileChange`s (before = last commit, after = working tree), `SourceFacts`, and the diagnostics caused by the update. No tree-sitter, no Java, no Maven in `core`.
 > - The language knowledge comes from the adapter: `EcosystemAdapter.languageSupport` (`LanguageSupport.facts(file, content): SourceFacts?`), `isEditable`, `isBuildFile`, `testDisablingConfig`. For the JVM: `JvmLanguageSupport` and `TreeSitterLanguage` with the query files under `ecosystems/jvm/src/main/resources/…/queries/{java,kotlin}/`, plus `JvmScope` and `MavenTestSkipping` in `MavenGuardrails.kt`.
 > - A new language is a grammar and seven query files in its adapter, not a new rule. A new rule is one more `Guardrail` in the list in `Guardrails`, with a rejecting and a passing test in `core` (on hand-made facts) and in the adapter (on real source).
@@ -42,9 +42,9 @@ flowchart LR
 | | `queries/java/*.scm`, `queries/kotlin/*.scm` | `types`, `methods`, `tests`, `assertions`, `skips`, `suppressions`, `stubs`. All language knowledge is here. |
 | | `MavenGuardrails.kt` | `JvmScope` (the editable scope) and `MavenTestSkipping` (the build-file blocklist). |
 | | `MavenAdapter.kt` | Wires both, `languageSupport = JvmLanguageSupport`, `isBuildFile` (now also the wrapper and `.mvn/`), and `testsRun` via `TestReports.count()`. |
-| `cli` | `HealCommand.kt` | `--max-changed-lines`. |
+| `cli` | `FixLoopOptions.kt` | `--max-changed-lines`, for `heal` and `pr`. |
 | | `FixLoopReport.kt` | Violations per attempt, rejections per rule, tests run, in text and JSON. |
-| | `RepositoryCommand.kt` | Catches any `Throwable`, so a native library that doesn't load exits `2`, not `1`. |
+| | `RepositoryCommand.kt` | Catches any `Throwable`, so a native library that doesn't load exits `2`, not `1`. `PrCommand` does the same through the shared `toolError()`. |
 
 tree-sitter (`io.github.bonede:tree-sitter`, `tree-sitter-java`, `tree-sitter-kotlin`, versions in `gradle/libs.versions.toml`) is a dependency of `ecosystems:jvm` only. Its JARs carry JNI libraries for glibc Linux, macOS, and Windows; there are none for musl, so the container image can't be Alpine. The test JVMs of `ecosystems:jvm` get `--enable-native-access=ALL-UNNAMED`, as the start script already does.
 
@@ -115,7 +115,7 @@ A method's type is the chain of types around it (`Outer.Inner`). An assertion's 
 
 ## Report and CLI
 
-`heal` gains `--max-changed-lines <n>` (default 50, at least 1, validated while parsing). The exit code still follows the final verification: a lower runtime test count doesn't change it.
+`heal` gains `--max-changed-lines <n>` (default 50, at least 1, validated while parsing); `pr` has it too. The exit code still follows the final verification: a lower runtime test count doesn't change it.
 
 Text report, fix-loop section (after M3's attempts and fixes):
 
@@ -155,5 +155,5 @@ JSON: each attempt gains `violations` (`rule`, `file`, `line`, `reason`, empty u
 | Any new assumption call is a skip | "Always skips" isn't decidable. | — |
 | A rename or move that also changes the body is rejected | A diagnostic says a method must change, not that its logic may go (review F5). | M6 measures rejections per rule |
 | The blocklist matches lines, not parsed XML | Build files get no grammar (spec "What not to do"). A plugin is the `<plugin>…</plugin>` block around the line. | When a real case slips through |
-| Native libraries for glibc only | tree-sitter-ng ships no musl build. | M5 container image |
-| Loaded on macOS arm64 only so far | Linux runs first in CI. | First CI run |
+| Native libraries for glibc only | tree-sitter-ng ships no musl build. The tool image is Ubuntu (`eclipse-temurin:…-noble`), so glibc. | — |
+| Loaded on macOS arm64 and Linux x86-64 (CI) so far | The build workflow's end-to-end test parses Java with the bundled grammar on `ubuntu-latest`. Linux arm64 and Windows are untested. | When a runner needs them |

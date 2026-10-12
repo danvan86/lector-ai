@@ -9,7 +9,11 @@ internal data class Execution(
     val stderr: String,
 )
 
-/** Runs [LectorCommand.execute] in-process: output and exit go to the [Execution] instead of the terminal and the JVM. */
+/**
+ * Runs [LectorCommand.execute] in-process: output and exit go to the [Execution] instead of the terminal and the JVM.
+ * Options read no environment variables, like Clikt's `test()`: on a GitHub Actions runner, `GITHUB_EVENT_PATH` would
+ * fill `--event`.
+ */
 internal fun LectorCommand.executeInProcess(vararg argv: String): Execution {
     val stdout = StringBuilder()
     val stderr = StringBuilder()
@@ -19,6 +23,7 @@ internal fun LectorCommand.executeInProcess(vararg argv: String): Execution {
             (if (err) stderr else stdout).append(message).append(if (trailingNewline) "\n" else "")
         }
         exitProcess = { exitCode = it }
+        readEnvvar = { null }
     }
     execute(argv.asList())
     return Execution(exitCode, stdout.toString(), stderr.toString())

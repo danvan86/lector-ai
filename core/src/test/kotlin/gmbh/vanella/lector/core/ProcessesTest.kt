@@ -50,7 +50,7 @@ class ProcessesTest {
 
     @Test
     fun `a process that runs too long is killed and is a tool error`() {
-        lateinit var error: ToolError
+        lateinit var error: ProcessTimedOut
         val elapsed = measureTime { error = assertFailsWith { runProcess(listOf("sleep", "30"), dir, 200.milliseconds) } }
 
         assertEquals("sleep did not finish within 200ms", error.message)
@@ -65,5 +65,56 @@ class ProcessesTest {
         val child = ProcessHandle.of(pid.toLong())
         child.ifPresent { it.onExit().get(5, TimeUnit.SECONDS) }
         assertFalse(child.map { it.isAlive }.orElse(false), "the child process is still running")
+    }
+
+    @Test
+    fun `a process sees only the allowlisted variables, never a token or an action input`() {
+        val inherited =
+            mapOf(
+                "PATH" to System.getenv("PATH"),
+                "HOME" to "/home/runner",
+                "JAVA_HOME" to "/opt/java/21",
+                "CI" to "true",
+                "LANG" to "C.UTF-8",
+                "LC_ALL" to "C.UTF-8",
+                "HTTPS_PROXY" to "http://proxy:3128",
+                "no_proxy" to "localhost",
+                "MAVEN_OPTS" to "-Xmx1g",
+                "LECTOR_GITHUB_TOKEN" to "ghs_secret",
+                "GITHUB_TOKEN" to "ghs_other",
+                "INPUT_TOKEN" to "ghs_input",
+                "INPUT_MODEL" to "qwen2.5-coder:7b",
+                "AWS_SECRET_ACCESS_KEY" to "aws",
+            )
+
+        val result = runProcess(listOf("env"), dir, 10.seconds, inherited = inherited)
+
+        val seen =
+            result.output
+                .lines()
+                .filter { it.isNotEmpty() }
+                .map { it.substringBefore('=') }
+                .toSet()
+        assertEquals(
+            setOf("PATH", "HOME", "JAVA_HOME", "CI", "LANG", "LC_ALL", "HTTPS_PROXY", "no_proxy", "MAVEN_OPTS"),
+            seen - setOf("PWD", "SHLVL", "_", "__CF_USER_TEXT_ENCODING"),
+        )
+        listOf("ghs_secret", "ghs_other", "ghs_input", "qwen2.5-coder", "aws").forEach { assertFalse(it in result.output, it) }
+    }
+
+    @Test
+    fun `extra variables are added to the allowlisted ones and win over them`() {
+        val inherited = mapOf("PATH" to System.getenv("PATH"), "JAVA_HOME" to "/opt/java/25")
+
+        val result =
+            runProcess(
+                listOf("sh", "-c", "echo \"\$JAVA_HOME \$GIT_CONFIG_COUNT\""),
+                dir,
+                10.seconds,
+                environment = mapOf("JAVA_HOME" to "/opt/java/17", "GIT_CONFIG_COUNT" to "1"),
+                inherited = inherited,
+            )
+
+        assertEquals("/opt/java/17 1\n", result.output)
     }
 }

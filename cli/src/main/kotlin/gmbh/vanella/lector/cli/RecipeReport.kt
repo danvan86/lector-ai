@@ -5,6 +5,7 @@ import gmbh.vanella.lector.core.RecipeMatch
 import gmbh.vanella.lector.core.RecipeOutcome
 import gmbh.vanella.lector.core.RecipeResult
 import gmbh.vanella.lector.core.VersionChange
+import gmbh.vanella.lector.core.reason
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -23,7 +24,7 @@ internal object RecipeReport {
                 add("Recipe (${if (outcome is RecipeOutcome.Applied) "applied" else "not applied"})")
                 val versions = "${change.fromVersion} -> ${change.toVersion}"
                 add("  Change: ${change.`package`} $versions (${change.ecosystem}, ${updateType(change)})")
-                reason(change, outcome)?.let { add("  Reason: ${it.replace("\n", "\n    ")}") }
+                outcome.reason(change)?.let { add("  Reason: ${it.replace("\n", "\n    ")}") }
                 if (chosen != null) {
                     add("  Recipe: ${match(chosen)}")
                     add("  Artifact: ${chosen.recipe.artifact} (${chosen.recipe.license})")
@@ -53,7 +54,7 @@ internal object RecipeReport {
                         ),
                     ),
                 "outcome" to JsonPrimitive(name(outcome)),
-                "reason" to JsonPrimitive(reason(change, outcome)),
+                "reason" to JsonPrimitive(outcome.reason(change)),
                 "chosen" to result.selection.chosen.let { if (it == null) JsonNull else json(it) },
                 "alternatives" to JsonArray(result.selection.alternatives.map(::json)),
                 "changedFiles" to JsonArray((outcome as? RecipeOutcome.Applied)?.changedFiles.orEmpty().map(::JsonPrimitive)),
@@ -79,44 +80,6 @@ internal object RecipeReport {
         }
 
     private fun updateType(change: DependencyChange) = change.updateType.name.lowercase()
-
-    private fun reason(
-        change: DependencyChange,
-        outcome: RecipeOutcome,
-    ): String? =
-        when (outcome) {
-            is RecipeOutcome.Applied -> {
-                null
-            }
-
-            RecipeOutcome.NotAnUpgrade -> {
-                "${change.toVersion} is not higher than ${change.fromVersion}, so this is not an upgrade"
-            }
-
-            is RecipeOutcome.PrOutdated -> {
-                "PR outdated: the base already resolves ${change.`package`} to ${outcome.baseVersion}, higher than ${outcome.toVersion}"
-            }
-
-            RecipeOutcome.NoMatch -> {
-                "no recipe matches"
-            }
-
-            RecipeOutcome.NoRecipeRunner -> {
-                "the ${change.ecosystem} ecosystem has no recipe runner"
-            }
-
-            is RecipeOutcome.VersionsUnreadable -> {
-                "the resolved versions can't be read, so a downgrade can't be ruled out: ${outcome.reason}"
-            }
-
-            is RecipeOutcome.RunFailed -> {
-                "the recipe run failed: ${outcome.reason}"
-            }
-
-            is RecipeOutcome.DowngradeDetected -> {
-                "the recipe moved packages to lower versions, so its result was discarded"
-            }
-        }
 
     private fun name(outcome: RecipeOutcome) =
         when (outcome) {

@@ -21,6 +21,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 
 class VerifyCommandTest {
     @TempDir
@@ -237,7 +238,10 @@ class VerifyCommandTest {
 
         override fun detect(repo: Path) = detects
 
-        override fun verify(repo: Path): List<Diagnostic> {
+        override fun verify(
+            repo: Path,
+            timeout: Duration,
+        ): List<Diagnostic> {
             verifyCalls++
             failure?.let { throw it }
             return verify
@@ -246,6 +250,7 @@ class VerifyCommandTest {
         override fun runTests(
             repo: Path,
             tests: List<Diagnostic>,
+            timeout: Duration,
         ) = if (repo == this@VerifyCommandTest.repo) headRerun else baseRun
 
         override fun ground(

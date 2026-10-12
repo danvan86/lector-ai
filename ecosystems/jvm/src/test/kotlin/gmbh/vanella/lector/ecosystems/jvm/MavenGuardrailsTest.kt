@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 
 /** The adapter's part of the scope and build-file guardrails. */
 class MavenGuardrailsTest {
-    private val adapter = MavenAdapter(plugins = MavenPlugins("rewrite", "help")) { _, _ -> error("no Maven here") }
+    private val adapter = MavenAdapter(plugins = MavenPlugins("rewrite", "help")) { _, _, _, _ -> error("no Maven here") }
 
     @Test
     fun `sources, tests, and build files are editable`() {

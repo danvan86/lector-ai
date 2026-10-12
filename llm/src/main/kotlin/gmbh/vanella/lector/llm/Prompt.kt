@@ -46,8 +46,9 @@ internal object Prompt {
         """.trimIndent()
 
     fun user(request: FixRequest): String {
-        val change = request.change
-        val intro = "The update of ${change.`package`} from ${change.fromVersion} to ${change.toVersion} broke this code. Fix these errors."
+        val changes = request.changes.map { "${it.`package`} from ${it.fromVersion} to ${it.toVersion}" }
+        val updates = if (changes.size == 1) changes.single() else changes.dropLast(1).joinToString(", ") + " and " + changes.last()
+        val intro = "The update of $updates broke this code. Fix these errors."
         val errors = "## Errors\n\n" + request.diagnostics.joinToString("\n", transform = ::error)
         val code = section("Code", request.snippets.joinToString(SEPARATOR, transform = ::snippet))
         val earlier =

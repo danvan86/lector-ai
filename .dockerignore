@@ -1,0 +1,3 @@
+# The tool image needs only the installed distribution (./gradlew :cli:installDist).
+*
+!cli/build/install/lector

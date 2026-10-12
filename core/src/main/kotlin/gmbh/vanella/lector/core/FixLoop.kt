@@ -26,9 +26,12 @@ data class Budgets(
     val changedLinesPerAttempt: Int = DEFAULT_MAX_CHANGED_LINES,
 )
 
-/** What every request carries besides its cluster: the change, and the release notes and recipe diff, if any. */
+/**
+ * What every request carries besides its cluster: the [changes] (one, or a group the bot updated together), and the
+ * release notes and recipe diff, if any.
+ */
 data class FixContext(
-    val change: DependencyChange,
+    val changes: List<DependencyChange>,
     val releaseNotes: String?,
     val recipeDiff: String?,
 )
@@ -60,12 +63,14 @@ sealed interface AttemptOutcome {
     ) : AttemptOutcome
 }
 
-enum class StopReason {
-    NOTHING_LEFT,
-    ATTEMPT_BUDGET,
-    TIME_BUDGET,
-    NO_PROGRESS,
-    CLUSTER_BUDGETS,
+enum class StopReason(
+    val description: String,
+) {
+    NOTHING_LEFT("nothing caused by the update is left"),
+    ATTEMPT_BUDGET("the attempt budget is used up"),
+    TIME_BUDGET("the time budget is used up"),
+    NO_PROGRESS("no progress in the last attempts"),
+    CLUSTER_BUDGETS("every cluster used its attempts"),
 }
 
 /** Every attempt, why the loop stopped, and the verification of the last commit. */
@@ -73,19 +78,33 @@ data class FixLoopResult(
     val attempts: List<Attempt>,
     val stopReason: StopReason,
     val verification: Verification,
-)
+) {
+    /** The accepted attempts, in order. */
+    val fixes get() = attempts.map { it.outcome }.filterIsInstance<AttemptOutcome.Accepted>()
+
+    /** How many attempts each guardrail rule rejected, by rule. */
+    fun rejectionsPerRule(): Map<String, Int> =
+        attempts
+            .map { it.outcome }
+            .filterIsInstance<AttemptOutcome.Rejected>()
+            .flatMap { rejected -> rejected.violations.map { it.rule }.distinct() }
+            .groupingBy { it }
+            .eachCount()
+            .toSortedMap()
+}
 
 /**
  * Lets the model fix what the update broke, one cluster at a time (concept section 6). Each attempt is applied, checked
  * by the [Guardrails] and for downgrades if it touched a build file, and verified on its own. It is accepted only if it makes [Progress]: then
  * it becomes one local commit. Otherwise the working tree is reset, and the next request on that cluster gets the
- * attempt and why it failed. The working tree must be clean when the loop starts.
+ * attempt and why it failed. The working tree must be clean when the loop starts. Commits are made as [identity].
  */
 class FixLoop(
     private val adapter: EcosystemAdapter,
     private val llm: LlmClient,
     private val base: BaseCommit?,
     private val budgets: Budgets = Budgets(),
+    private val identity: CommitIdentity = CommitIdentity.TOOL,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     private val guardrails = Guardrails(adapter, budgets.changedLinesPerAttempt)
@@ -121,21 +140,30 @@ class FixLoop(
             when {
                 verification.causedByUpdate.isEmpty() -> StopReason.NOTHING_LEFT
                 attempts.size >= budgets.attempts -> StopReason.ATTEMPT_BUDGET
-                started.elapsedNow() >= budgets.time -> StopReason.TIME_BUDGET
+                timeLeft <= Duration.ZERO -> StopReason.TIME_BUDGET
                 withoutProgress >= budgets.attemptsWithoutProgress -> StopReason.NO_PROGRESS
                 else -> null
             }
 
         private fun attemptsOn(key: String) = attempts.filter { it.cluster == key }
 
+        private val timeLeft get() = budgets.time - started.elapsedNow()
+
         // Whatever ends the run inside an attempt, a build the edits made hang or a parser that doesn't load, must not
-        // leave the edits behind. The exception goes on unchanged.
+        // leave the edits behind. The exception goes on unchanged, unless it is a build stopped by the time budget: that
+        // is a rejected attempt, and the loop stops on time with its report.
         @Suppress("TooGenericExceptionCaught")
         private fun attempt(cluster: Cluster) {
             val proposal = llm.propose(request(cluster))
             val outcome =
                 try {
                     judge(cluster, proposal)
+                } catch (e: ProcessTimedOut) {
+                    if (timeLeft > Duration.ZERO) {
+                        GitWorkingTree.reset(repo)
+                        throw e
+                    }
+                    rejected("the builds ran past the time budget: ${e.message}")
                 } catch (e: Throwable) {
                     GitWorkingTree.reset(repo)
                     throw e
@@ -159,10 +187,14 @@ class FixLoop(
             val earlier = attemptsOn(cluster.key)
             val buildFiles = GitWorkingTree.trackedFiles(repo).filter(adapter::isBuildFile)
             return FixRequest(
-                change = context.change,
+                changes = context.changes,
                 diagnostics = cluster.diagnostics,
-                snippets = codeSnippets(repo, cluster.diagnostics, buildFiles, context.change.toVersion),
-                grounding = adapter.ground(repo, context.change, cluster.diagnostics),
+                snippets = codeSnippets(repo, cluster.diagnostics, buildFiles, context.changes.map { it.toVersion }),
+                grounding =
+                    context.changes
+                        .map { adapter.ground(repo, it, cluster.diagnostics) }
+                        .filter { it.isNotEmpty() }
+                        .joinToString("\n\n"),
                 releaseNotes = context.releaseNotes,
                 recipeDiff = context.recipeDiff,
                 previousAttempts =
@@ -234,7 +266,7 @@ class FixLoop(
             cluster: Cluster,
             proposal: Proposal.Edits,
         ): AttemptOutcome {
-            val after = attribute(adapter, repo, base)
+            val after = attribute(adapter, repo, base) { timeLeft }
             val progressBefore = Progress.of(verification.causedByUpdate)
             val progressAfter = Progress.of(after.causedByUpdate)
             if (progressAfter >= progressBefore) return rejected(noProgress(progressBefore, after.causedByUpdate))
@@ -244,7 +276,7 @@ class FixLoop(
                     .map { it.trim() }
                     .firstOrNull { it.isNotEmpty() } ?: "Fix ${cluster.key}"
             val body = "Addresses:\n" + cluster.diagnostics.joinToString("\n", transform = ::describe)
-            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", edited(repo, proposal.edits))
+            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", edited(repo, proposal.edits), identity)
             verification = after
             return AttemptOutcome.Accepted(commit, subject, progressBefore, progressAfter)
         }

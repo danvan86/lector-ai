@@ -1,0 +1,71 @@
+# The GitHub Action: runs `lector pr` in the tool image of the same version, on the PR the workflow was started for.
+# The workflow provides the checkout of the PR's head, the Ollama sidecar, and the GitHub App token (docs/setup.md).
+name: lector-ai
+description: Fixes the build and test errors that a Renovate PR causes, with OpenRewrite and a local model, and reports on the PR.
+inputs:
+  token:
+    description: The GitHub App's installation token (actions/create-github-app-token). Pushes with it start the PR's checks.
+    required: true
+  bot-name:
+    description: The App's bot, the author of every commit, e.g. my-app[bot]
+    required: true
+  bot-email:
+    description: The bot's email, <user id>+<app slug>[bot]@users.noreply.github.com
+    required: true
+  bot-logins:
+    description: The bots whose PRs are fixed, comma-separated
+    default: renovate[bot]
+  ollama-url:
+    description: The Ollama sidecar
+    default: http://ollama:11434
+  model:
+    description: The model, baked into the Ollama image
+    default: qwen2.5-coder:7b
+  max-attempts:
+    description: Fix attempts in total
+    default: "20"
+  max-attempts-per-cluster:
+    description: Fix attempts per error cluster
+    default: "3"
+  max-attempts-without-progress:
+    description: Attempts in a row without progress before the fix loop stops
+    default: "2"
+  time-limit:
+    description: Minutes before the fix loop stops
+    default: "30"
+  max-changed-lines:
+    description: Lines one attempt may change before the guardrails reject it
+    default: "50"
+  maven-settings:
+    description: Maven settings file in the workspace, e.g. for a mirror. Empty for none.
+    default: ""
+runs:
+  using: docker
+  image: docker://ghcr.io/danvan86/lector:0.1.0
+  # The token and the optional settings go through the environment: a token on the command line shows in process lists,
+  # and an empty argument is easy to lose.
+  env:
+    LECTOR_GITHUB_TOKEN: ${{ inputs.token }}
+    LECTOR_MAVEN_SETTINGS: ${{ inputs.maven-settings }}
+  args:
+    - pr
+    - --bot-name
+    - ${{ inputs.bot-name }}
+    - --bot-email
+    - ${{ inputs.bot-email }}
+    - --bot-logins
+    - ${{ inputs.bot-logins }}
+    - --ollama-url
+    - ${{ inputs.ollama-url }}
+    - --model
+    - ${{ inputs.model }}
+    - --max-attempts
+    - ${{ inputs.max-attempts }}
+    - --max-attempts-per-cluster
+    - ${{ inputs.max-attempts-per-cluster }}
+    - --max-attempts-without-progress
+    - ${{ inputs.max-attempts-without-progress }}
+    - --time-limit
+    - ${{ inputs.time-limit }}
+    - --max-changed-lines
+    - ${{ inputs.max-changed-lines }}

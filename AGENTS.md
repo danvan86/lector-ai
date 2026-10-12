@@ -22,17 +22,18 @@ A CI tool that takes a dependency-update PR (Renovate, Dependabot, or any other)
 
 ## Project layout
 
-Planned Gradle modules. Create them as needed; don't scaffold empty ones.
+Gradle modules, and the files that ship them. Create new modules as needed; don't scaffold empty ones.
 
 ```
 core/          data model, ports (interfaces), pipeline, fix loop, guardrails
 recipes/       recipe index built from OpenRewrite metadata
 llm/           Ollama client, prompts
-sources/       update-source adapters (renovate, dependabot, fallback)
+sources/       update-source adapters (renovate; later dependabot, fallback)
 ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
-action/        GitHub Action wrapper
+action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
+docker/        Dockerfiles of the tool image and the Ollama image (not Gradle modules)
 ```
 
 Adapters are compile-time plugins: modules that implement a `core` interface and are registered in `cli`. No dynamic loading. See concept section 2.
@@ -50,7 +51,12 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
 ./gradlew :cli:installDist # start script at cli/build/install/lector/bin/lector
+docker build -f docker/lector/Dockerfile -t lector .   # tool image, after :cli:installDist
+docker build --build-arg MODEL=qwen2.5-coder:7b -t lector-ollama docker/ollama   # Ollama image with the model baked in
 ```
+
+The setup for users is in [`docs/setup.md`](docs/setup.md). A version tag (`v<version>`) publishes both images to GHCR
+(`.github/workflows/release.yml`); it is refused until the MSAL check in [`docs/licensing.md`](docs/licensing.md) is done.
 
 The build uses a JDK 25 toolchain; Gradle downloads it if it's missing.
 
@@ -72,11 +78,12 @@ These come from the concept. Don't break them without updating the concept first
 - Small, focused classes and functions. Name things after domain terms from the concept (`DependencyChange`, `Diagnostic`, `Edit`, `EcosystemAdapter`).
 - Prefer immutable data classes and pure functions. Keep I/O (processes, HTTP, Git) at the edges.
 - Every external process gets a timeout, and its stdout and stderr are drained (or redirected to files). Otherwise a full pipe or a stuck process hangs the run.
-- Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors, unexpected exceptions, and `Error`s included (an uncaught `Error`, like a native library that doesn't load, ends the JVM with `1`). Otherwise the pipeline blames the update for a tool bug. Validate option values completely when parsing (a URL's scheme and host, not only its syntax), so a bad value fails before minutes of build.
+- Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors, unexpected exceptions, and `Error`s included (an uncaught `Error`, like a native library that doesn't load, ends the JVM with `1`). Otherwise the pipeline blames the update for a tool bug. Validate option values completely when parsing (a URL's scheme and host, a file's existence, not only the syntax), so a bad value fails before minutes of build.
+- What the tool reads back from the Git host as its own (the report comment, later a companion PR or branch) is matched by the bot's identity, not by a marker or a name alone: anyone who can comment on a PR can write the marker.
 - The repository under repair is the user's. Commit only the files a step changed: a build leaves output in the tree, and test fixtures ignore `target/`, so `git add --all` looks fine in tests and isn't. Reset the working tree on every way out of a failed step, exceptions and errors included.
 - An adapter's build files are every file the build tool reads its configuration from, not only the manifest (Maven: `.mvn/` and the wrapper, too). The build-file guardrails and the downgrade check see only what `isBuildFile` names, so a missed file is a way around them.
 - Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
-- All versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs.
+- All library and plugin versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Base image versions live in the `FROM` lines of the Dockerfiles under `docker/`. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs. A version pinned to a release line on purpose (a JDK per image stage) gets an `ignore` for major updates in `.github/dependabot.yml`: Dependabot proposes major Docker tags by default.
 - No new dependency without a short reason in the PR description.
 - English for code, comments, docs, and commits.
 

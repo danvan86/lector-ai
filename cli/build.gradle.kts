@@ -8,6 +8,8 @@ dependencies {
     implementation(project(":recipes"))
     implementation(project(":llm"))
     implementation(project(":ecosystems:jvm"))
+    implementation(project(":sources"))
+    implementation(project(":git"))
     implementation(libs.clikt)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.slf4j.api)
@@ -94,7 +96,19 @@ tasks.register<Test>("realModelTest") {
             .output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     useJUnitPlatform { includeTags("real-model") }
-    systemProperty("lector.ollamaImage", "ollama/ollama:${libs.versions.ollama.image.get()}")
+    // The Ollama of the model image, so the test runs what the release ships.
+    val ollamaImage =
+        providers
+            .fileContents(rootProject.layout.projectDirectory.file("docker/ollama/Dockerfile"))
+            .asText
+            .map { dockerfile ->
+                dockerfile
+                    .lines()
+                    .single { it.startsWith("FROM ") }
+                    .removePrefix("FROM ")
+                    .trim()
+            }
+    systemProperty("lector.ollamaImage", ollamaImage.get())
     // Cluster keys and grounding read the English compiler messages, as in the container image and on CI runners.
     environment("MAVEN_OPTS", "-Duser.language=en -Duser.country=US")
     // `-Plector.model=<name>` tests another model. Without it, the test uses the CLI's default.

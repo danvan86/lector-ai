@@ -5,6 +5,19 @@ import kotlin.time.Duration.Companion.minutes
 
 private val GIT_TIMEOUT = 5.minutes
 
+/** The length of a commit hash in a report: enough to find the commit in a PR's history, like `git log --oneline`. */
+const val SHORT_COMMIT = 7
+
+/** Who commits: the tool's own identity on the command line, the Git host's bot in a pipeline. */
+data class CommitIdentity(
+    val name: String,
+    val email: String,
+) {
+    companion object {
+        val TOOL = CommitIdentity("lector", "lector@localhost")
+    }
+}
+
 /**
  * The repository's working tree, seen through Git. A run starts on a clean tree, so [reset] can never destroy anyone's
  * work. Ignored files (build output) are neither reported nor removed.
@@ -40,28 +53,42 @@ object GitWorkingTree {
             .sorted()
 
     /**
-     * Commits the changes to [files] (relative to the repository root, new and deleted ones included) with the tool's
-     * identity and returns the commit. Anything else in the working tree, like build output, stays out of it. The
+     * Commits the changes to [files] (relative to the repository root, new and deleted ones included) as [identity], author
+     * and committer, and returns the commit. Anything else in the working tree, like build output, stays out of it. The
      * repository's hooks don't run, and nothing is signed: a CI run can't answer a prompt.
      */
     fun commit(
         repo: Path,
         message: String,
         files: List<String>,
+        identity: CommitIdentity = CommitIdentity.TOOL,
     ): String {
         if (files.isNotEmpty()) git(repo, listOf("add", "--all", "--") + files)
-        git(repo, IDENTITY + listOf("commit", "--quiet", "--no-verify", "--allow-empty", "-m", message))
-        return git(repo, "rev-parse", "HEAD").trim()
+        val config = listOf("-c", "user.name=${identity.name}", "-c", "user.email=${identity.email}", "-c", "commit.gpgsign=false")
+        git(repo, config + listOf("commit", "--quiet", "--no-verify", "--allow-empty", "-m", message))
+        return head(repo)
     }
+
+    /** The commit the working tree is on. */
+    fun head(repo: Path): String = git(repo, "rev-parse", "HEAD").trim()
+
+    /** The author's email of [commit]. */
+    fun authorEmail(
+        repo: Path,
+        commit: String,
+    ): String = git(repo, "log", "-1", "--format=%ae", commit).trim()
+
+    /** Whether [commit] is in the repository, e.g. not cut off by a shallow clone. */
+    fun hasCommit(
+        repo: Path,
+        commit: String,
+    ): Boolean = runProcess(listOf("git", "cat-file", "-e", "$commit^{commit}"), repo, GIT_TIMEOUT).exitCode == 0
 
     /** The changes [commit] made, as a unified diff. */
     fun diff(
         repo: Path,
         commit: String,
     ): String = git(repo, "show", "--format=", "--no-color", commit)
-
-    // The tool's identity for local commits. M5 swaps it for the GitHub App's.
-    private val IDENTITY = listOf("-c", "user.name=lector", "-c", "user.email=lector@localhost", "-c", "commit.gpgsign=false")
 
     // `XY path`: two status letters and a space.
     private const val STATUS_PREFIX = 3

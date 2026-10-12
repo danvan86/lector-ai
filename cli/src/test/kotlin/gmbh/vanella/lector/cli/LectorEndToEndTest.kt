@@ -101,7 +101,7 @@ class LectorEndToEndTest {
     }
 
     @Test
-    fun `help lists exactly the verify, migrate, and heal commands`() {
+    fun `help lists exactly the verify, migrate, heal, and pr commands`() {
         val run = lector("--help")
 
         val commands =
@@ -109,7 +109,7 @@ class LectorEndToEndTest {
                 .substringAfter("Commands:")
                 .lines()
                 .filter { it.startsWith("  ") && !it.startsWith("   ") }
-        assertEquals(listOf("verify", "migrate", "heal"), commands.map { it.trim().substringBefore(" ") })
+        assertEquals(listOf("verify", "migrate", "heal", "pr"), commands.map { it.trim().substringBefore(" ") })
     }
 
     @Test
@@ -276,6 +276,120 @@ class LectorEndToEndTest {
         assertEquals(1, run.exitCode, run.stderr)
     }
 
+    @Test
+    fun `pr skips a PR that isn't the bot's and exits with 0`(
+        @TempDir repo: Path,
+    ) {
+        val event = event(author = "mallory", head = "1111111", base = "2222222")
+
+        val run =
+            lector(
+                "pr",
+                repo.toString(),
+                *BOT,
+                environment =
+                    mapOf(
+                        "GITHUB_EVENT_PATH" to event.toString(),
+                        "LECTOR_GITHUB_TOKEN" to "t",
+                    ),
+            )
+
+        assertEquals("Skipped: the PR's author mallory is not one of the bot logins renovate[bot]\n", run.stdout)
+        assertContains(run.stderr, "Skipping the PR: the PR's author mallory")
+        assertEquals(0, run.exitCode)
+    }
+
+    @Test
+    fun `pr without the token exits with 2`(
+        @TempDir repo: Path,
+    ) {
+        val event = event(author = "renovate[bot]", head = "1111111", base = "2222222")
+
+        val run = lector("pr", repo.toString(), "--event", event.toString(), *BOT)
+
+        assertEquals("", run.stdout)
+        assertEquals("Error: Set LECTOR_GITHUB_TOKEN to the GitHub App's installation token\n", run.stderr)
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `pr of a green Renovate PR verifies it, reads the PR's comments on GitHub, changes nothing, and exits with 0`(
+        @TempDir repo: Path,
+    ) {
+        mavenProject(repo)
+        val head = runProcess(listOf("git", "rev-parse", "HEAD"), repo, 30.seconds).output.trim()
+        val event = event(author = "renovate[bot]", head = head, base = head)
+        val requests = mutableListOf<String>()
+        val github = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        github.createContext("/") { exchange ->
+            requests += "${exchange.requestMethod} ${exchange.requestURI} ${exchange.requestHeaders.getFirst("Authorization")}"
+            val answer = "[]".encodeToByteArray()
+            exchange.sendResponseHeaders(200, answer.size.toLong())
+            exchange.responseBody.use { it.write(answer) }
+        }
+        github.start()
+
+        val run =
+            try {
+                lector(
+                    "pr",
+                    repo.toString(),
+                    *BOT,
+                    environment =
+                        mapOf(
+                            "GITHUB_EVENT_PATH" to event.toString(),
+                            "GITHUB_API_URL" to "http://127.0.0.1:${github.address.port}",
+                            "LECTOR_GITHUB_TOKEN" to "ghs_token",
+                        ),
+                )
+            } finally {
+                github.stop(0)
+            }
+
+        assertContains(run.stdout, "Verify is green: nothing caused by the update. lector-ai changed nothing.\n")
+        assertEquals(listOf("GET /repos/acme/app/issues/7/comments?page=1&per_page=100 Bearer ghs_token"), requests)
+        assertEquals(head, runProcess(listOf("git", "rev-parse", "HEAD"), repo, 30.seconds).output.trim())
+        assertEquals(0, run.exitCode, run.stderr)
+    }
+
+    /** A `pull_request` event for PR 7 of acme/app, on the Renovate branch, in a temporary file outside the repository. */
+    private fun event(
+        author: String,
+        head: String,
+        base: String,
+    ): Path {
+        val body = "This PR contains the following updates:\n\n| Package | Change |\n|---|---|\n| $PARENT | `3.3.5` → `3.4.1` |"
+        val event =
+            buildJsonObject {
+                put(
+                    "pull_request",
+                    buildJsonObject {
+                        put("number", 7)
+                        put("body", body)
+                        put("user", buildJsonObject { put("login", author) })
+                        put(
+                            "head",
+                            buildJsonObject {
+                                put("ref", "renovate/spring-boot")
+                                put("sha", head)
+                                put("repo", buildJsonObject { put("full_name", "acme/app") })
+                            },
+                        )
+                        put(
+                            "base",
+                            buildJsonObject {
+                                put("sha", base)
+                                put("repo", buildJsonObject { put("full_name", "acme/app") })
+                            },
+                        )
+                    },
+                )
+            }
+        val file = File.createTempFile("event", ".json").apply { deleteOnExit() }.toPath()
+        file.writeText(event.toString())
+        return file
+    }
+
     /**
      * A committed Maven project whose wrapper stands in for Maven: it logs its arguments, writes an effective POM with
      * the Spring Boot parent where `help:effective-pom` asks for one, prints [output], and exits with [exitCode].
@@ -337,6 +451,7 @@ class LectorEndToEndTest {
     private fun lector(
         vararg args: String,
         javaOpts: String = "",
+        environment: Map<String, String> = emptyMap(),
     ): Run {
         val stdout = File.createTempFile("lector", ".out").apply { deleteOnExit() }
         val stderr = File.createTempFile("lector", ".err").apply { deleteOnExit() }
@@ -347,6 +462,7 @@ class LectorEndToEndTest {
                 .apply {
                     environment()["JAVA_HOME"] = System.getProperty("java.home")
                     environment()["JAVA_OPTS"] = javaOpts
+                    environment().putAll(environment)
                 }.start()
         val exited = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         if (!exited) process.destroyForcibly()
@@ -357,5 +473,6 @@ class LectorEndToEndTest {
     private companion object {
         const val TIMEOUT_SECONDS = 30L
         const val PARENT = "org.springframework.boot:spring-boot-starter-parent"
+        val BOT = arrayOf("--bot-name", "lector-ai[bot]", "--bot-email", "1+lector-ai[bot]@users.noreply.github.com")
     }
 }

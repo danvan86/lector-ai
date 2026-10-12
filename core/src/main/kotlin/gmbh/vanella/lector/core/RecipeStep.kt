@@ -66,15 +66,22 @@ fun applyRecipe(
     repo: Path,
     base: BaseCommit?,
 ): RecipeResult {
-    val versions = adapter.versionScheme
-    if (versions.compare(change.toVersion, change.fromVersion) <= 0) return RecipeResult(RecipeSelection.NONE, RecipeOutcome.NotAnUpgrade)
-    if (base != null) {
-        val outdated = outdated(change, adapter, base)
-        if (outdated != null) return RecipeResult(RecipeSelection.NONE, outdated)
-    }
-    val selection = index.find(change, versions)
+    recipeBlocker(change, adapter, base)?.let { return RecipeResult(RecipeSelection.NONE, it) }
+    val selection = index.find(change, adapter.versionScheme)
     logger.info("Recipe for {}: {}, alternatives: {}", change, selection.chosen, selection.alternatives)
-    return RecipeResult(selection, run(selection, adapter, repo))
+    val chosen = selection.chosen
+    val outcome = if (chosen == null) RecipeOutcome.NoMatch else runRecipe(chosen.recipe, adapter, repo)
+    return RecipeResult(selection, outcome)
+}
+
+/** Rules 1 and 2: the outcome that stops any recipe for [change] before one is looked up, or null if none does. */
+fun recipeBlocker(
+    change: DependencyChange,
+    adapter: EcosystemAdapter,
+    base: BaseCommit?,
+): RecipeOutcome? {
+    if (adapter.versionScheme.compare(change.toVersion, change.fromVersion) <= 0) return RecipeOutcome.NotAnUpgrade
+    return if (base == null) null else outdated(change, adapter, base)
 }
 
 /** Rule 2: the outcome that stops the recipe, or null if the PR is not outdated. */
@@ -92,12 +99,12 @@ private fun outdated(
     }
 }
 
-private fun run(
-    selection: RecipeSelection,
+/** Runs [recipe] on [repo] with rule 3. Every outcome but [RecipeOutcome.Applied] leaves the working tree as it was. */
+fun runRecipe(
+    recipe: Recipe,
     adapter: EcosystemAdapter,
     repo: Path,
 ): RecipeOutcome {
-    val recipe = (selection.chosen ?: return RecipeOutcome.NoMatch).recipe
     val runner = adapter.recipeRunner ?: return RecipeOutcome.NoRecipeRunner
     val before = readVersions(adapter, { it(repo) }) { return it }
     val run =
@@ -165,3 +172,39 @@ private inline fun readVersions(
         unreadable(RecipeOutcome.VersionsUnreadable(e.message))
     }
 }
+
+/** Why [change] got no recipe, or why its recipe's result was discarded. Null if it was applied. */
+fun RecipeOutcome.reason(change: DependencyChange): String? =
+    when (val outcome = this) {
+        is RecipeOutcome.Applied -> {
+            null
+        }
+
+        RecipeOutcome.NotAnUpgrade -> {
+            "${change.toVersion} is not higher than ${change.fromVersion}, so this is not an upgrade"
+        }
+
+        is RecipeOutcome.PrOutdated -> {
+            "PR outdated: the base already resolves ${change.`package`} to ${outcome.baseVersion}, higher than ${outcome.toVersion}"
+        }
+
+        RecipeOutcome.NoMatch -> {
+            "no recipe matches"
+        }
+
+        RecipeOutcome.NoRecipeRunner -> {
+            "the ${change.ecosystem} ecosystem has no recipe runner"
+        }
+
+        is RecipeOutcome.VersionsUnreadable -> {
+            "the resolved versions can't be read, so a downgrade can't be ruled out: ${outcome.reason}"
+        }
+
+        is RecipeOutcome.RunFailed -> {
+            "the recipe run failed: ${outcome.reason}"
+        }
+
+        is RecipeOutcome.DowngradeDetected -> {
+            "the recipe moved packages to lower versions, so its result was discarded"
+        }
+    }

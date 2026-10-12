@@ -140,7 +140,8 @@ The fallback makes the tool independent of whoever opened the PR, including Snyk
 
 **Renovate**
 - Add the bot identity to `gitIgnoredAuthors`. Otherwise Renovate stops maintaining the branch after foreign commits.
-- Map Renovate `manager` names to ecosystem adapters with a lookup table.
+- Read **every** row of the PR body's update table: Renovate groups monorepo packages by default, so a PR with several changes is the normal case. Rows without a version change (digest, pin, lock-file maintenance) are left out.
+- Map Renovate's datasource names to ecosystems with a lookup table (`maven` → `maven`). The body names no manager; the datasource is in the merge-confidence badges. A row without badges belongs to the repository's ecosystem.
 
 **Dependabot**
 - Dependabot stops rebasing after foreign commits, and `@dependabot rebase` or `recreate`, or a superseding version, overwrites them. Two strategies, configurable:
@@ -307,14 +308,17 @@ Each rule is a small `Guardrail` implementation in a list, tested on its own. Th
 
 ### 8.1 Trigger
 
-- Run only for **major/minor updates or failed builds**. Patch updates that build cleanly don't need the tool.
+- Run on **every** bot PR, and verify first. If nothing the update caused fails, stop: no recipe, no commit, the PR stays as the bot made it. A broken patch update gets fixed too, and a green PR costs one build.
 - Use `pull_request`, **not** `pull_request_target` with a checkout of the PR code.
 - **Security:** don't gate on `github.actor`. The actor is whoever triggered the most recent event, and this has been exploited. Check instead that the PR author is the expected bot **and** the head repo is the same repo, not a fork.
 
 ### 8.2 Tokens
 
 - Pushes made with `GITHUB_TOKEN` don't trigger new workflow runs, so required checks wouldn't run on the fix commit. Use a **GitHub App token**.
-- Prevent a loop where the bot's own commit triggers the fix job again.
+- Prevent a loop where the bot's own commit triggers the fix job again: the tool skips a head commit by its own identity.
+  So once it has pushed, its check on the PR's new head is green even when something is left. The report comment and
+  the repository's own CI show what is left; the tool's exit `1` marks only the commit it worked on.
+- The token reaches only the Git host adapter and `git` fetch and push, through `git`'s environment config. Builds and tests run with an allowlisted environment, so the updated dependency's code doesn't see it. They still run in the same container as the tool, as the same user: isolating the token from them completely needs a separate user or container.
 
 ### 8.3 PR structure
 
@@ -323,17 +327,20 @@ Separate, traceable commits:
 2. The OpenRewrite recipe output
 3. One commit per AI fix, with the error it addressed and a one-line rationale
 
-The commits for 2 and 3 are created locally by `heal` from M3 on, with the tool identity `lector`. M5 pushes them and swaps the identity for the GitHub App's.
+`heal` creates the commits for 2 and 3 locally, with the tool identity `lector`. In CI (`lector pr`, M5) they are made by the GitHub App's bot and pushed onto the bot's branch with a plain `git push`, never by force: if the branch moved on, nothing is pushed, and the new head gets its own run.
+
+A grouped PR gets one commit per **distinct** recipe, in the order of the PR's table: the packages of a monorepo group usually map to the same recipe. One fix loop then works on everything the update caused.
 
 Also:
-- Label the PR `ai-assisted`. **It is never auto-merged.**
-- **Partial results:** if the fix loop fails, the OpenRewrite commit is still pushed and the remaining diagnostics are posted as a PR comment.
+- Label the PR `ai-assisted` when something was pushed. **It is never auto-merged.**
+- **Partial results:** the recipe commits **and** every accepted fix commit are pushed: accepted fixes passed the guardrails and made measurable progress. The remaining diagnostics are reported.
+- **One report comment** per PR, found by a hidden marker and updated on every run: recipes, fixes, what is left, what isn't the update's fault, and the guardrail rejections per rule.
 
 ### 8.4 Infrastructure
 
-- **Orchestrator:** GitHub Actions (self-hosted runners) or GitLab CI
-- **Ollama** runs as a network-isolated sidecar service. The model weights are **baked into the runner image**, so nothing is downloaded per job.
-- **Model:** a coding model that is strong across many languages (e.g. the Qwen-Coder family). On CPU-only runners, 7B is slow and anything larger is impractical, so GPU runner availability is the real infrastructure question.
+- **Orchestrator:** GitHub Actions (later GitLab CI). The tool runs as a Docker container action.
+- **Two images**, updated independently. The **tool image** has the tool, git, Maven, and JDKs 17, 21, and 25; the tool builds each project with the smallest JDK its release needs. The **Ollama image** has one model's weights **baked in** and runs as the job's `services:` sidecar, so nothing is downloaded per job except the project's own dependencies.
+- **Model:** a coding model that is strong across many languages (the Qwen-Coder family). The `qwen2.5-coder:7b` variant runs on standard GitHub-hosted runners, on CPU, and is the default. The `qwen3-coder:30b` variant needs a large runner, ideally with a GPU. Its weights are one file of about 19 GB, more than GHCR takes in one layer (10 GB), so its distribution is still open.
 - **No cloud data leakage:** source code and logs stay inside your own infrastructure.
 
 ## 9. Licensing and maturity

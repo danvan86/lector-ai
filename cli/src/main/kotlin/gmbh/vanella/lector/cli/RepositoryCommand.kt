@@ -63,12 +63,6 @@ internal abstract class RepositoryCommand(
         if (report.verification.causedByUpdate.isNotEmpty()) throw ProgramResult(1)
     }
 
-    private fun toolError(e: Throwable): CliktError {
-        val message = if (e is ToolError) e.message else "Unexpected failure: $e"
-        // Clikt keeps only an Exception as the cause.
-        return CliktError("Error: $message", e as? Exception ?: RuntimeException(e), statusCode = TOOL_ERROR)
-    }
-
     private fun report(): Report {
         ensure(repo.isDirectory()) { "$repo is not a directory" }
         ensure(mavenSettings?.isRegularFile() != false) { "Maven settings $mavenSettings is not a file" }
@@ -79,11 +73,19 @@ internal abstract class RepositoryCommand(
         val base = base?.let { baseCommit(repo, it) }
         return execute(adapter, base)
     }
+}
 
-    private fun ensure(
-        valid: Boolean,
-        message: () -> String,
-    ) {
-        if (!valid) throw ToolError(message())
-    }
+/** Fails with a [ToolError] and [message] unless [valid]. */
+internal fun ensure(
+    valid: Boolean,
+    message: () -> String,
+) {
+    if (!valid) throw ToolError(message())
+}
+
+/** Any failure of a stage as Clikt's error with exit code 2: the tool failed, not the update. */
+internal fun toolError(e: Throwable): CliktError {
+    val message = if (e is ToolError) e.message else "Unexpected failure: $e"
+    // Clikt keeps only an Exception as the cause.
+    return CliktError("Error: $message", e as? Exception ?: RuntimeException(e), statusCode = TOOL_ERROR)
 }

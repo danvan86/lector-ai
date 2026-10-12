@@ -12,7 +12,7 @@ import kotlin.test.assertEquals
 
 /** Every guardrail on real Java and Kotlin edits, through the Maven adapter: one bad edit each, and the edits that must pass. */
 class JvmGuardrailsTest {
-    private val adapter = MavenAdapter(plugins = MavenPlugins("rewrite", "help")) { _, _ -> error("no Maven here") }
+    private val adapter = MavenAdapter(plugins = MavenPlugins("rewrite", "help")) { _, _, _, _ -> error("no Maven here") }
 
     private val java =
         """

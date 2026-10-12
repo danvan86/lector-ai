@@ -9,5 +9,6 @@ How the implemented system is built. The [concept](../concept.md) says what the 
 | [Recipe migration](recipe-migration.md) | `migrate` command, recipe index generated at build time, selection and ranking, downgrade rules, Maven recipe runner and resolved versions | M2 |
 | [Fix loop](fix-loop.md) | `heal` command, `FixLoop` (clusters, attempts, progress tuple, budgets, commits and resets), `LlmClient` and the Ollama client, prompt and trimming, JVM cluster keys and `javap` grounding, real-model test | M3 |
 | [Guardrails](guardrails.md) | `Guardrails` and its rules in `core`, `LanguageSupport` and `SourceFacts`, tree-sitter queries for Java and Kotlin, JVM scope and Maven build-file blocklist, rejections and tests run in the `heal` report | M4 |
+| [PR pipeline](pr-pipeline.md) | `pr` command, `PrPipeline` (trigger checks, verify first, recipes once per group, push, report comment, label), `UpdateSource` and `RenovateSource`, `GitHost` and `GitHubHost`, JDK selection, scrubbed process environment, GitHub Action, tool and Ollama images, release workflow | M5 |
 
 When a milestone changes how the system is built, update the matching document or add a new one here.

@@ -70,18 +70,19 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** every guardrail rule has a test that rejects a matching bad edit.
 
-## M5 – Renovate in CI (first end-to-end release) ⬜
+## M5 – Renovate in CI (first end-to-end release) 🟨
 
 **Goal:** a Renovate PR is fixed automatically in the pipeline.
 
-- Renovate source adapter: read `DependencyChange` and release notes from the PR
-- `GitHost` port with a GitHub adapter (`git` module)
-- Git output: separate commits (recipe, one per AI fix), in-place on the Renovate branch
-- PR comment with a summary and any remaining errors; `ai-assisted` label
-- GitHub Action and container image (Ollama sidecar, weights baked in)
-- Secure trigger: check PR author and same repo; GitHub App token
-- Legal check of the Moderne Source Available License (recipe index, `rewrite-spring`) before release
-- Documentation: `gitIgnoredAuthors` setup for Renovate
+- Renovate source adapter: every change of a grouped PR and the release notes, read from the PR body (`sources` module)
+- `GitHost` port with a GitHub adapter (`git` module): event, comment, label, fetch, push
+- `lector pr`: trigger checks, verify first and stop when green, one commit per distinct recipe, the fix loop, a plain push to the Renovate branch
+- One sticky PR comment with what was done and what is left; `ai-assisted` label
+- GitHub Action (Docker container action) and two images: the tool with JDKs 17, 21, 25 and Maven, and Ollama with the weights baked in
+- Secure trigger: check PR author and same repo; GitHub App token; builds never see the token in their environment
+- Documentation: [setup guide](setup.md) with the `gitIgnoredAuthors` setup for Renovate
+- Legal check of the Moderne Source Available License (recipe index, `rewrite-spring`) before release: open, recorded in [`licensing.md`](licensing.md)
+- Still open: the run on a real Renovate PR in a test repository on GitHub, and the first release to GHCR
 
 **Done when:** a real Renovate PR in a test repo gets a fix commit and a report, with no manual steps.
 

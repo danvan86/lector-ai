@@ -10,12 +10,12 @@ fun interface LlmClient {
 }
 
 /**
- * Everything the model gets for one attempt on one cluster: the [diagnostics], the code around them, the API surface of
- * the new version ([grounding]), the [releaseNotes] and the [recipeDiff] if there are any, and on a retry the
+ * Everything the model gets for one attempt on one cluster: the [changes], the [diagnostics], the code around them, the
+ * API surface of the new versions ([grounding]), the [releaseNotes] and the [recipeDiff] if there are any, and on a retry the
  * [previousAttempts] with why they failed. The client decides how it fits into the model's context.
  */
 data class FixRequest(
-    val change: DependencyChange,
+    val changes: List<DependencyChange>,
     val diagnostics: List<Diagnostic>,
     val snippets: List<Snippet>,
     val grounding: String,
