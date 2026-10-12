@@ -51,7 +51,7 @@ class MavenAdapter(
         runProcess(command, workDir, timeout, environment)
     },
 ) : EcosystemAdapter {
-    private val grounding = JavapGrounding(localRepository)
+    private val grounding = JavapGrounding(localRepositoryJars(localRepository))
     private val jdkSelection = JdkSelection(jdks)
 
     override val ecosystem = "maven"
@@ -105,7 +105,7 @@ class MavenAdapter(
     }
 
     /** The test cases in the surefire and failsafe reports that the last verify left. */
-    override fun testsRun(repo: Path) = TestReports.count(repo.toRealPath())
+    override fun testsRun(repo: Path) = MAVEN_REPORTS.count(repo.toRealPath())
 
     /**
      * Reruns the classes of the given tests: unit tests with surefire (up to `test`), integration tests with failsafe
@@ -165,7 +165,7 @@ class MavenAdapter(
         timeout: Duration,
     ): List<Diagnostic> {
         val result = maven(root, goals, timeout)
-        val problems = MavenConsole.parse(result.output, root) + TestReports.parse(root)
+        val problems = MavenConsole.parse(result.output, root) + MAVEN_REPORTS.parse(root)
         if (result.exitCode != 0 && problems.isEmpty()) return listOf(unexplainedFailure(result))
         return problems
     }

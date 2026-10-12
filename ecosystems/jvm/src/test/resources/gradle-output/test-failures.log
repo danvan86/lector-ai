@@ -1,0 +1,58 @@
+> Task :lib:compileJava
+> Task :app:compileJava
+> Task :app:processResources NO-SOURCE
+> Task :app:classes
+> Task :app:jar
+> Task :app:compileIntegrationTestJava
+> Task :app:processIntegrationTestResources NO-SOURCE
+> Task :app:integrationTestClasses
+> Task :lib:processResources NO-SOURCE
+> Task :lib:classes
+> Task :lib:jar
+
+> Task :app:integrationTest FAILED
+
+GreetingIT > greetsWrong() FAILED
+    org.opentest4j.AssertionFailedError at GreetingIT.java:15
+
+2 tests completed, 1 failed
+
+> Task :app:compileTestJava NO-SOURCE
+> Task :app:processTestResources NO-SOURCE
+> Task :app:testClasses UP-TO-DATE
+> Task :app:test NO-SOURCE
+> Task :lib:compileTestJava
+> Task :lib:processTestResources NO-SOURCE
+> Task :lib:testClasses
+
+> Task :lib:test FAILED
+
+CalculatorTest > addsWrong() FAILED
+    org.opentest4j.AssertionFailedError at CalculatorTest.java:15
+
+2 tests completed, 1 failed
+
+FAILURE: Build completed with 2 failures.
+
+1: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':app:integrationTest'.
+> There were failing tests. See the report at: file:///work/repo/app/build/reports/tests/integrationTest/index.html
+
+* Try:
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+==============================================================================
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':lib:test'.
+> There were failing tests. See the report at: file:///work/repo/lib/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+==============================================================================
+
+BUILD FAILED in 1s
+8 actionable tasks: 8 executed

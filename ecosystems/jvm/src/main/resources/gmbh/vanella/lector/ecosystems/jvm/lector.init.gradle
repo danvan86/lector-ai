@@ -1,0 +1,107 @@
+// lector-ai's tasks, added to every Gradle run of the tool (GradleAdapter). They read the build's model and depend on
+// the project's own tasks. Nothing here changes the repository or the project's configuration.
+//
+// Groovy and the Gradle 8 API, so the script runs unchanged on Gradle 8.0 to 9.x.
+
+import groovy.json.JsonOutput
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import java.util.zip.ZipFile
+
+gradle.rootProject { root ->
+    // Verify, stage 1: the classes of every source set of every project, custom ones like integrationTest included.
+    root.tasks.register('lectorCompile') { task ->
+        task.description = 'lector-ai: compiles every source set of every project.'
+        root.allprojects { project ->
+            project.plugins.withType(JavaBasePlugin) {
+                project.sourceSets.configureEach { sourceSet -> task.dependsOn(project.tasks.named(sourceSet.classesTaskName)) }
+            }
+        }
+    }
+
+    // Verify, stage 2: every Test task of every project. Not `check`, which also runs linters (M7 Q17).
+    root.tasks.register('lectorTest') { task ->
+        task.description = 'lector-ai: runs every Test task of every project.'
+        root.allprojects { project -> task.dependsOn(project.tasks.withType(Test)) }
+    }
+
+    // The model, as JSON in the file -Plector.queryOutput names: the resolved versions of every package, the JARs of
+    // the compile classpaths, and the IDs of the applied plugins. Resolves configurations, compiles nothing.
+    root.tasks.register('lectorQuery') { task ->
+        task.description = 'lector-ai: writes the resolved versions, the compile classpath JARs, and the applied plugins.'
+        task.notCompatibleWithConfigurationCache('reads the model of every project')
+        def output = new File(root.property('lector.queryOutput').toString())
+        def projects = root.allprojects
+        task.doLast {
+            def versions = new TreeMap<String, Set<String>>()
+            def classpath = new LinkedHashSet<Map<String, String>>()
+            def plugins = new TreeSet<String>()
+            def pluginJars = [:]
+            projects.each { project ->
+                (project.buildscript.configurations.toList() + project.configurations.toList())
+                    .findAll { it.canBeResolved }
+                    .each { configuration -> addVersions(configuration, versions, task.logger) }
+                project.plugins.withType(JavaBasePlugin) {
+                    project.sourceSets.each { sourceSet ->
+                        project.configurations.getByName(sourceSet.compileClasspathConfigurationName).incoming.artifactView {
+                            componentFilter { it instanceof ModuleComponentIdentifier }
+                            lenient(true)
+                        }.artifacts.each { artifact ->
+                            def id = artifact.id.componentIdentifier
+                            classpath << [module: "${id.group}:${id.module}".toString(), version: id.version, file: artifact.file.path]
+                        }
+                    }
+                }
+                project.plugins.each { plugin -> plugins.addAll(pluginIds(plugin.getClass(), pluginJars)) }
+            }
+            output.text = JsonOutput.toJson([versions: versions, classpath: classpath, plugins: plugins])
+        }
+    }
+}
+
+// runTests runs only some tests. A test that is gone (on the base commit, say) must not fail the run.
+if (gradle.startParameter.projectProperties.containsKey('lector.runTests')) {
+    gradle.allprojects { project ->
+        project.tasks.withType(Test).configureEach { it.filter.failOnNoMatchingTests = false }
+    }
+}
+
+// Every module version a configuration resolves to. A configuration that can't be resolved is skipped.
+def addVersions(configuration, Map<String, Set<String>> versions, logger) {
+    try {
+        configuration.incoming.resolutionResult.allComponents.each { component ->
+            def id = component.id
+            if (id instanceof ModuleComponentIdentifier) {
+                versions.computeIfAbsent("${id.group}:${id.module}".toString()) { new TreeSet<String>() } << id.version
+            }
+        }
+    } catch (Exception e) {
+        logger.warn('lector-ai: cannot resolve {}: {}', configuration, e.message)
+    }
+}
+
+// The IDs a plugin is registered under: the `META-INF/gradle-plugins/<id>.properties` in its JAR that name its class
+// or one of its superclasses (Gradle may decorate the class). [jars] caches the declared plugins by JAR.
+def pluginIds(Class type, Map jars) {
+    for (def current = type; current != null; current = current.superclass) {
+        def location = current.protectionDomain?.codeSource?.location
+        def ids = location == null ? [:] : jars.computeIfAbsent(location.toString()) { declaredPlugins(location) }
+        def matching = ids.findAll { id, implementation -> implementation == current.name }.keySet()
+        if (!matching.isEmpty()) return matching
+    }
+    return []
+}
+
+def declaredPlugins(URL location) {
+    def file = new File(location.toURI())
+    def declared = [:]
+    if (!file.isFile()) return declared
+    new ZipFile(file).withCloseable { zip ->
+        zip.entries().findAll { it.name.startsWith('META-INF/gradle-plugins/') && it.name.endsWith('.properties') }.each { entry ->
+            def properties = new Properties()
+            zip.getInputStream(entry).withCloseable { properties.load(it) }
+            def id = entry.name.substring('META-INF/gradle-plugins/'.length(), entry.name.length() - '.properties'.length())
+            declared[id] = properties.getProperty('implementation-class')
+        }
+    }
+    return declared
+}

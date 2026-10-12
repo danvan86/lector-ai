@@ -53,13 +53,13 @@ class TestReportsTest {
                     "com.example.lib.CalculatorTest#dividesByZero",
                 ),
             ),
-            TestReports.parse(fixture),
+            MAVEN_REPORTS.parse(fixture),
         )
     }
 
     @Test
     fun `a repository without reports has no test failures`() {
-        assertEquals(emptyList(), TestReports.parse(repo))
+        assertEquals(emptyList(), MAVEN_REPORTS.parse(repo))
     }
 
     @Test
@@ -77,7 +77,7 @@ class TestReportsTest {
             """,
         )
 
-        val failure = TestReports.parse(repo).single()
+        val failure = MAVEN_REPORTS.parse(repo).single()
 
         assertEquals("src/test/kotlin/com/example/FooTest.kt", failure.file)
         assertEquals(7, failure.line)
@@ -95,7 +95,7 @@ class TestReportsTest {
             """,
         )
 
-        val failure = TestReports.parse(repo).single()
+        val failure = MAVEN_REPORTS.parse(repo).single()
 
         assertEquals(
             Diagnostic(
@@ -118,7 +118,7 @@ class TestReportsTest {
 
         assertEquals(
             Diagnostic(null, null, null, null, "Test failed", Severity.ERROR, "surefire", "com.example.FooTest#bar"),
-            TestReports.parse(repo).single(),
+            MAVEN_REPORTS.parse(repo).single(),
         )
     }
 
@@ -134,7 +134,7 @@ class TestReportsTest {
             """,
         )
 
-        val failure = TestReports.parse(repo).single()
+        val failure = MAVEN_REPORTS.parse(repo).single()
 
         assertEquals(null, failure.file)
         assertEquals(null, failure.line)
@@ -154,7 +154,7 @@ class TestReportsTest {
             """,
         )
 
-        assertEquals("src/test/java/FooTest.java", TestReports.parse(repo).single().file)
+        assertEquals("src/test/java/FooTest.java", MAVEN_REPORTS.parse(repo).single().file)
     }
 
     @Test
@@ -169,7 +169,7 @@ class TestReportsTest {
             """,
         )
 
-        assertEquals(emptyList(), TestReports.parse(repo))
+        assertEquals(emptyList(), MAVEN_REPORTS.parse(repo))
     }
 
     @Test
@@ -177,7 +177,7 @@ class TestReportsTest {
         repo.resolve("docs/surefire-reports/TEST-com.example.FooTest.xml").createParentDirectories().writeText("<testsuite/>")
         repo.resolve("target/surefire-reports/com.example.FooTest.txt").createParentDirectories().writeText("text report")
 
-        assertEquals(emptyList(), TestReports.parse(repo))
+        assertEquals(emptyList(), MAVEN_REPORTS.parse(repo))
     }
 
     @Test
@@ -189,7 +189,7 @@ class TestReportsTest {
             .resolve("TEST-com.example.FooTest.xml")
             .writeText("<testsuite><testcase")
 
-        val problem = TestReports.parse(repo).single()
+        val problem = MAVEN_REPORTS.parse(repo).single()
 
         assertEquals(null, problem.test)
         assertEquals("maven", problem.tool)
@@ -202,7 +202,7 @@ class TestReportsTest {
         report.writeText("<testsuite/>")
         report.toFile().setReadable(false)
 
-        val problem = TestReports.parse(repo).single()
+        val problem = MAVEN_REPORTS.parse(repo).single()
 
         assertEquals(null, problem.test)
         assertContains(problem.message, "Can't read test report target/surefire-reports/TEST-com.example.FooTest.xml")
@@ -214,7 +214,7 @@ class TestReportsTest {
             """<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><testsuite>&e;</testsuite>""",
         )
 
-        assertContains(TestReports.parse(repo).single().message, "Can't read test report")
+        assertContains(MAVEN_REPORTS.parse(repo).single().message, "Can't read test report")
     }
 
     private fun source(path: String) = repo.resolve(path).createParentDirectories().writeText("// test source")
@@ -224,17 +224,17 @@ class TestReportsTest {
         val fixture = requireNotNull(javaClass.getResource("/fixtures/failing-tests")).toURI().toPath()
         report("<testcase name=\"passes\"/><testcase name=\"skipped\"><skipped/></testcase>")
 
-        assertEquals(4, TestReports.count(fixture))
-        assertEquals(2, TestReports.count(repo))
+        assertEquals(4, MAVEN_REPORTS.count(fixture))
+        assertEquals(2, MAVEN_REPORTS.count(repo))
     }
 
     @Test
     fun `without readable reports the tests run are unknown`() {
-        assertEquals(null, TestReports.count(repo), "no reports: no test ran")
+        assertEquals(null, MAVEN_REPORTS.count(repo), "no reports: no test ran")
 
         report("<testcase")
 
-        assertEquals(null, TestReports.count(repo))
+        assertEquals(null, MAVEN_REPORTS.count(repo))
     }
 
     private fun report(testcases: String) =

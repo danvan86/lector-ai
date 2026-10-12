@@ -1,5 +1,5 @@
-// The JVM ecosystem adapter: Maven for now. It drives Maven as a process and parses its output, and reads Java and
-// Kotlin sources with tree-sitter for the guardrails.
+// The JVM ecosystem adapters, Maven and Gradle. They drive the build tool as a process and parse its output, and read
+// Java and Kotlin sources with tree-sitter for the guardrails.
 plugins {
     id("lector.kotlin-conventions")
 }
@@ -8,6 +8,8 @@ dependencies {
     implementation(project(":core"))
     implementation(libs.slf4j.api)
     implementation(libs.maven.artifact)
+    // The model the Gradle adapter's init script writes as JSON.
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.tree.sitter)
     implementation(libs.tree.sitter.java)
     implementation(libs.tree.sitter.kotlin)

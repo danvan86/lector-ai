@@ -36,3 +36,39 @@ LC_ALL=en_US.UTF-8 MAVEN_OPTS="-Duser.language=en" mvn -B -fae clean test-compil
 
 Then cleaned up: the copy's path replaced with `/work/repo`, download lines and local paths removed, long stack traces
 cut to three frames, and `<property>` lines removed from the XML reports.
+
+## Gradle fixtures
+
+Small Gradle builds for the Gradle adapter. They have no `gradlew` and no wrapper JAR: the tests copy the tool's own
+wrapper next to the fixture's `gradle/wrapper/gradle-wrapper.properties`, which names the Gradle version.
+
+| Fixture | Build | Breaks with | Captured output |
+|---|---|---|---|
+| `gradle-groovy` | Groovy DSL, Gradle 8.14.2, Java toolchain 21 | javac errors in two files | `gradle-output/javac-errors.log` |
+| `gradle-kotlin-catalog` | Kotlin DSL with a version catalog, Gradle 9.8.1, Kotlin 2.2 | kotlinc errors | `gradle-output/kotlinc-errors.log` |
+| `gradle-multi-project` | Kotlin DSL, Gradle 9.8.1, `lib` and `app` with an `integrationTest` suite and a failing `lint` task in `check` | a failing test in `lib:test` and in `app:integrationTest` | `gradle-output/test-failures.log`, and the XML reports under `gradle-output/test-results/<project>/<task>/` |
+
+The other captures come from copies of these fixtures with one change each:
+
+| Captured output | Fixture and change |
+|---|---|
+| `build-script-error.log` | `gradle-kotlin-catalog`, an unknown property in `build.gradle.kts` |
+| `groovy-script-error.log` | `gradle-groovy`, an unknown property on the `test` task in `build.gradle` |
+| `dependency-resolution.log` | `gradle-groovy`, commons-lang3 `99.0.0` |
+| `integration-test-compile-error.log` | `gradle-multi-project`, a missing method called from `GreetingIT` |
+| `javac-column-zero.log` | `gradle-groovy`, a class that extends a missing class |
+| `toolchain-missing.log` | `gradle-groovy`, a Java 11 toolchain (Gradle 8.14.2) |
+| `toolchain-missing-8.5.log` | `gradle-groovy`, a Java 11 toolchain on Gradle 8.5 |
+
+### How the Gradle output was captured
+
+JDK 21 runs Gradle, English locale, lector-ai's init script, toolchains from the one JDK only:
+
+```
+JAVA_TOOL_OPTIONS="-Duser.language=en -Duser.country=US" ./gradlew -I lector.init.gradle --console=plain \
+  -Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.java.installations.auto-download=false \
+  -Dorg.gradle.java.installations.paths=<JDK 21> lectorCompile --continue   # or: lectorTest --continue
+```
+
+`-P` instead of `-D` for Gradle 8. Then cleaned up: the copy's path replaced with `/work/repo`, the `Picked up
+JAVA_TOOL_OPTIONS` lines and download progress removed, and `hostname` set to `localhost` in the XML reports.
