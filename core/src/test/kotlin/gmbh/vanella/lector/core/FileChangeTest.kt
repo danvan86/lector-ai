@@ -56,6 +56,16 @@ class FileChangeTest {
     }
 
     @Test
+    fun `a change replaces the lines it removed from the old text, an insertion none`() {
+        val change = change("a\nb\nc\nd\n", "a\nB\nc\nX\nd\n")
+
+        assertTrue(change.replaced(LineRange(2, 2)))
+        assertTrue(change.replaced(LineRange(1, 3)))
+        assertFalse(change.replaced(LineRange(1, 1)))
+        assertFalse(change.replaced(LineRange(3, 4)), "the insertion between c and d replaces neither")
+    }
+
+    @Test
     fun `two files of thousands of different lines are one hunk, without comparing every pair`() {
         val before = List(2100) { "old $it" }.joinToString("\n")
         val after = List(2100) { "new $it" }.joinToString("\n")

@@ -156,6 +156,19 @@ class JvmGuardrailsTest {
     }
 
     @Test
+    fun `stubbing and suppression let an existing placeholder stay in a changed line`() {
+        val filter = "class F implements Filter {\n    public void init(javax.FilterConfig c) {}\n}\n"
+        val todo = "class A {\n    void run() {\n        old(); // TODO remove later\n    }\n}\n"
+        val listener = "class A : L {\n    override fun on(e: OldEvent) {}\n}\n"
+        val suppressed = "class A {\n    @Suppress(\"DEPRECATION\") fun run(x: Old) = x.go()\n}\n"
+
+        assertEquals(emptyList(), violations("F.java", filter, filter.replace("javax", "jakarta")))
+        assertEquals(emptyList(), violations("A.java", todo, todo.replace("old()", "renamed()")))
+        assertEquals(emptyList(), violations("A.kt", listener, listener.replace("OldEvent", "NewEvent")))
+        assertEquals(emptyList(), violations("A.kt", suppressed, suppressed.replace("Old", "New")))
+    }
+
+    @Test
     fun `suppression rejects a new SuppressWarnings or Suppress`() {
         assertEquals(
             listOf("suppression"),

@@ -133,14 +133,14 @@ internal object TestCount : Guardrail {
     }
 }
 
-/** Stubbing: no `return null`, empty body, or TODO placeholder in a line the attempt added or changed. */
+/** Stubbing: no new `return null`, empty body, or TODO placeholder in a line the attempt added or changed. */
 internal object Stubbing : Guardrail {
     override fun check(attempt: AttemptChanges) =
-        attempt.sourceFiles().flatMap { (change, _, after) ->
-            after.stubs.filter { change.touches(it.lines) }.map {
+        attempt.sourceFiles().flatMap { file ->
+            file.added(SourceFacts::stubs).map {
                 Violation(
                     "stubbing",
-                    change.file,
+                    file.change.file,
                     it.lines.first,
                     "the edits add the placeholder `${normalized(it.text)}` in place of logic",
                 )
@@ -148,15 +148,24 @@ internal object Stubbing : Guardrail {
         }
 }
 
-/** Suppression: no suppressed warning or check in a line the attempt added or changed. */
+/** Suppression: no new suppressed warning or check in a line the attempt added or changed. */
 internal object Suppression : Guardrail {
     override fun check(attempt: AttemptChanges) =
-        attempt.sourceFiles().flatMap { (change, _, after) ->
-            after.suppressions.filter { change.touches(it.lines) }.map {
-                Violation("suppression", change.file, it.lines.first, "the edits add the suppression `${normalized(it.text)}`")
+        attempt.sourceFiles().flatMap { file ->
+            file.added(SourceFacts::suppressions).map {
+                Violation("suppression", file.change.file, it.lines.first, "the edits add the suppression `${normalized(it.text)}`")
             }
         }
 }
+
+/**
+ * The [fragments] in lines the attempt added or changed that the lines it replaced didn't hold already. A placeholder
+ * in a line that changed around it, like the `{}` of a no-op override whose signature changed, isn't new.
+ */
+private fun SourceFile.added(fragments: (SourceFacts) -> List<Fragment>) =
+    lost(fragments(after).filter { change.touches(it.lines) }, fragments(before).filter { change.replaced(it.lines) }) {
+        normalized(it.text)
+    }
 
 /** The items of [from] whose [key] has fewer items in [to]: the ones beyond the count that is left. */
 private fun <T> lost(

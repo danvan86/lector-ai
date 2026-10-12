@@ -172,6 +172,21 @@ class SourceRulesTest {
     }
 
     @Test
+    fun `stubbing and suppression let a placeholder stay in a line the edits changed around it`() {
+        val before = "@Suppress(\"X\") fun a(e: Old) {}\n"
+        val after = "@Suppress(\"X\") fun a(e: New) {}\n"
+        val facts = SourceFacts(stubs = listOf(Fragment(lines(1), "{}")), suppressions = listOf(Fragment(lines(1), "@Suppress(\"X\")")))
+        val emptied = SourceFacts(stubs = listOf(Fragment(lines(1), "{ }")), suppressions = facts.suppressions)
+
+        assertEquals(emptyList(), Stubbing.check(attempt(before, after, facts, facts)))
+        assertEquals(emptyList(), Suppression.check(attempt(before, after, facts, facts)))
+        assertEquals(
+            listOf(1),
+            Stubbing.check(attempt(before, after, facts, SourceFacts(stubs = facts.stubs + emptied.stubs))).map { it.line },
+        )
+    }
+
+    @Test
     fun `parse errors rejects more parse errors than before, at the first one the edits touched`() {
         val before = "class A {\n  int x = ;\n}\n"
         val after = "class A {\n  int x = ;\n  int y = ;\n}\n"

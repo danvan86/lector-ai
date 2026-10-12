@@ -64,6 +64,9 @@ class FileChange(
                     range.first <= added.last
             }
         }
+
+    /** Whether the attempt removed or replaced a line of [range] of [before]. */
+    fun replaced(range: LineRange) = hunks.any { hunk -> hunk.removed.any { it in range } }
 }
 
 /**
