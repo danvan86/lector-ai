@@ -80,6 +80,7 @@ If the request would not fit into the context, grounding, release notes, and rec
 
 - Defaults: 3 attempts per cluster, 20 attempts in total, 30 minutes wall-clock, stop after 2 attempts in a row without progress. All configurable through CLI options.
 - The loop stops when nothing caused by the update is left, or when a budget is used up.
+- The time limit is checked before each attempt: no attempt starts after it, but a running one isn't stopped. A hard deadline comes with M5 ([review](review.md) D1).
 
 **Why:** fits a normal CI job (Q11), and the concept requires all four limits (section 6.4).
 

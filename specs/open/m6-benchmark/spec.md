@@ -43,6 +43,7 @@ An on-demand benchmark runs the tool on 20–25 real and synthetic JVM/Maven dep
 - Runtime in total and per stage.
 - Lines changed by recipe commits and by fix commits.
 - Pre-existing and flaky failures, counted separately.
+- Fix requests that left diagnostics out because they didn't fit (section 8).
 
 **Why:** these are the concept's metrics (section 11), plus what the 90/10 verdict needs. Pre-existing and flaky failures are tracked but never counted as the tool's job (M1).
 
@@ -81,7 +82,14 @@ An on-demand benchmark runs the tool on 20–25 real and synthetic JVM/Maven dep
 
 **Why:** the default should be what we have numbers for (Q13). The M3 and M5 specs are already updated.
 
-### 8. Tests
+### 8. Diagnostics that don't fit
+
+- When a cluster's diagnostics and their code snippets don't fit into the context, the fix request carries only as many diagnostics (each with its snippets) as fit. The rest come back in the next round, because clusters are rebuilt after every accepted attempt.
+- This replaces M3's rule that diagnostics and snippets are never trimmed (M3 spec section 4). Grounding, release notes, and the recipe diff are still trimmed first.
+
+**Why:** a request that doesn't fit is cut by Ollama without notice, so the model sees part of the errors and code and nobody knows which part. Sending fewer diagnostics in full is honest, and the benchmark shows how often it happens ([M3 review](../../done/m3-fix-loop/review.md) D3).
+
+### 9. Tests
 
 - Unit tests with fakes: corpus parsing, the invalid-case check, aggregation (mean, spread), the changed-line split, and the 90/10 verdict at 89% and 90%.
 - The report task runs on a small checked-in `results.json` fixture.
@@ -130,6 +138,7 @@ The review agent checks every criterion and reports it as *met*, *not met*, or *
 | AC16 | The product default model is `qwen2.5-coder:7b` in the CLI and the action | 7 | CLI `--help`; `action/action.yml` |
 | AC17 | First results with at least 10 reviewed runs and the 90/10 verdict are committed under `benchmark/results/<date>/` | 4, 5 | Directory content |
 | AC18 | No GPU runner, schedule trigger, dashboard, CLI subcommand, or YAML library is added | Don't | Workflow files, CLI commands, version catalog |
+| AC19 | When diagnostics and snippets don't fit, the request carries the diagnostics that fit, each in full, and the run's metrics count these requests | 3, 8 | `Prompt` unit test with an oversized cluster; `results.json` format |
 
 ## Docs to update
 
