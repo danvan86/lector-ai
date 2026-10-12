@@ -354,7 +354,7 @@ class PrPipelineTest {
         assertContains(body, "UpgradeLib")
         assertContains(body, "Call fixed()")
         assertContains(body, "cannot find symbol missing")
-        assertEquals(listOf("ai-assisted"), host.labels)
+        assertEquals(listOf(7 to "ai-assisted"), host.labels)
     }
 
     @Test
@@ -512,15 +512,22 @@ class PrPipelineTest {
         return result.output
     }
 
-    /** Records what the pipeline does on the host. A push records the subjects of the commits it would push. */
+    /**
+     * Records what the pipeline does on the host. A push records the subjects of the commits it would push, a force-push
+     * the branch and those subjects. PRs live in [pulls]; the source PR is number 7, a created PR gets the next number
+     * from 20 on.
+     */
     private inner class FakeHost(
         private val pr: PullRequest,
         private val acceptsPush: Boolean,
     ) : GitHost {
         val fetches = mutableListOf<String>()
         val pushes = mutableListOf<List<String>>()
+        val forcePushes = mutableListOf<Pair<String, List<String>>>()
         val comments = mutableListOf<Pair<String, Boolean>>()
-        val labels = mutableListOf<String>()
+        val labels = mutableListOf<Pair<Int, String>>()
+        val pulls = mutableMapOf<Int, Pull>()
+        val deleted = mutableListOf<String>()
 
         override fun pullRequest() = pr
 
@@ -550,12 +557,58 @@ class PrPipelineTest {
         }
 
         override fun label(
-            pr: PullRequest,
+            number: Int,
             label: String,
         ) {
-            labels += label
+            labels += number to label
+        }
+
+        override fun forcePush(
+            repo: Path,
+            branch: String,
+        ) {
+            forcePushes += branch to git(repo, "log", "--reverse", "--format=%s", "${pr.headSha}..HEAD").lines().filter { it.isNotEmpty() }
+        }
+
+        override fun findPullRequest(
+            head: String,
+            base: String,
+        ) = pulls.entries.firstOrNull { (_, pull) -> pull.head == head && pull.base == base && pull.open }?.key
+
+        override fun createPullRequest(
+            head: String,
+            base: String,
+            title: String,
+            body: String,
+        ): Int {
+            val number = 20 + pulls.size
+            pulls[number] = Pull(head, base, title, body, open = true)
+            return number
+        }
+
+        override fun updatePullRequest(
+            number: Int,
+            body: String,
+        ) {
+            pulls[number] = pulls.getValue(number).copy(body = body)
+        }
+
+        override fun closePullRequest(number: Int) {
+            pulls[number] = pulls.getValue(number).copy(open = false)
+        }
+
+        override fun deleteBranch(branch: String) {
+            deleted += branch
         }
     }
+
+    private data class Pull(
+        val head: String,
+        val base: String,
+        val title: String,
+        val body: String,
+        val open: Boolean,
+    )
 
     /** Recognizes Renovate's PRs on `bot/` branches, unless told otherwise, and reads the given update from every PR. */
     private class FakeSource(

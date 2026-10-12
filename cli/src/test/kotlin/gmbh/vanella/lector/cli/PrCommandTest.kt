@@ -384,6 +384,8 @@ class PrCommandTest {
         val pushed = mutableListOf<String>()
         val comments = mutableListOf<String>()
         val labels = mutableListOf<String>()
+        val forcePushed = mutableListOf<Pair<String, List<String>>>()
+        val created = mutableListOf<String>()
 
         override fun pullRequest(): PullRequest {
             failure?.let { throw it }
@@ -413,10 +415,41 @@ class PrCommandTest {
         }
 
         override fun label(
-            pr: PullRequest,
+            number: Int,
             label: String,
         ) {
             labels += label
         }
+
+        override fun forcePush(
+            repo: Path,
+            branch: String,
+        ) {
+            forcePushed += branch to git("log", "--reverse", "--format=%s", "${pr.headSha}..HEAD").lines().filter { it.isNotEmpty() }
+        }
+
+        override fun findPullRequest(
+            head: String,
+            base: String,
+        ): Int? = null
+
+        override fun createPullRequest(
+            head: String,
+            base: String,
+            title: String,
+            body: String,
+        ): Int {
+            created += "$head -> $base"
+            return 20
+        }
+
+        override fun updatePullRequest(
+            number: Int,
+            body: String,
+        ) = error("no companion PR to update")
+
+        override fun closePullRequest(number: Int) = error("no companion PR to close")
+
+        override fun deleteBranch(branch: String) = error("no companion branch to delete")
     }
 }

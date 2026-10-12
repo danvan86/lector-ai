@@ -190,7 +190,7 @@ class PrPipeline(
         }
         val report = PrReport(changes, withoutRecipe, recipes, fixLoop, pushed = anyCommit)
         host.comment(pr, PrComment.render(report), create = true)
-        if (anyCommit) host.label(pr, AI_ASSISTED)
+        if (anyCommit) host.label(pr.number, AI_ASSISTED)
         return PrOutcome.Reported(report)
     }
 
