@@ -95,6 +95,7 @@ These come from the concept. Don't break them without updating the concept first
 
 - **Test-first:** write or update the test before the logic.
 - Unit tests for core logic. Adapters are tested against small **fixture repos** under `src/test/resources/fixtures/`.
+- Tool output in tests (compiler messages, build logs) uses the real tool's wording, copied from a real run. An invented message hid that javac's "does not override" names no method, so a rule matching on the name never fired for Java.
 - No real LLM in unit tests: use a fake `LlmClient`. Tests against a real Ollama are tagged and opt-in.
 - Test the failure paths, not only the happy path: invalid input, missing or malformed resources. For the CLI, assert exit code, stdout, and stderr on every path, because they are the contract with the pipeline.
 - A command that should run only some tests is checked once with the real build tool, not only by its command line. Lifecycles run other test tasks first (Maven's `verify` runs every surefire test before failsafe).
