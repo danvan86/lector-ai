@@ -1,6 +1,6 @@
 # Architecture – PR pipeline
 
-Milestone: [M5](../features.md#m5--renovate-in-ci-first-end-to-end-release-) · Spec: [`m5-renovate-ci/spec.md`](../../specs/open/m5-renovate-ci/spec.md) · Review: [`review.md`](../../specs/open/m5-renovate-ci/review.md)
+Milestone: [M5](../features.md#m5--renovate-in-ci-first-end-to-end-release-) · Spec: [`m5-renovate-ci/spec.md`](../../specs/done/m5-renovate-ci/spec.md) · Review: [`review.md`](../../specs/done/m5-renovate-ci/review.md)
 
 > **Summary for agents**
 >
@@ -162,7 +162,7 @@ Dependabot watches both Dockerfiles; major updates of `eclipse-temurin` are igno
 | End-to-end | `:cli:endToEndTest` | The installed start script: skip, missing token, a green Renovate PR with a scripted `mvnw` against a local GitHub fake | `LectorEndToEndTest` |
 | Gate | `check` | `checkActionImage`: the action's image tag is the tool's version | `build.gradle.kts` |
 
-The real end-to-end run (a Renovate PR in a test repository on GitHub, published images) is outside the build and still open ([`progress.md`](../../specs/open/m5-renovate-ci/progress.md)).
+The real end-to-end run (a Renovate PR in a test repository on GitHub, published images) is outside the build and still open ([`progress.md`](../../specs/done/m5-renovate-ci/progress.md)).
 
 ## Decisions and known limits
 

@@ -26,7 +26,7 @@ specs/
 | M2 – Recipe index and OpenRewrite run | [brainstorming](done/m2-recipe-index/brainstorming.md) · [spec](done/m2-recipe-index/spec.md) |
 | M3 – Fix loop | [brainstorming](done/m3-fix-loop/brainstorming.md) · [spec](done/m3-fix-loop/spec.md) |
 | M4 – Guardrails | [brainstorming](done/m4-guardrails/brainstorming.md) · [spec](done/m4-guardrails/spec.md) |
-| M5 – Renovate in CI | [brainstorming](open/m5-renovate-ci/brainstorming.md) · [spec](open/m5-renovate-ci/spec.md) |
+| M5 – Renovate in CI | [brainstorming](done/m5-renovate-ci/brainstorming.md) · [spec](done/m5-renovate-ci/spec.md) |
 | M6 – Benchmark | [brainstorming](open/m6-benchmark/brainstorming.md) · [spec](open/m6-benchmark/spec.md) |
 | M7 – Gradle | [brainstorming](open/m7-gradle/brainstorming.md) · [spec](open/m7-gradle/spec.md) |
 | M8 – Dependabot and fallback | [brainstorming](open/m8-dependabot-fallback/brainstorming.md) · [spec](open/m8-dependabot-fallback/spec.md) |
