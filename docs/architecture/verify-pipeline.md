@@ -7,7 +7,7 @@ Milestone: [M1](../features.md#m1--verify-and-report-jvmmaven-no-ai-) · Spec: [
 > - `lector verify <repo>` builds and tests a repository through an `EcosystemAdapter`, then `attribute()` in `core` sorts every `Diagnostic` into the four lists of a `Verification`: caused by the update, pre-existing, flaky, unattributed.
 > - The contract: the report goes to stdout (text, or one line of JSON with `--format json`), logs go to stderr. Exit `0` when nothing is caused by the update, `1` when something is, `2` on a tool error.
 > - `core` knows no build tool: it holds the data model, the port, attribution, the process runner, and the Git worktree for the base commit. Everything Maven-specific is in `ecosystems:jvm`. Only `cli` (`RootCommand.kt`) knows `MavenAdapter`.
-> - A new ecosystem is a new `ecosystems:*` module that implements `EcosystemAdapter` (`detect`, `verify`, `runTests`, plus `ecosystem` and `versionScheme` and the optional recipe capabilities since M2, see [Recipe migration](recipe-migration.md), and `ground`, `clusterKey`, `isBuildFile` since M3, see [Fix loop](fix-loop.md)), registered in the adapter list in `rootCommand()`. Its parsers are tested on output captured from real runs.
+> - A new ecosystem is a new `ecosystems:*` module that implements `EcosystemAdapter` (`detect`, `verify`, `runTests`, plus `ecosystem` and `versionScheme` and the optional recipe capabilities since M2, see [Recipe migration](recipe-migration.md), `ground`, `clusterKey`, `isBuildFile` since M3, see [Fix loop](fix-loop.md), and `languageSupport`, `isEditable`, `testDisablingConfig`, `testsRun` since M4, see [Guardrails](guardrails.md)), registered in the adapter list in `rootCommand()`. Its parsers are tested on output captured from real runs.
 > - Easiest rule to break: test failures carry `Diagnostic.test`, everything else has `test == null`, and attribution relies on it. A run with any `test == null` diagnostic says nothing about the tests. Never skip or filter tests in `verify`; `-Dtest` belongs in `runTests` only.
 
 ## Overview
@@ -116,7 +116,7 @@ Only `[ERROR]` lines count; warnings are ignored. Paths outside the repository s
 | No adapter detects the repository | empty | `Error: No supported ecosystem in <repo>. Supported: Maven (pom.xml at the root).` | `2` |
 | `--base` is not a commit (checked before the build) | empty | `Error: Base ref <ref> is not a commit in <repo>…` | `2` |
 | Maven or Git can't start or times out | empty | `Error: Cannot run …` / `… did not finish within …` | `2` |
-| Any other exception while verifying | empty | `Error: Unexpected failure: <exception>` | `2` |
+| Any other exception or error while verifying (an `Error`, like a native library that doesn't load, too) | empty | `Error: Unexpected failure: <exception>` | `2` |
 | Invalid usage (unknown option, extra argument, missing `<repo>`, `--format xml`) | empty | Usage and `Error: …` | `2` |
 
 Logs are SLF4J on stderr; every process logs `Running <command> in <dir>` at info, and its output at debug.
