@@ -73,12 +73,12 @@ open class FakeGradleTest {
     protected fun adapter(
         init: Path? = null,
         jdks: Map<Int, Path> = emptyMap(),
-        userHome: Path? = null,
+        environment: Map<String, String> = emptyMap(),
         rewritePlugin: Path? = null,
         before: (List<String>) -> Unit = {},
-    ) = GradleAdapter(init = init, jdks = jdks, userHome = userHome, rewritePlugin = rewritePlugin) { command, workDir, environment, _ ->
+    ) = GradleAdapter(init, jdks, environment, rewritePlugin) { command, workDir, variables, _ ->
         runs += command
-        environments += environment
+        environments += variables
         assertEquals(command.first(), workDir.resolve("gradlew").toString())
         before(command)
         when {

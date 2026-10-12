@@ -25,8 +25,8 @@ internal fun rootCommand(version: String): LectorCommand {
 }
 
 /**
- * The ecosystem adapters, configured from the [environment]: the installed JDKs, the Gradle user home
- * (`GRADLE_USER_HOME`), and the OpenRewrite Gradle plugin the image ships (`LECTOR_REWRITE_GRADLE_PLUGIN`). Gradle comes
+ * The ecosystem adapters, configured from the [environment]: the installed JDKs, Gradle's own variables (the Gradle
+ * adapter picks them), and the OpenRewrite Gradle plugin the image ships (`LECTOR_REWRITE_GRADLE_PLUGIN`). Gradle comes
  * first: it refuses a repository with a `pom.xml` next to its Gradle files, which Maven would otherwise take.
  */
 internal fun adapters(
@@ -36,7 +36,7 @@ internal fun adapters(
     val jdks = installedJdks(environment)
     val path = { name: String -> environment[name]?.takeIf { it.isNotBlank() }?.let { Path.of(it) } }
     return listOf(
-        GradleAdapter(config.gradleInit, jdks, path("GRADLE_USER_HOME"), path("LECTOR_REWRITE_GRADLE_PLUGIN")),
+        GradleAdapter(config.gradleInit, jdks, environment, path("LECTOR_REWRITE_GRADLE_PLUGIN")),
         MavenAdapter(config.mavenSettings, jdks = jdks),
     )
 }

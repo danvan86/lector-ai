@@ -130,7 +130,7 @@ lector-ai never merges, approves, or requests reviews.
 | `time-limit` | `30` | Minutes before the fix loop stops |
 | `max-changed-lines` | `50` | Lines one attempt may change before it is rejected |
 | `maven-settings` | none | A Maven settings file in the workspace, e.g. for a mirror; credentials in it can come from `MAVEN_*` variables |
-| `gradle-init` | none | A Gradle init script in the workspace, passed to every Gradle run, e.g. to point the repositories at a mirror |
+| `gradle-init` | none | A Gradle init script in the workspace, passed to every Gradle run, e.g. to point the repositories at a mirror; credentials can come from `GRADLE_*` and `ORG_GRADLE_PROJECT_*` variables |
 
 There is no configuration file in your repository: everything is in the workflow.
 

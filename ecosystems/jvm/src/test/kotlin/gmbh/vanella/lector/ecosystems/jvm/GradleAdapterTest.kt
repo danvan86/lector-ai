@@ -244,12 +244,20 @@ class GradleAdapterTest : FakeGradleTest() {
     }
 
     @Test
-    fun `the Gradle user home is passed to every run`() {
+    fun `Gradle's own variables are passed to every run, for the user home and credentials, and no others`() {
         gradleProject()
+        val environment =
+            mapOf(
+                "GRADLE_USER_HOME" to "/github/home/.gradle",
+                "GRADLE_OPTS" to "-Xmx2g",
+                "ORG_GRADLE_PROJECT_mirrorPassword" to "secret",
+                "LECTOR_GITHUB_TOKEN" to "token",
+                "INPUT_TOKEN" to "token",
+            )
 
-        adapter(userHome = Path.of("/github/home/.gradle")).verify(repo, 1.hours)
+        adapter(environment = environment).verify(repo, 1.hours)
 
-        assertEquals(listOf(mapOf("GRADLE_USER_HOME" to "/github/home/.gradle")), environments.distinct())
+        assertEquals(listOf(environment - "LECTOR_GITHUB_TOKEN" - "INPUT_TOKEN"), environments.distinct())
     }
 
     @Test

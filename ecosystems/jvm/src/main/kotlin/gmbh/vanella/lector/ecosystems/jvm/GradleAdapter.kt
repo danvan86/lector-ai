@@ -33,6 +33,9 @@ private val GRADLE_TIMEOUT = 1.hours
 private val STOP_TIMEOUT = 1.minutes
 private const val OUTPUT_TAIL_LINES = 20
 
+// The variables Gradle reads: its own options and user home, and project properties (`ORG_GRADLE_PROJECT_<name>`).
+private val GRADLE_VARIABLES = listOf("GRADLE_", "ORG_GRADLE_PROJECT_")
+
 private const val NO_CONFIGURATION_CACHE = "--no-configuration-cache"
 
 private val ROOT_BUILD_FILES = listOf("settings.gradle", "settings.gradle.kts", "build.gradle", "build.gradle.kts")
@@ -48,7 +51,8 @@ private val TOOLCHAINS_AS_GRADLE_PROPERTIES = GradleVersion(9, 1)
 /**
  * Builds and tests Gradle projects (8.0 and newer), always through the project's wrapper, so the project's own Gradle
  * version runs, downloaded from its own `distributionUrl`. Every run gets lector-ai's init script and, if given, the
- * user's [init] script, for mirrors and credentials. The Gradle user home is [userHome], or Gradle's default.
+ * user's [init] script, for mirrors and credentials. Of the tool's [environment], Gradle gets its own variables:
+ * `GRADLE_*` (the user home, say) and `ORG_GRADLE_PROJECT_*`, from which the build and the init script read credentials.
  *
  * JDKs: Gradle runs on the one [DaemonJdk] picks from the installed [jdks] (release → `JAVA_HOME`). The project's
  * toolchains resolve from the same JDKs, never by auto-detection or a download. A toolchain that isn't installed is a
@@ -66,19 +70,20 @@ private val TOOLCHAINS_AS_GRADLE_PROPERTIES = GradleVersion(9, 1)
 class GradleAdapter(
     private val init: Path? = null,
     jdks: Map<Int, Path> = emptyMap(),
-    private val userHome: Path? = null,
+    environment: Map<String, String> = emptyMap(),
     rewritePlugin: Path? = null,
     private val run: (
         command: List<String>,
         workDir: Path,
-        environment: Map<String, String>,
+        variables: Map<String, String>,
         timeout: Duration,
-    ) -> ProcessResult = { command, workDir, environment, timeout ->
-        runProcess(command, workDir, timeout, environment)
+    ) -> ProcessResult = { command, workDir, variables, timeout ->
+        runProcess(command, workDir, timeout, variables)
     },
 ) : EcosystemAdapter,
     AutoCloseable {
     private val installed = jdks.toSortedMap()
+    private val variables = environment.filterKeys { name -> GRADLE_VARIABLES.any { name.startsWith(it) } }
     private val daemonJdk = DaemonJdk(installed)
     private val grounding = JavapGrounding(::classpathJars)
 
@@ -290,7 +295,7 @@ class GradleAdapter(
         val environment =
             buildMap {
                 daemonJdk.javaHome(root, version)?.let { put("JAVA_HOME", it.toString()) }
-                userHome?.let { put("GRADLE_USER_HOME", it.toString()) }
+                putAll(variables)
             }
         roots.add(root)
         val result = run(command(root, version) + arguments, root, environment, minOf(timeout, GRADLE_TIMEOUT))

@@ -42,7 +42,10 @@ class GradleIntegrationTest {
 
     // Compiler messages in English, as in the tool image (LANG=C.UTF-8), whatever the machine's locale.
     private val adapter =
-        GradleAdapter(jdks = jdks, userHome = userHome) { command, workDir, environment, timeout ->
+        GradleAdapter(
+            jdks = jdks,
+            environment = mapOf("GRADLE_USER_HOME" to userHome.toString()),
+        ) { command, workDir, environment, timeout ->
             runProcess(command, workDir, timeout, environment + ("JAVA_TOOL_OPTIONS" to "-Duser.language=en -Duser.country=US"))
         }
 
