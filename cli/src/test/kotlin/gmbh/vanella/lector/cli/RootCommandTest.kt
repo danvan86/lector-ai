@@ -19,13 +19,14 @@ class RootCommandTest {
     }
 
     @Test
-    fun `help lists the verify, migrate, and heal commands`() {
+    fun `help lists the verify, migrate, heal, and pr commands`() {
         val result = rootCommand("1.2.3").test("--help")
 
         assertContains(result.stdout, "Commands:")
         assertContains(result.stdout, "verify")
         assertContains(result.stdout, "migrate")
         assertContains(result.stdout, "heal")
+        assertContains(result.stdout, "pr ")
         assertEquals(0, result.statusCode)
     }
 

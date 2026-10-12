@@ -7,10 +7,10 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.default
 import com.github.ajalt.clikt.parameters.groups.provideDelegate
 import com.github.ajalt.clikt.parameters.options.check
+import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
-import com.github.ajalt.clikt.parameters.options.split
 import com.github.ajalt.clikt.parameters.types.path
 import gmbh.vanella.lector.core.CommitIdentity
 import gmbh.vanella.lector.core.EcosystemAdapter
@@ -53,7 +53,7 @@ internal class PrCommand(
         metavar = "<file>",
         envvar = "GITHUB_EVENT_PATH",
         help = "The pull_request event",
-    ).path().required()
+    ).path(mustExist = true, canBeDir = false, mustBeReadable = true).required()
     private val apiUrl by option("--github-api-url", metavar = "<url>", envvar = "GITHUB_API_URL", help = "GitHub's REST API")
         .httpUrl()
         .default(URI(DEFAULT_API_URL), defaultForHelp = DEFAULT_API_URL)
@@ -71,8 +71,9 @@ internal class PrCommand(
         .required()
         .check("must not be blank") { it.isNotBlank() }
     private val botLogins by option("--bot-logins", metavar = "<logins>", help = "The bots whose PRs are fixed, comma-separated")
-        .split(",")
+        .convert { logins -> logins.split(",").map { it.trim() }.filter { it.isNotEmpty() } }
         .default(listOf("renovate[bot]"), defaultForHelp = "renovate[bot]")
+        .check("must name at least one bot") { it.isNotEmpty() }
     private val mavenSettings by option(
         "--maven-settings",
         metavar = "<file>",

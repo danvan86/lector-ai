@@ -88,10 +88,10 @@ class PrCommandTest {
     }
 
     @Test
-    fun `the bot logins can be set, comma-separated`() {
+    fun `the bot logins can be set, comma-separated, with spaces around them`() {
         host.pr = host.pr.copy(author = "my-renovate[bot]")
 
-        val result = command().test("$repo --event $event $bot --bot-logins renovate[bot],my-renovate[bot]", envvars = token)
+        val result = command().test("$repo --event $event $bot --bot-logins 'renovate[bot], my-renovate[bot] ,'", envvars = token)
 
         assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
     }
@@ -212,6 +212,10 @@ class PrCommandTest {
                 "invalid value for --github-api-url: not an http or https URL with a host",
             "$repo --event $event --bot-name ' ' --bot-email x" to "invalid value for --bot-name: must not be blank",
             "$repo $bot" to "missing option --event",
+            "$repo --event ${repo.resolve("missing.json")} $bot" to
+                "invalid value for --event: file \"${repo.resolve("missing.json")}\" does not exist",
+            "$repo --event $repo $bot" to "invalid value for --event: file \"$repo\" is a directory",
+            "$repo --event $event $bot --bot-logins ' , '" to "invalid value for --bot-logins: must name at least one bot",
         ).forEach { (args, error) ->
             val run = LectorCommand("1.2.3").subcommands(command()).executeInProcess("pr", *split(args))
 
