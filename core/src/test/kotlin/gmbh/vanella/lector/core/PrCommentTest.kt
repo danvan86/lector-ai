@@ -226,11 +226,22 @@ class PrCommentTest {
 
             Verify is green on 4444444: nothing caused by the update. lector-ai changed nothing.
             """.trimIndent(),
-            PrComment.green(Verification(), "4444444cccccccc"),
+            PrComment.green(Verification(), "4444444cccccccc", closedCompanion = null),
         )
         assertContains(
-            PrComment.green(Verification(flaky = listOf(flaky)), "4444444"),
+            PrComment.green(Verification(flaky = listOf(flaky)), "4444444", closedCompanion = null),
             "Flaky (passed on a rerun):\n- `[surefire]` com.example.ClockTest#ticks",
+        )
+    }
+
+    @Test
+    fun `a green run with a closed companion PR says so`() {
+        val closed = PrComment.companionClosed(21, "heal/dependabot/maven/guava", "verify is green without it")
+
+        assertEquals(
+            "### lector-ai\n\nVerify is green on 4444444: nothing caused by the update. lector-ai changed nothing.\n\n" +
+                "lector-ai closed its companion PR #21 and deleted heal/dependabot/maven/guava: verify is green without it.",
+            PrComment.green(Verification(), "4444444", closed),
         )
     }
 }

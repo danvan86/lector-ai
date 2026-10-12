@@ -16,10 +16,12 @@ object PrComment {
     fun render(report: PrReport): String {
         val fixLoop = report.fixLoop
         val left = report.verification.causedByUpdate
+        val merge = report.companion?.let { "Merge the companion PR #$it into this PR's branch first, then this PR." }
         val sections =
             listOf(
                 TITLE,
                 headline(report),
+                merge,
                 "#### Recipes\n" + recipes(report).ifEmpty { listOf("- none") }.joinToString("\n"),
                 "#### Fixes\n" + fixes(fixLoop).ifEmpty { listOf("- none") }.joinToString("\n"),
                 "The fix loop made ${count(fixLoop.attempts.size, "attempt")} and stopped: ${fixLoop.stopReason.description}.",
@@ -33,23 +35,42 @@ object PrComment {
         return sections.filterNotNull().joinToString("\n\n")
     }
 
-    /** The comment of a run that stopped because verify of [commit] was green. */
+    /** The comment of a run that stopped because verify of [commit] was green, with the line on a [closedCompanion]. */
     fun green(
         verification: Verification,
         commit: String,
+        closedCompanion: String?,
     ): String {
         val headline = "Verify is green on ${commit.take(SHORT_COMMIT)}: nothing caused by the update. lector-ai changed nothing."
-        return listOfNotNull(TITLE, headline, DiagnosticItems.notCausedByUpdate(verification)).joinToString("\n\n")
+        return listOfNotNull(TITLE, headline, closedCompanion, DiagnosticItems.notCausedByUpdate(verification)).joinToString("\n\n")
     }
 
     /** The comment of a run that couldn't read what the PR changes, for the [reason] the source gave. */
-    fun unreadable(reason: String) = "$TITLE\n\nlector-ai can't tell what the PR changes, so it changed nothing: $reason"
+    fun unreadable(reason: String) = note("lector-ai can't tell what the PR changes, so it changed nothing: $reason")
+
+    /** A comment that is only [text]. */
+    fun note(text: String) = "$TITLE\n\n$text"
+
+    /** Why the tool closed companion PR [number] and deleted its [branch]. */
+    fun companionClosed(
+        number: Int,
+        branch: String,
+        reason: String,
+    ) = "lector-ai closed its companion PR #$number and deleted $branch: $reason."
+
+    /** The description of the companion PR of [source]: where it goes, the merge order, and the summary of [report]. */
+    fun companionDescription(
+        report: PrReport,
+        source: PullRequest,
+    ) = "lector-ai's fixes for #${source.number} (`${source.headBranch}`). Merge this PR first, then #${source.number}.\n\n" +
+        render(report)
 
     private fun headline(report: PrReport): String {
         val single = report.changes.singleOrNull()
         val update = if (single == null) "${report.changes.size} packages" else change(single)
         val commits = report.recipes.count { it.commit != null } + report.fixLoop.fixes.size
-        val pushed = if (report.pushed) "pushed ${count(commits, "commit")}" else "pushed nothing"
+        val companion = if (report.companion == null) "" else " to the companion PR #${report.companion}"
+        val pushed = if (report.pushed) "pushed ${count(commits, "commit")}$companion" else "pushed nothing"
         val left = report.verification.causedByUpdate.size
         val verdict =
             when (left) {
@@ -90,13 +111,6 @@ object PrComment {
             else -> reason.lines().first()
         }
     }
-
-    private fun change(change: DependencyChange) = change.describe()
-
-    private fun count(
-        number: Int,
-        noun: String,
-    ) = if (number == 1) "1 $noun" else "$number ${noun}s"
 }
 
 /** The diagnostics in a comment: one line each, at most [MAX_ITEMS] per list. */
@@ -125,3 +139,10 @@ private object DiagnosticItems {
         return "- `[${diagnostic.tool}]` " + if (subject.isEmpty()) message else "$subject: $message"
     }
 }
+
+private fun change(change: DependencyChange) = change.describe()
+
+private fun count(
+    number: Int,
+    noun: String,
+) = if (number == 1) "1 $noun" else "$number ${noun}s"

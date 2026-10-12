@@ -7,7 +7,6 @@ import gmbh.vanella.lector.core.RecipeSelection
 import gmbh.vanella.lector.core.runProcess
 import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
 import gmbh.vanella.lector.git.GitHubHost
-import gmbh.vanella.lector.sources.RenovateSource
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -27,8 +26,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * A Renovate PR from red to green through the real adapters: the Renovate source, the GitHub host, the Maven adapter, and
- * the Ollama client. Only the edges are fakes: GitHub's REST API and Ollama are local HTTP servers, the remote is a
+ * A PR from red to green through the real adapters: the sources, the GitHub host, the Maven adapter, and the Ollama
+ * client. Only the edges are fakes: GitHub's REST API and Ollama are local HTTP servers, the remote is a
  * local bare repository, and the project's Maven wrapper stands in for Maven.
  */
 class PrFlowTest {
@@ -46,7 +45,12 @@ class PrFlowTest {
         github.createContext("/") { exchange ->
             val body = exchange.requestBody.readAllBytes().decodeToString()
             githubRequests += "${exchange.requestMethod} ${exchange.requestURI.path} $body".trim()
-            val answer = if (exchange.requestMethod == "GET") "[]" else "{}"
+            val answer =
+                when {
+                    exchange.requestMethod == "GET" -> "[]"
+                    exchange.requestURI.path == "/repos/acme/app/pulls" -> """{"number": 21}"""
+                    else -> "{}"
+                }
             exchange.sendResponseHeaders(if (exchange.requestMethod == "POST") 201 else 200, answer.length.toLong())
             exchange.responseBody.use { it.write(answer.encodeToByteArray()) }
         }
@@ -108,10 +112,43 @@ class PrFlowTest {
         )
     }
 
+    @Test
+    fun `a labelled PR is fixed in a companion PR on top of its head, labelled there, and reported on the PR`() {
+        val (base, head) = renovatePr()
+        git(dir, "clone", "--quiet", "--branch", "renovate/spring-boot", origin.toUri().toString(), repo.toString())
+        val event = event(head, base, author = "alice", labels = listOf("lector"))
+
+        val result =
+            command().test(
+                "$repo --event $event --bot-name lector-ai[bot] --bot-email 1+lector-ai[bot]@users.noreply.github.com " +
+                    "--github-api-url http://127.0.0.1:${github.address.port} --ollama-url http://127.0.0.1:${ollama.address.port}",
+                envvars = mapOf("LECTOR_GITHUB_TOKEN" to "ghs_token"),
+            )
+
+        assertEquals(0, result.statusCode, result.stdout + result.stderr)
+        assertContains(result.stdout, "lector-ai pushed 1 commit to the companion PR #21; nothing caused by the update is left.")
+        assertEquals(head, git(origin, "rev-parse", "renovate/spring-boot"), "the PR's own branch is untouched")
+        val companion = git(origin, "log", "--format=%an|%s", "heal/renovate/spring-boot").lines()
+        assertEquals(listOf("lector-ai[bot]|Call fixed() instead of broken()", "Renovate Bot|Update spring boot"), companion.take(2))
+        assertEquals(
+            listOf(
+                "GET /repos/acme/app/pulls",
+                "POST /repos/acme/app/pulls",
+                "POST /repos/acme/app/issues/21/labels",
+                "GET /repos/acme/app/issues/7/comments",
+                "POST /repos/acme/app/issues/7/comments",
+            ),
+            githubRequests.map { it.substringBefore(" {").substringBefore(" [") },
+        )
+        assertContains(githubRequests[1], "\"head\":\"heal/renovate/spring-boot\",\"base\":\"renovate/spring-boot\"")
+        assertContains(githubRequests[4], "Merge the companion PR #21 into this PR's branch first, then this PR.")
+        assertEquals(1, git(repo, "worktree", "list").lines().size, "the base worktree is gone")
+    }
+
     private fun command() =
         PrCommand(
             adapters = { listOf(MavenAdapter(it)) },
-            sources = { listOf(RenovateSource(it.botLogins)) },
+            sources = ::sources,
             index = { RecipeIndex { _, _ -> RecipeSelection.NONE } },
             // The CLI only takes http(s) servers; the test's remote is a local directory.
             host = { event, apiUrl, _, token, botLogin -> GitHubHost(event, apiUrl, dir.resolve("server").toUri(), token, botLogin) },
@@ -119,7 +156,7 @@ class PrFlowTest {
 
     /**
      * The origin with the base commit and Renovate's update on its branch. The Maven wrapper reports a compile error for
-     * every `broken();` in `App.java`, which the update renamed to `fixed()`.
+     * every `broken();` in `App.java`, which the update renamed to `fixed()`, and writes the effective POM when asked.
      */
     private fun renovatePr(): Pair<String, String> {
         val work = dir.resolve("origin-work")
@@ -133,15 +170,15 @@ class PrFlowTest {
             #!/bin/sh
             root="${'$'}(dirname "${'$'}0")"
             echo "${'$'}*" >> "${'$'}root/mvn.log"
+            for arg in "${'$'}@"; do
+              case "${'$'}arg" in
+                -Doutput=*) echo "<project><parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>${'$'}(grep -o '3\.[0-9.]*' "${'$'}root/pom.xml")</version></parent></project>" > "${'$'}{arg#-Doutput=}"; exit 0 ;;
+              esac
+            done
             if grep -q 'broken();' "${'$'}root/src/main/java/App.java" && grep -q '3.4.1' "${'$'}root/pom.xml"; then
               echo "[ERROR] ${'$'}root/src/main/java/App.java:[3,9] cannot find symbol"
               exit 1
             fi
-            for arg in "${'$'}@"; do
-              case "${'$'}arg" in
-                -Doutput=*) echo "<project><parent><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-parent</artifactId><version>${'$'}(grep -o '3\.[0-9.]*' "${'$'}root/pom.xml")</version></parent></project>" > "${'$'}{arg#-Doutput=}" ;;
-              esac
-            done
             exit 0
             """.trimIndent() + "\n",
         )
@@ -162,6 +199,8 @@ class PrFlowTest {
     private fun event(
         head: String,
         base: String,
+        author: String = "renovate[bot]",
+        labels: List<String> = emptyList(),
     ): Path {
         val body =
             "This PR contains the following updates:\n\n| Package | Change |\n|---|---|\n| $PARENT | `3.3.5` → `3.4.1` |\n\n" +
@@ -171,9 +210,9 @@ class PrFlowTest {
                 put("number", 7)
                 put("state", "open")
                 put("merged", false)
-                put("labels", buildJsonArray {})
+                put("labels", buildJsonArray { labels.forEach { add(buildJsonObject { put("name", it) }) } })
                 put("body", body)
-                put("user", buildJsonObject { put("login", "renovate[bot]") })
+                put("user", buildJsonObject { put("login", author) })
                 put(
                     "head",
                     buildJsonObject {

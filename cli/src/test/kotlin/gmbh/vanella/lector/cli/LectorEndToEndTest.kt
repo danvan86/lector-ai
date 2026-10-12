@@ -314,7 +314,7 @@ class LectorEndToEndTest {
     }
 
     @Test
-    fun `pr of a green Renovate PR verifies it, reads the PR's comments on GitHub, changes nothing, and exits with 0`(
+    fun `pr of a green Renovate PR verifies it, looks for its companion PR and comment on GitHub, changes nothing, and exits with 0`(
         @TempDir repo: Path,
     ) {
         mavenProject(repo)
@@ -348,7 +348,14 @@ class LectorEndToEndTest {
             }
 
         assertContains(run.stdout, "Verify is green: nothing caused by the update. lector-ai changed nothing.\n")
-        assertEquals(listOf("GET /repos/acme/app/issues/7/comments?page=1&per_page=100 Bearer ghs_token"), requests)
+        assertEquals(
+            listOf(
+                "GET /repos/acme/app/pulls?state=open&head=acme%3Aheal%2Frenovate%2Fspring-boot&base=renovate%2Fspring-boot&per_page=100 " +
+                    "Bearer ghs_token",
+                "GET /repos/acme/app/issues/7/comments?page=1&per_page=100 Bearer ghs_token",
+            ),
+            requests,
+        )
         assertEquals(head, runProcess(listOf("git", "rev-parse", "HEAD"), repo, 30.seconds).output.trim())
         assertEquals(0, run.exitCode, run.stderr)
     }

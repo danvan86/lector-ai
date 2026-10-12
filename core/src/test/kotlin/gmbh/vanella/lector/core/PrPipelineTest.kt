@@ -419,6 +419,134 @@ class PrPipelineTest {
         assertContains(request.recipeDiff.orEmpty(), "+UpgradeLib")
     }
 
+    @Test
+    fun `with no mode set, a companion source's fixes go to heal-branch, in one PR into the source branch, labelled there`() {
+        val host = host(pr())
+
+        val outcome = pipeline(host, sources = listOf(companionSource()), recipes = mapOf(lib.`package` to recipe("UpgradeLib"))).run(repo)
+
+        val report = assertIs<PrOutcome.Reported>(outcome).report
+        assertEquals(20, report.companion)
+        assertEquals(emptyList(), host.pushes, "the source branch is never pushed to")
+        assertEquals(listOf("heal/bot/lib" to listOf("Apply recipe UpgradeLib", "Call fixed()")), host.forcePushes)
+        val pull = host.pulls.getValue(20)
+        assertEquals(Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", pull.body, open = true), pull)
+        assertContains(pull.body, "lector-ai's fixes for #7 (`bot/lib`). Merge this PR first, then #7.\n\n### lector-ai\n\n")
+        assertContains(pull.body, "lector-ai pushed 2 commits; nothing caused by the update is left.")
+        assertEquals(listOf(20 to "ai-assisted"), host.labels)
+        val (comment, create) = host.comments.single()
+        assertTrue(create)
+        assertContains(comment, "lector-ai pushed 2 commits to the companion PR #20; nothing caused by the update is left.")
+        assertContains(comment, "Merge the companion PR #20 into this PR's branch first, then this PR.")
+    }
+
+    @Test
+    fun `a set mode overrides the source's branch policy`() {
+        val inPlace = host(pr())
+        pipeline(inPlace, sources = listOf(companionSource()), mode = BranchPolicy.IN_PLACE).run(repo)
+
+        assertEquals(listOf(listOf("Call fixed()")), inPlace.pushes)
+        assertEquals(emptyList(), inPlace.forcePushes)
+        assertEquals(listOf(7 to "ai-assisted"), inPlace.labels)
+
+        val companion = host(pr())
+        pipeline(companion, mode = BranchPolicy.COMPANION).run(repo)
+
+        assertEquals(emptyList(), companion.pushes)
+        assertEquals(listOf("heal/bot/lib" to listOf("Call fixed()")), companion.forcePushes)
+    }
+
+    @Test
+    fun `a new source head rebuilds heal-branch from it by force, and keeps the same companion PR with a new description`() {
+        val host = host(pr())
+        host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "old summary", open = true)
+
+        val outcome = pipeline(host, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(20, assertIs<PrOutcome.Reported>(outcome).report.companion)
+        assertEquals(listOf("heal/bot/lib" to listOf("Call fixed()")), host.forcePushes)
+        assertEquals(setOf(20), host.pulls.keys, "no second companion PR")
+        assertContains(host.pulls.getValue(20).body, "lector-ai pushed 1 commit;")
+        assertEquals(listOf(20 to "ai-assisted"), host.labels)
+    }
+
+    @Test
+    fun `a run without a commit creates no companion PR and leaves an existing one alone`() {
+        val host = host(pr())
+        host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "old summary", open = true)
+        val llm = ScriptedLlm({ Proposal.Invalid("no idea") }, { Proposal.Invalid("still none") })
+
+        val outcome = pipeline(host, llm = llm, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(null, assertIs<PrOutcome.Reported>(outcome).report.companion)
+        assertEquals(emptyList(), host.forcePushes)
+        assertEquals(mapOf(20 to Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "old summary", open = true)), host.pulls)
+        assertEquals(emptyList(), host.labels)
+        assertContains(host.comments.single().first, "lector-ai pushed nothing;")
+    }
+
+    @Test
+    fun `a green run closes the companion PR, deletes its branch, and the comment says why`() {
+        val host = host(pr(), app = "class App {}\n")
+        host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "old summary", open = true)
+
+        val outcome = pipeline(host, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(PrOutcome.Green(Verification(), closedCompanion = 20), outcome)
+        assertFalse(host.pulls.getValue(20).open)
+        assertEquals(listOf("heal/bot/lib"), host.deleted)
+        assertContains(
+            host.comments.single().first,
+            "lector-ai closed its companion PR #20 and deleted heal/bot/lib: verify is green without it.",
+        )
+    }
+
+    @Test
+    fun `a green run without a companion PR closes nothing`() {
+        val host = host(pr(), app = "class App {}\n")
+
+        val outcome = pipeline(host, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(PrOutcome.Green(Verification()), outcome)
+        assertEquals(emptyList(), host.deleted)
+        assertFalse("companion" in host.comments.single().first)
+    }
+
+    @Test
+    fun `a closed or merged source PR gets its companion PR closed and its branch deleted, without a build`() {
+        listOf(PrState.CLOSED to "closed", PrState.MERGED to "merged").forEach { (state, word) ->
+            val host = host(pr().copy(state = state))
+            host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "summary", open = true)
+            val adapter = FakeAdapter()
+
+            val outcome = pipeline(host, adapter = adapter, sources = listOf(companionSource())).run(repo)
+
+            assertEquals(PrOutcome.Closed(state, companion = 20), outcome)
+            assertFalse(host.pulls.getValue(20).open)
+            assertEquals(listOf("heal/bot/lib"), host.deleted)
+            assertEquals(0, adapter.verifies)
+            assertEquals(
+                listOf("### lector-ai\n\nlector-ai closed its companion PR #20 and deleted heal/bot/lib: this PR was $word." to false),
+                host.comments,
+            )
+        }
+    }
+
+    @Test
+    fun `a closed PR without a companion PR, or from a fork, changes nothing`() {
+        val closed = host(pr().copy(state = PrState.MERGED))
+
+        assertEquals(PrOutcome.Closed(PrState.MERGED, companion = null), pipeline(closed).run(repo))
+        assertNothingHappened(closed)
+        assertEquals(emptyList(), closed.deleted)
+
+        val fork = host(pr().copy(state = PrState.CLOSED, headRepository = "mallory/app"))
+        fork.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "summary", open = true)
+
+        assertIs<PrOutcome.Skipped>(pipeline(fork).run(repo))
+        assertTrue(fork.pulls.getValue(20).open)
+    }
+
     private fun assertNothingHappened(host: FakeHost) {
         assertEquals(emptyList(), host.comments)
         assertEquals(emptyList(), host.labels)
@@ -468,6 +596,7 @@ class PrPipelineTest {
         recipes: Map<String, Recipe> = emptyMap(),
         sources: List<UpdateSource> = listOf(FakeSource("bot", update = SourceUpdate(updates, "lib 2.0 renames broken() to fixed()"))),
         source: String? = null,
+        mode: BranchPolicy? = null,
     ) = PrPipeline(
         host = host,
         sources = sources,
@@ -477,8 +606,10 @@ class PrPipelineTest {
                 ?: RecipeSelection.NONE
         },
         llm = llm,
-        settings = PrSettings(identity = bot, budgets = budgets, source = source),
+        settings = PrSettings(identity = bot, budgets = budgets, source = source, mode = mode),
     )
+
+    private fun companionSource() = FakeSource("bot", BranchPolicy.COMPANION, update = SourceUpdate(listOf(lib), null))
 
     private fun recipe(name: String) = Recipe(name, "org.example:recipes:1.0", "Apache-2.0")
 

@@ -5,17 +5,18 @@ import java.nio.file.Path
 
 private val logger = LoggerFactory.getLogger(PrPipeline::class.java)
 
-/** The label of every PR the tool pushed to. */
+/** The label of every PR that carries the tool's commits. */
 const val AI_ASSISTED = "ai-assisted"
 
 /**
- * How a PR run is configured: who commits, the fix loop's limits, and the [source] that must take the PR, or null to let
- * the first source that recognizes it take it.
+ * How a PR run is configured: who commits, the fix loop's limits, the [source] that must take the PR (null: the first
+ * that recognizes it), and the [mode] the fixes go in (null: the source's branch policy).
  */
 data class PrSettings(
     val identity: CommitIdentity,
     val budgets: Budgets = Budgets(),
     val source: String? = null,
+    val mode: BranchPolicy? = null,
 )
 
 /** A recipe that ran once for the [changes] that map to it, and its commit if it changed anything. */
@@ -26,13 +27,17 @@ data class RecipeApplication(
     val commit: String?,
 )
 
-/** What a run did to a PR the update broke: the recipes, the changes without one and why, the fix loop, the push. */
+/**
+ * What a run did to a PR the update broke: the recipes, the changes without one and why, the fix loop, the push, and the
+ * [companion] PR the commits went to, or null if they went onto the PR's own branch or nowhere.
+ */
 data class PrReport(
     val changes: List<DependencyChange>,
     val withoutRecipe: List<Pair<DependencyChange, RecipeOutcome>>,
     val recipes: List<RecipeApplication>,
     val fixLoop: FixLoopResult,
     val pushed: Boolean,
+    val companion: Int? = null,
 ) {
     /** The verification of the last commit. */
     val verification get() = fixLoop.verification
@@ -44,9 +49,16 @@ sealed interface PrOutcome {
         val reason: String,
     ) : PrOutcome
 
-    /** Verify found nothing the update caused, so the PR stays as the bot made it. */
+    /** Verify found nothing the update caused, so the PR stays as the bot made it. A companion PR is closed. */
     data class Green(
         val verification: Verification,
+        val closedCompanion: Int? = null,
+    ) : PrOutcome
+
+    /** The PR is closed or merged. Its companion PR, if it had one, is closed. */
+    data class Closed(
+        val state: PrState,
+        val companion: Int?,
     ) : PrOutcome
 
     /** The branch moved on while the run worked. Nothing was pushed or reported: the new head gets its own run. */
@@ -67,9 +79,12 @@ sealed interface PrOutcome {
  *    or the one the settings name), and the head commit isn't the tool's own. Otherwise the run is skipped.
  * 2. Verify the PR's head against its base. Green means stop: the PR stays as the bot made it.
  * 3. Run each distinct recipe of the PR's changes once, in the PR's order, one commit each. Then the fix loop.
- * 4. Push the commits, never by force, then the report comment, and the `ai-assisted` label if anything was pushed.
+ * 4. Deliver the commits as the branch policy says: pushed onto the PR's branch, never by force, or onto its companion
+ *    branch, which is rebuilt every run, with one companion PR. Then the report comment on the PR, and the
+ *    `ai-assisted` label on the PR that carries the commits.
  *
- * The working tree must be the PR's head commit, and clean.
+ * A companion PR is closed when its PR is closed or merged, or verify finds the PR green. The working tree must be the
+ * PR's head commit, and clean, unless the PR is closed.
  */
 class PrPipeline(
     private val host: GitHost,
@@ -79,9 +94,12 @@ class PrPipeline(
     private val llm: LlmClient,
     private val settings: PrSettings,
 ) {
+    private val delivery = PrDelivery(host)
+
     fun run(repo: Path): PrOutcome {
         val pr = host.pullRequest()
         if (pr.headRepository != pr.baseRepository) return skipped("the PR comes from ${pr.headRepository}, not from ${pr.baseRepository}")
+        if (pr.state != PrState.OPEN) return delivery.closed(pr)
         val source = source(pr) ?: return skipped(unrecognized(pr))
         val ownCommit = ownCommit(pr, repo)
         return if (ownCommit == null) read(pr, source, repo) else skipped(ownCommit)
@@ -130,7 +148,8 @@ class PrPipeline(
                     )
                 }
         if (changes.isEmpty()) return skipped("the PR changes no version of the repository's ${adapter.ecosystem} packages")
-        return verifyFirst(PrRun(pr, repo, adapter, base, changes, update.releaseNotes))
+        val policy = settings.mode ?: source.branchPolicy
+        return verifyFirst(PrRun(pr, repo, adapter, base, changes, update.releaseNotes, policy))
     }
 
     /** The last trigger check, on the working tree, which must be the PR's head: whether that commit is the tool's own. */
@@ -150,8 +169,7 @@ class PrPipeline(
     private fun verifyFirst(run: PrRun): PrOutcome {
         val verification = attribute(run.adapter, run.repo, run.base)
         if (verification.causedByUpdate.isNotEmpty()) return heal(run, verification)
-        host.comment(run.pr, PrComment.green(verification, run.pr.headSha), create = false)
-        return PrOutcome.Green(verification)
+        return delivery.green(run.pr, verification)
     }
 
     private fun skipped(reason: String): PrOutcome {
@@ -184,14 +202,7 @@ class PrPipeline(
         val context = FixContext(changes, run.releaseNotes, recipeDiff)
         val fixLoop = FixLoop(adapter, llm, base, settings.budgets, settings.identity).run(repo, context, afterRecipes)
         val anyCommit = commits.isNotEmpty() || fixLoop.fixes.isNotEmpty()
-        if (anyCommit && !host.push(repo, pr)) {
-            logger.warn("The push was rejected: the branch moved on. The new head gets its own run.")
-            return PrOutcome.PushRejected(PrReport(changes, withoutRecipe, recipes, fixLoop, pushed = false))
-        }
-        val report = PrReport(changes, withoutRecipe, recipes, fixLoop, pushed = anyCommit)
-        host.comment(pr, PrComment.render(report), create = true)
-        if (anyCommit) host.label(pr.number, AI_ASSISTED)
-        return PrOutcome.Reported(report)
+        return delivery.deliver(pr, repo, PrReport(changes, withoutRecipe, recipes, fixLoop, pushed = anyCommit), run.policy)
     }
 
     /** The index, for a change that rules 1 and 2 of the recipe step didn't [block][blocker]. */
@@ -232,6 +243,7 @@ class PrPipeline(
         val base: BaseCommit,
         val changes: List<DependencyChange>,
         val releaseNotes: String?,
+        val policy: BranchPolicy,
     )
 
     private sealed interface Lookup {

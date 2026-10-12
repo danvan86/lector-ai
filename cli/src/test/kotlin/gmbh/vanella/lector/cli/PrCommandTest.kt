@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.testing.test
 import gmbh.vanella.lector.core.Edit
 import gmbh.vanella.lector.core.GitHost
 import gmbh.vanella.lector.core.LlmClient
+import gmbh.vanella.lector.core.PrState
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.RecipeIndex
 import gmbh.vanella.lector.core.RecipeSelection
@@ -113,6 +114,82 @@ class PrCommandTest {
     }
 
     @Test
+    fun `a Dependabot PR gets its fixes in a companion PR by default, and in place with the mode in-place`() {
+        val metadata =
+            """[{"dependencyName": "$PARENT", "packageEcosystem": "maven", "prevVersion": "3.3.5", "newVersion": "3.4.1"}]"""
+        host.pr = host.pr.copy(author = "dependabot[bot]", headBranch = "dependabot/maven/boot")
+        val env = token + mapOf("LECTOR_DEPENDABOT_METADATA" to metadata)
+
+        val companion = command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot", envvars = env)
+
+        assertEquals(0, companion.statusCode, companion.stderr)
+        assertContains(companion.stdout, "lector-ai pushed 1 commit to the companion PR #20;")
+        assertEquals(listOf("heal/dependabot/maven/boot" to listOf("Call fixed() instead of broken()")), host.forcePushed)
+        assertEquals(listOf("heal/dependabot/maven/boot -> dependabot/maven/boot"), host.created)
+        assertEquals(emptyList<String>(), host.pushed)
+
+        git("reset", "--hard", "--quiet", host.pr.headSha)
+        val inPlace = command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot --mode in-place", envvars = env)
+
+        assertEquals(0, inPlace.statusCode, inPlace.stderr)
+        assertEquals(listOf("Call fixed() instead of broken()"), host.pushed)
+    }
+
+    @Test
+    fun `a Renovate PR goes into a companion PR with the mode companion, and an empty mode means the source's`() {
+        host.pr = host.pr.copy(body = table(PARENT, "3.3.5", "3.4.1"))
+
+        command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot --mode companion", envvars = token)
+
+        assertEquals(listOf("heal/renovate/spring-boot -> renovate/spring-boot"), host.created)
+
+        git("reset", "--hard", "--quiet", host.pr.headSha)
+        command(
+            llm = ScriptedLlm(fix),
+        ).test(listOf(repo.toString(), "--event", event.toString()) + bot.split(" ") + listOf("--mode", ""), envvars = token)
+
+        assertEquals(listOf("Call fixed() instead of broken()"), host.pushed)
+    }
+
+    @Test
+    fun `a closed PR gets its companion PR closed and exits with 0`() {
+        host.pr = host.pr.copy(state = PrState.CLOSED)
+        host.companion = 21
+
+        val result = command().test("$repo --event $event $bot", envvars = token)
+
+        assertEquals("The PR is closed: closed the companion PR #21.\n", result.stdout)
+        assertEquals(listOf<Any>(21, "heal/renovate/spring-boot"), host.closed)
+        assertEquals(0, result.statusCode)
+    }
+
+    @Test
+    fun `a green PR gets its companion PR closed`() {
+        repo.resolve("App.java").writeText("class App {}\n")
+        git("commit", "--quiet", "-am", "green")
+        host.pr = host.pr.copy(headSha = git("rev-parse", "HEAD").trim(), body = table(PARENT, "3.3.5", "3.4.1"))
+        host.companion = 21
+
+        val result = command().test("$repo --event $event $bot", envvars = token)
+
+        assertContains(
+            result.stdout,
+            "Verify is green: nothing caused by the update. lector-ai changed nothing. Closed the companion PR #21.\n",
+        )
+        assertEquals(0, result.statusCode)
+    }
+
+    @Test
+    fun `a closed PR without a companion PR says so and exits with 0`() {
+        host.pr = host.pr.copy(state = PrState.MERGED)
+
+        val result = command().test("$repo --event $event $bot", envvars = token)
+
+        assertEquals("The PR is merged. It has no companion PR.\n", result.stdout)
+        assertEquals(0, result.statusCode)
+    }
+
+    @Test
     fun `the Dependabot metadata comes from the environment or the option, and an empty value means none`() {
         host.pr = host.pr.copy(author = "mallory")
         val metadata =
@@ -130,7 +207,7 @@ class PrCommandTest {
     }
 
     @Test
-    fun `a labelled PR by anyone gets its changes from the resolved versions of base and head, read in a worktree removed afterwards`() {
+    fun `a labelled PR gets its changes from the resolved versions of base and head, read in a worktree removed afterwards`() {
         host.pr = host.pr.copy(author = "alice", headBranch = "bump-boot", labels = setOf("lector"))
 
         val result = command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot", envvars = token)
@@ -138,7 +215,7 @@ class PrCommandTest {
         assertEquals(0, result.statusCode, result.stderr)
         assertContains(result.stdout, "The update of $PARENT 3.3.5 → 3.4.1 broke the build.")
         assertFalse("All 1 changes" in result.stdout)
-        assertEquals(listOf("Call fixed() instead of broken()"), host.pushed)
+        assertEquals(listOf("heal/bump-boot" to listOf("Call fixed() instead of broken()")), host.forcePushed)
         assertEquals(1, git("worktree", "list").lines().count { it.isNotEmpty() })
     }
 
@@ -149,7 +226,7 @@ class PrCommandTest {
         val result = command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot --fallback-label upgrade", envvars = token)
 
         assertEquals(listOf("upgrade"), sourceOptions.map { it.fallbackLabel })
-        assertEquals(listOf("Call fixed() instead of broken()"), host.pushed, result.stderr)
+        assertEquals(listOf("heal/bump-boot -> bump-boot"), host.created, result.stderr)
     }
 
     @Test
@@ -316,6 +393,7 @@ class PrCommandTest {
             "$repo --event $repo $bot" to "invalid value for --event: file \"$repo\" is a directory",
             "$repo --event $event $bot --bot-logins ' , '" to "invalid value for --bot-logins: must name at least one bot",
             "$repo --event $event $bot --fallback-label ' '" to "invalid value for --fallback-label: must not be blank",
+            "$repo --event $event $bot --mode force" to "invalid value for --mode: must be in-place or companion",
             "$repo --event $event $bot --source snyk" to "invalid value for --source: must be one of renovate, dependabot, fallback",
             "$repo --event $event $bot --dependabot-metadata {}" to
                 "invalid value for --dependabot-metadata: The Dependabot metadata is not fetch-metadata's updated-dependencies-json: not a JSON array",
@@ -386,6 +464,8 @@ class PrCommandTest {
         val labels = mutableListOf<String>()
         val forcePushed = mutableListOf<Pair<String, List<String>>>()
         val created = mutableListOf<String>()
+        var companion: Int? = null
+        val closed = mutableListOf<Any>()
 
         override fun pullRequest(): PullRequest {
             failure?.let { throw it }
@@ -431,7 +511,7 @@ class PrCommandTest {
         override fun findPullRequest(
             head: String,
             base: String,
-        ): Int? = null
+        ): Int? = companion
 
         override fun createPullRequest(
             head: String,
@@ -448,8 +528,12 @@ class PrCommandTest {
             body: String,
         ) = error("no companion PR to update")
 
-        override fun closePullRequest(number: Int) = error("no companion PR to close")
+        override fun closePullRequest(number: Int) {
+            closed += number
+        }
 
-        override fun deleteBranch(branch: String) = error("no companion branch to delete")
+        override fun deleteBranch(branch: String) {
+            closed += branch
+        }
     }
 }

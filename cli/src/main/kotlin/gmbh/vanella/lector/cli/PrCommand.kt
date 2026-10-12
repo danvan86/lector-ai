@@ -13,6 +13,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.path
+import gmbh.vanella.lector.core.BranchPolicy
 import gmbh.vanella.lector.core.CommitIdentity
 import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.EcosystemAdapter
@@ -41,6 +42,7 @@ private const val DEFAULT_SERVER_URL = "https://github.com"
 private const val DEFAULT_FALLBACK_LABEL = "lector"
 private val DEFAULT_BOT_LOGINS = listOf("renovate[bot]", "dependabot[bot]")
 private val SOURCE_NAMES = listOf("renovate", "dependabot", "fallback")
+private val MODES = mapOf("in-place" to BranchPolicy.IN_PLACE, "companion" to BranchPolicy.COMPANION)
 
 /** What the update sources are built from: the options of the run that concern them. */
 internal data class SourceOptions(
@@ -100,6 +102,11 @@ internal class PrCommand(
         envvar = "LECTOR_MAVEN_SETTINGS",
         help = "Maven settings file, passed to Maven. Empty for none.",
     ).path()
+    private val mode by option(
+        "--mode",
+        metavar = "<mode>",
+        help = "Where the fixes go: in-place onto the PR's branch, or into a companion PR. Empty for the source's default.",
+    ).check("must be in-place or companion") { it.isEmpty() || it in MODES }
     private val fallbackLabel by option(
         "--fallback-label",
         metavar = "<label>",
@@ -158,7 +165,8 @@ internal class PrCommand(
                 adapters = adapters(settings),
                 index = index(),
                 llm = llm(fixLoop.ollamaUrl, fixLoop.model),
-                settings = PrSettings(CommitIdentity(botName, botEmail), fixLoop.budgets(), source?.ifEmpty { null }),
+                settings =
+                    PrSettings(CommitIdentity(botName, botEmail), fixLoop.budgets(), source?.ifEmpty { null }, mode?.let(MODES::get)),
             )
         return pipeline.run(repo)
     }
@@ -173,8 +181,21 @@ internal class PrCommand(
             }
 
             is PrOutcome.Green -> {
-                "Verify is green: nothing caused by the update. lector-ai changed nothing.\n\n" +
+                val closed = outcome.closedCompanion?.let { " Closed the companion PR #$it." }.orEmpty()
+                "Verify is green: nothing caused by the update. lector-ai changed nothing.$closed\n\n" +
                     TextReport.render(outcome.verification)
+            }
+
+            is PrOutcome.Closed -> {
+                val state = outcome.state.name.lowercase()
+                val companion = outcome.companion
+                if (companion ==
+                    null
+                ) {
+                    "The PR is $state. It has no companion PR."
+                } else {
+                    "The PR is $state: closed the companion PR #$companion."
+                }
             }
 
             is PrOutcome.PushRejected -> {
