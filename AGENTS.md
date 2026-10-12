@@ -32,6 +32,7 @@ sources/       update-source adapters (renovate; later dependabot, fallback)
 ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
+benchmark/     benchmark harness and report (M6); uses core and the adapters, never shipped
 action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
 docker/        Dockerfiles of the tool image and the Ollama image (not Gradle modules)
 ```
@@ -47,6 +48,8 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven on fixtures (needs mvn and network)
 ./gradlew :cli:realModelTest # opt-in: heal with a real model in Ollama (needs Docker, mvn, network); -Plector.model=<name>
 ./gradlew :recipes:generateRecipeIndex # recipe index and license report, under recipes/build/generated/recipe-index/
+./gradlew :benchmark:report -Presults=benchmark/results/<date> # report.md from results.json and review.json there
+./gradlew :benchmark:run --args="matrix|run|merge|report …" # benchmark commands; the Benchmark workflow runs them
 ./gradlew ktlintFormat     # fix most ktlint violations
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
