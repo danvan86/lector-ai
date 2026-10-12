@@ -142,16 +142,21 @@ class FixLoopTest {
 
     @Test
     fun `the guardrails see the diagnostics caused by the update before the attempt`() {
-        val delete = Edit("App.java", "    void run() {\n        broken();\n    }\n", "")
-        val overrides = Diagnostic("App.java", 2, 5, "override", "method run() does not override a method", Severity.ERROR, "javac")
+        val rename = Edit("App.java", "void run()", "void start()")
+        val overrides = Diagnostic("App.java", 2, 5, "override", "method does not override a method", Severity.ERROR, "javac")
         val adapter = FakeAdapter()
 
-        val named = loop(adapter, ScriptedLlm(edits(delete))).run(repo, context, Verification(listOf(overrides)))
-        git("reset", "--hard", "--quiet", "HEAD~1")
-        val unnamed = loop(adapter, ScriptedLlm(edits(delete)), Budgets(attempts = 1)).run(repo, context, adapter.initial())
+        val pointedInto =
+            loop(adapter, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, Verification(listOf(overrides)))
+        val verifiedOnce = adapter.verifyCalls
+        val elsewhere = loop(adapter, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, adapter.initial())
 
-        assertIs<AttemptOutcome.Accepted>(named.attempts.single().outcome)
-        assertEquals(listOf("symbol-comparison"), (unnamed.attempts.single().outcome as AttemptOutcome.Rejected).violations.map { it.rule })
+        assertEquals(emptyList(), (pointedInto.attempts.single().outcome as AttemptOutcome.Rejected).violations, "verified, no progress")
+        assertEquals(1, verifiedOnce)
+        assertEquals(
+            listOf("symbol-comparison"),
+            (elsewhere.attempts.single().outcome as AttemptOutcome.Rejected).violations.map { it.rule },
+        )
     }
 
     @Test
@@ -655,13 +660,15 @@ class FixLoopTest {
         override fun isBuildFile(file: String) = file == "pom.xml"
     }
 
-    /** The methods (`void name(`) of class `App`, and every `return null` as a stub. */
+    /** The methods (`void name(`) of class `App`, with the next line as body, and every `return null` as a stub. */
     private fun facts(content: String): SourceFacts {
         val lines = content.lines().withIndex()
         return SourceFacts(
             methods =
                 lines.mapNotNull { (index, line) ->
-                    Regex("""void (\w+)\(""").find(line)?.let { Method("App", it.groupValues[1], LineRange(index + 1, index + 1)) }
+                    Regex("""void (\w+)\(""").find(line)?.let {
+                        Method("App", it.groupValues[1], LineRange(index + 1, index + 1), content.lines()[index + 1].trim())
+                    }
                 },
             stubs =
                 lines.filter { "return null" in it.value }.map { (index, line) ->

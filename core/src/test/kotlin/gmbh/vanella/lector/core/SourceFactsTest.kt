@@ -25,7 +25,7 @@ class SourceFactsTest {
         val assertion = Fragment(LineRange(3, 3), "assertEquals(1, run())")
         val facts =
             SourceFacts(
-                methods = listOf(Method("AppTest", "run", LineRange(2, 4))),
+                methods = listOf(Method("AppTest", "run", LineRange(2, 4), "go()")),
                 tests = listOf(TestMethod("AppTest", "run", LineRange(2, 4), listOf(assertion))),
             )
 

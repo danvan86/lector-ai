@@ -21,11 +21,17 @@ class JvmLanguageSupportTest {
             SourceFacts(
                 methods =
                     listOf(
-                        Method("OrderTest", "total", lines(12, 18)),
-                        Method("OrderTest", "skipped", lines(20, 25)),
-                        Method("OrderTest", "helper", lines(27, 30)),
-                        Method("OrderTest", "empty", lines(32)),
-                        Method("OrderTest.Order", "total", lines(39, 41)),
+                        Method(
+                            "OrderTest",
+                            "total",
+                            lines(12, 18),
+                            "Order order = new Order(2);\n        assertEquals(4, order.total(), \"total in €\");\n" +
+                                "        assertThat(order.items())\n            .hasSize(2);",
+                        ),
+                        Method("OrderTest", "skipped", lines(20, 25), "assumeTrue(false);\n        assert order != null;"),
+                        Method("OrderTest", "helper", lines(27, 30), "return null; // TODO: real value"),
+                        Method("OrderTest", "empty", lines(32), ""),
+                        Method("OrderTest.Order", "total", lines(39, 41), "return 4;"),
                     ),
                 tests =
                     listOf(
@@ -63,14 +69,20 @@ class JvmLanguageSupportTest {
             SourceFacts(
                 methods =
                     listOf(
-                        Method("OrderTest", "total", lines(12, 18)),
-                        Method("OrderTest", "skipped", lines(20, 24)),
-                        Method("OrderTest", "`expression body`", lines(26, 27)),
-                        Method("OrderTest", "helper", lines(29, 32)),
-                        Method("OrderTest", "empty", lines(34)),
-                        Method("OrderTest", "later", lines(36)),
-                        Method("OrderTest.Order", "total", lines(42)),
-                        Method("Orders", "none", lines(47)),
+                        Method(
+                            "OrderTest",
+                            "total",
+                            lines(12, 18),
+                            "val order = Order(2)\n        assertEquals(4, order.total(), \"total in €\")\n" +
+                                "        assertThat(order.items())\n            .hasSize(2)",
+                        ),
+                        Method("OrderTest", "skipped", lines(20, 24), "assumeTrue(false)"),
+                        Method("OrderTest", "`expression body`", lines(26, 27), "assertEquals(4, Order(2).total())"),
+                        Method("OrderTest", "helper", lines(29, 32), "return null // TODO: real value"),
+                        Method("OrderTest", "empty", lines(34), ""),
+                        Method("OrderTest", "later", lines(36), "TODO()"),
+                        Method("OrderTest.Order", "total", lines(42), "items * 2"),
+                        Method("Orders", "none", lines(47), "null"),
                     ),
                 tests =
                     listOf(
@@ -113,7 +125,19 @@ class JvmLanguageSupportTest {
 
     @Test
     fun `kotlin scripts are kotlin`() {
-        assertEquals(listOf(Method("", "build", lines(1))), JvmLanguageSupport.facts("build.gradle.kts", "fun build() = 1\n")?.methods)
+        assertEquals(listOf(Method("", "build", lines(1), "1")), JvmLanguageSupport.facts("build.gradle.kts", "fun build() = 1\n")?.methods)
+    }
+
+    @Test
+    fun `a method without a body has an empty one`() {
+        assertEquals(
+            listOf(Method("A", "run", lines(2), "")),
+            JvmLanguageSupport.facts("A.java", "abstract class A {\n    abstract void run();\n}\n")?.methods,
+        )
+        assertEquals(
+            listOf(Method("A", "run", lines(2), "")),
+            JvmLanguageSupport.facts("A.kt", "interface A {\n    fun run()\n}\n")?.methods,
+        )
     }
 
     @Test

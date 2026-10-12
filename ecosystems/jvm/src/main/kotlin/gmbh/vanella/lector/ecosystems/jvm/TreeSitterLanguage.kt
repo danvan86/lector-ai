@@ -35,7 +35,8 @@ internal object JvmLanguageSupport : LanguageSupport {
  * The queries hold the language knowledge. This class only reads their captures:
  *
  * - `types.scm`: `@type` with its `@name`, the types around methods.
- * - `methods.scm`, `tests.scm`: `@method` and `@test`, each with its `@name`.
+ * - `methods.scm`, `tests.scm`: `@method` and `@test`, each with its `@name`. A method may have a `@body`: a block in
+ *   braces, or Kotlin's `= expression`.
  * - `assertions.scm`: `@assertion`, a call that asserts, and `@statement`. An assertion's text is that of the innermost
  *   statement around it, so a chained assertion includes its expected value.
  * - `skips.scm`, `suppressions.scm`, `stubs.scm`: `@skip`, `@suppression`, `@stub`.
@@ -62,7 +63,8 @@ internal class TreeSitterLanguage(
         return SourceFacts(
             methods =
                 source.matches(queries.getValue("methods")).map {
-                    Method(typeOf(it.getValue("method")), source.text(it.getValue("name")), lines(it.getValue("method")))
+                    val method = it.getValue("method")
+                    Method(typeOf(method), source.text(it.getValue("name")), lines(method), it["body"]?.let(source::inner).orEmpty())
                 },
             tests =
                 source.matches(queries.getValue("tests")).distinctBy { it.getValue("test").startByte }.map { match ->
@@ -99,6 +101,13 @@ internal class TreeSitterLanguage(
         ) = matches(query).map { it.getValue(capture) }.sortedBy { it.startByte }.map(::fragment)
 
         fun fragment(node: TSNode) = Fragment(lines(node), text(node))
+
+        /** The text of the body [node] without its braces (`{ … }`) or its `=` (Kotlin's `= expression`). */
+        fun inner(node: TSNode) =
+            text(node)
+                .removeSurrounding("{", "}")
+                .removePrefix("=")
+                .trim()
 
         fun text(node: TSNode) = String(bytes, node.startByte, node.endByte - node.startByte, Charsets.UTF_8)
     }

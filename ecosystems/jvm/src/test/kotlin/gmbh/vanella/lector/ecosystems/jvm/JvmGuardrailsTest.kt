@@ -73,13 +73,43 @@ class JvmGuardrailsTest {
     }
 
     @Test
-    fun `symbol comparison lets a method go that a current diagnostic names`() {
-        val diagnostic = compileError(15, "method price(Order) does not override or implement a method from a supertype")
+    fun `symbol comparison rejects a deleted method a current error points into, if its logic goes with it`() {
+        val overrides = compileError(15, "method does not override or implement a method from a supertype")
 
-        assertEquals(emptyList(), rules("OrderTest.java", java.without(PRICE_JAVA), diagnostic))
+        assertEquals(listOf("symbol-comparison"), rules("OrderTest.java", java.without(PRICE_JAVA), overrides))
+        assertEquals(
+            listOf("symbol-comparison"),
+            rules("OrderTest.kt", kotlin.without(PRICE_KOTLIN), compileError(15, "'price' overrides nothing.", "OrderTest.kt")),
+        )
+    }
+
+    @Test
+    fun `symbol comparison lets a method go that a current error points into, if it was empty or its body moves`() {
+        val filterJava = "class F implements Filter {\n    @Override\n    public void init(FilterConfig c) {}\n}\n"
+        val filterKotlin = "class F : Filter {\n    override fun init(c: FilterConfig) {}\n}\n"
+        val overrides = compileError(2, "method does not override or implement a method from a supertype", "F.java")
+
         assertEquals(
             emptyList(),
-            rules("OrderTest.kt", kotlin.without(PRICE_KOTLIN), compileError(15, "'price' overrides nothing.", "OrderTest.kt")),
+            violations("F.java", filterJava, filterJava.without("    @Override\n    public void init(FilterConfig c) {}\n"), overrides),
+        )
+        assertEquals(
+            emptyList(),
+            violations(
+                "F.kt",
+                filterKotlin,
+                filterKotlin.without("    override fun init(c: FilterConfig) {}\n"),
+                overrides.copy(file = "F.kt"),
+            ),
+        )
+        assertEquals(emptyList(), rules("OrderTest.java", java.replace("int price(", "int cost("), compileError(15, "does not override")))
+        assertEquals(
+            emptyList(),
+            rules(
+                "OrderTest.kt",
+                kotlin.replace("fun price(", "fun cost("),
+                compileError(15, "'price' overrides nothing.", "OrderTest.kt"),
+            ),
         )
     }
 
@@ -87,8 +117,10 @@ class JvmGuardrailsTest {
     fun `test deletion and test count reject a deleted test, even one a diagnostic names`() {
         val diagnostic = compileError(12, "cannot find symbol: method items()")
 
-        assertEquals(listOf("test-deletion", "test-count"), rules("OrderTest.java", java.without(ITEMS_JAVA), diagnostic))
-        assertEquals(listOf("test-deletion", "test-count"), rules("OrderTest.kt", kotlin.without(ITEMS_KOTLIN), diagnostic))
+        assertContains(rules("OrderTest.java", java.without(ITEMS_JAVA), diagnostic), "test-deletion")
+        assertContains(rules("OrderTest.java", java.without(ITEMS_JAVA), diagnostic), "test-count")
+        assertContains(rules("OrderTest.kt", kotlin.without(ITEMS_KOTLIN), diagnostic.copy(file = "OrderTest.kt")), "test-deletion")
+        assertContains(rules("OrderTest.kt", kotlin.without(ITEMS_KOTLIN), diagnostic.copy(file = "OrderTest.kt")), "test-count")
     }
 
     @Test

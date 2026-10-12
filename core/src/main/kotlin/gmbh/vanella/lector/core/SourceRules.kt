@@ -31,27 +31,35 @@ internal object ParseErrors : Guardrail {
         }
 }
 
-/** Symbol comparison: no method is deleted, unless a current diagnostic names it (e.g. it overrode a removed method). */
+/**
+ * Symbol comparison: no method is deleted with its logic. A method may go only if a current diagnostic points into it
+ * (it has to change, e.g. it overrode a removed method) and its logic survives: its body was empty, or a method the
+ * attempt added, in any file, has the same body (a rename or a move). An error shows that a method must change, not
+ * that its logic may go.
+ */
 internal object SymbolComparison : Guardrail {
-    override fun check(attempt: AttemptChanges) =
-        attempt.sourceFiles().flatMap { (change, before, after) ->
-            lost(before.methods, after.methods) { it.type to it.name }
-                .filterNot { method -> attempt.diagnostics.any { names(it, method.name) } }
-                .map {
+    override fun check(attempt: AttemptChanges): List<Violation> {
+        val files = attempt.sourceFiles()
+        val addedBodies = files.flatMap { lost(it.after.methods, it.before.methods, ::key) }.map { normalized(it.body) }.toSet()
+        return files.flatMap { (change, before, after) ->
+            lost(before.methods, after.methods, ::key)
+                .filterNot { method ->
+                    val pointedInto = attempt.diagnostics.any { it.file == change.file && it.line != null && it.line in method.lines }
+                    pointedInto && normalized(method.body).let { it.isEmpty() || it in addedBodies }
+                }.map {
                     Violation(
                         "symbol-comparison",
                         change.file,
                         it.lines.first,
-                        "the edits delete the method `${qualified(it.type, it.name)}` (line ${it.lines.first} before the edits). " +
-                            "A method may only go if a current error names it",
+                        "the edits delete the method `${qualified(it.type, it.name)}` (line ${it.lines.first} before the edits) " +
+                            "and its logic. A method may only go if a current error points into it, and its body is empty or " +
+                            "moves to a method the edits add",
                     )
                 }
         }
+    }
 
-    private fun names(
-        diagnostic: Diagnostic,
-        name: String,
-    ) = Regex("""(?<![\w$])${Regex.escape(name)}(?![\w$])""").containsMatchIn(diagnostic.message)
+    private fun key(method: Method) = method.type to method.name
 }
 
 /** Test protection, deletion: no test method is deleted, whatever the diagnostics say. A test that doesn't compile is fixed. */

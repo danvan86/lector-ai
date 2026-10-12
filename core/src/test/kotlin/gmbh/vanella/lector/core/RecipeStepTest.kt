@@ -79,6 +79,7 @@ class RecipeStepTest {
                                 "",
                                 line,
                                 LineRange(index + 1, index + 1),
+                                "",
                             )
                         },
                 )

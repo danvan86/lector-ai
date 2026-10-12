@@ -38,11 +38,15 @@ data class SourceFacts(
     val parseErrors: List<LineRange> = emptyList(),
 )
 
-/** A method or function, by its containing type ([type], e.g. `Outer.Inner`, empty at the top level) and [name]. */
+/**
+ * A method or function, by its containing type ([type], e.g. `Outer.Inner`, empty at the top level) and [name]. Its
+ * [body] is the text from its first to its last statement, empty if it has none: its logic, whatever its name.
+ */
 data class Method(
     val type: String,
     val name: String,
     val lines: LineRange,
+    val body: String,
 )
 
 /** A test method, by its containing type and name, with the [assertions] in it. */

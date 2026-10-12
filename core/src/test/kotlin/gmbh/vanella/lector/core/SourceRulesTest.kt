@@ -5,8 +5,8 @@ import kotlin.test.assertEquals
 
 /** The source rules on facts given by hand. The same rules on real Java and Kotlin: `JvmGuardrailsTest` in `ecosystems:jvm`. */
 class SourceRulesTest {
-    private val run = Method("App", "run", lines(2, 4))
-    private val stop = Method("App", "stop", lines(5, 7))
+    private val run = Method("App", "run", lines(2, 4), "go();")
+    private val stop = Method("App", "stop", lines(5, 7), "halt();\n    log();")
 
     @Test
     fun `symbol comparison rejects a deleted method, an overload included, and one moved to another type`() {
@@ -21,7 +21,8 @@ class SourceRulesTest {
                     "symbol-comparison",
                     "App.java",
                     5,
-                    "the edits delete the method `App.stop` (line 5 before the edits). A method may only go if a current error names it",
+                    "the edits delete the method `App.stop` (line 5 before the edits) and its logic. A method may only go if a " +
+                        "current error points into it, and its body is empty or moves to a method the edits add",
                 ),
             ),
             deleted,
@@ -31,20 +32,54 @@ class SourceRulesTest {
     }
 
     @Test
-    fun `symbol comparison lets a method go that a current diagnostic names, as a whole word`() {
+    fun `symbol comparison rejects a deleted method a current error points into, if its logic goes with it`() {
         val before = SourceFacts(methods = listOf(run, stop))
+
+        assertEquals(1, check(SymbolComparison, before, SourceFacts(methods = listOf(run)), listOf(error(6, "does not override"))).size)
+    }
+
+    @Test
+    fun `symbol comparison lets an empty method go, or a renamed or moved one with its body, if a current error points into it`() {
+        val empty = stop.copy(body = "")
+        val renamed = stop.copy(name = "halt", body = "halt();\n        log();")
+        val moved = stop.copy(type = "Other")
+        val overrides = listOf(error(5, "method does not override or implement a method from a supertype"))
+
+        assertEquals(
+            emptyList(),
+            check(SymbolComparison, SourceFacts(methods = listOf(run, empty)), SourceFacts(methods = listOf(run)), overrides),
+        )
+        assertEquals(
+            emptyList(),
+            check(SymbolComparison, SourceFacts(methods = listOf(run, stop)), SourceFacts(methods = listOf(run, renamed)), overrides),
+        )
+        assertEquals(
+            emptyList(),
+            check(SymbolComparison, SourceFacts(methods = listOf(run, stop)), SourceFacts(methods = listOf(run, moved)), overrides),
+        )
+    }
+
+    @Test
+    fun `symbol comparison counts only an error in the method's own file and lines, not one that names it`() {
+        val before = SourceFacts(methods = listOf(run, stop.copy(body = "")))
         val after = SourceFacts(methods = listOf(run))
 
-        assertEquals(emptyList(), check(SymbolComparison, before, after, listOf(error("method stop() does not override a method"))))
-        assertEquals(1, check(SymbolComparison, before, after, listOf(error("cannot find symbol stopAll"))).size)
+        assertEquals(1, check(SymbolComparison, before, after, listOf(error(1, "method stop() is never used"))).size, "outside the method")
+        assertEquals(
+            1,
+            check(SymbolComparison, before, after, listOf(error(6, "cannot find symbol: method stop()").copy(file = "Other.java"))).size,
+            "in another file",
+        )
+        assertEquals(1, check(SymbolComparison, before, after, listOf(error(6, "no line").copy(line = null))).size, "no line")
     }
 
     @Test
     fun `symbol comparison names a top-level function without a type`() {
-        val violations = check(SymbolComparison, SourceFacts(methods = listOf(Method("", "main", lines(1)))), SourceFacts())
+        val violations = check(SymbolComparison, SourceFacts(methods = listOf(Method("", "main", lines(1), "run()"))), SourceFacts())
 
         assertEquals(
-            "the edits delete the method `main` (line 1 before the edits). A method may only go if a current error names it",
+            "the edits delete the method `main` (line 1 before the edits) and its logic. A method may only go if a " +
+                "current error points into it, and its body is empty or moves to a method the edits add",
             violations.single().reason,
         )
     }
@@ -63,7 +98,7 @@ class SourceRulesTest {
                     "the edits delete the test `AppTest.count` (line 2 before the edits). Tests are never deleted: make them compile and pass instead",
                 ),
             ),
-            check(TestDeletion, before, after, listOf(error("cannot find symbol count"))),
+            check(TestDeletion, before, after, listOf(error(3, "cannot find symbol count"))),
         )
     }
 
@@ -265,7 +300,10 @@ class SourceRulesTest {
         vararg assertions: String,
     ) = TestMethod("AppTest", name, lines(2, 6), assertions.mapIndexed { index, text -> Fragment(lines(3 + index), text) })
 
-    private fun error(message: String) = Diagnostic("App.java", 1, 1, null, message, Severity.ERROR, "javac")
+    private fun error(
+        line: Int,
+        message: String,
+    ) = Diagnostic("App.java", line, 1, null, message, Severity.ERROR, "javac")
 
     private fun lines(
         first: Int,
