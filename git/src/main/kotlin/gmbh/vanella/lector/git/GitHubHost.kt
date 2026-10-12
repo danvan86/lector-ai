@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.git
 
 import gmbh.vanella.lector.core.GitHost
+import gmbh.vanella.lector.core.PrState
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.ToolError
@@ -12,6 +13,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -97,8 +99,22 @@ class GitHubHost(
             baseRepository = base.field("repo").jsonObject.string("full_name"),
             baseSha = base.string("sha"),
             body = if (body is JsonNull) "" else body.jsonPrimitive.content,
+            labels =
+                pr
+                    .field("labels")
+                    .jsonArray
+                    .map { it.jsonObject.string("name") }
+                    .toSet(),
+            state = state(pr),
         )
     }
+
+    private fun state(pr: JsonObject) =
+        when {
+            pr.string("state") == "open" -> PrState.OPEN
+            pr.field("merged").jsonPrimitive.boolean -> PrState.MERGED
+            else -> PrState.CLOSED
+        }
 
     override fun fetch(
         repo: Path,

@@ -75,7 +75,7 @@ class RootCommandTest {
         val head = """{"ref": "feature/x", "sha": "1", "repo": {"full_name": "acme/app"}}"""
         val base = """{"sha": "2", "repo": {"full_name": "acme/app"}}"""
         event.writeText(
-            """{"pull_request": {"number": 1, "body": null, "user": {"login": "renovate[bot]"}, "head": $head, "base": $base}}""",
+            """{"pull_request": {"number": 1, "state": "open", "merged": false, "labels": [], "body": null, "user": {"login": "renovate[bot]"}, "head": $head, "base": $base}}""",
         )
 
         val result =
@@ -84,7 +84,7 @@ class RootCommandTest {
                 envvars = mapOf("LECTOR_GITHUB_TOKEN" to "t"),
             )
 
-        assertEquals("Skipped: no update source recognizes the branch feature/x\n", result.stdout)
+        assertEquals("Skipped: no update source recognizes the PR by renovate[bot] on feature/x\n", result.stdout)
         assertEquals(0, result.statusCode)
     }
 

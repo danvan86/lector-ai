@@ -18,7 +18,7 @@ internal fun rootCommand(version: String): LectorCommand {
         VerifyCommand(adapters),
         MigrateCommand(adapters, index = { BundledRecipeIndex.load() }),
         HealCommand(adapters, index = { BundledRecipeIndex.load() }),
-        PrCommand(adapters, sources = listOf(RenovateSource()), index = { BundledRecipeIndex.load() }),
+        PrCommand(adapters, sources = { listOf(RenovateSource(it.botLogins)) }, index = { BundledRecipeIndex.load() }),
     )
 }
 

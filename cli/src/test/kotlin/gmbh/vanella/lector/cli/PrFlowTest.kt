@@ -9,6 +9,7 @@ import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
 import gmbh.vanella.lector.git.GitHubHost
 import gmbh.vanella.lector.sources.RenovateSource
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -110,7 +111,7 @@ class PrFlowTest {
     private fun command() =
         PrCommand(
             adapters = { listOf(MavenAdapter(it)) },
-            sources = listOf(RenovateSource()),
+            sources = { listOf(RenovateSource(it.botLogins)) },
             index = { RecipeIndex { _, _ -> RecipeSelection.NONE } },
             // The CLI only takes http(s) servers; the test's remote is a local directory.
             host = { event, apiUrl, _, token, botLogin -> GitHubHost(event, apiUrl, dir.resolve("server").toUri(), token, botLogin) },
@@ -168,6 +169,9 @@ class PrFlowTest {
         val pr =
             buildJsonObject {
                 put("number", 7)
+                put("state", "open")
+                put("merged", false)
+                put("labels", buildJsonArray {})
                 put("body", body)
                 put("user", buildJsonObject { put("login", "renovate[bot]") })
                 put(

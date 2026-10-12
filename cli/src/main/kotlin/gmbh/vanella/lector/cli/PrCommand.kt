@@ -33,6 +33,13 @@ import kotlin.io.path.isRegularFile
 private const val TOKEN_VARIABLE = "LECTOR_GITHUB_TOKEN"
 private const val DEFAULT_API_URL = "https://api.github.com"
 private const val DEFAULT_SERVER_URL = "https://github.com"
+private val DEFAULT_BOT_LOGINS = listOf("renovate[bot]", "dependabot[bot]")
+private val SOURCE_NAMES = listOf("renovate", "dependabot", "fallback")
+
+/** What the update sources are built from: the options of the run that concern them. */
+internal data class SourceOptions(
+    val botLogins: Set<String>,
+)
 
 /**
  * `lector pr [<repo>]`: the pipeline step the GitHub Action runs on a dependency PR. Checks the trigger, verifies,
@@ -42,7 +49,7 @@ private const val DEFAULT_SERVER_URL = "https://github.com"
  */
 internal class PrCommand(
     private val adapters: (mavenSettings: Path?) -> List<EcosystemAdapter>,
-    private val sources: List<UpdateSource>,
+    private val sources: (SourceOptions) -> List<UpdateSource>,
     private val index: () -> RecipeIndex,
     private val llm: (url: URI, model: String) -> LlmClient = ::OllamaClient,
     private val host: (event: Path, apiUrl: URI, serverUrl: URI, token: String, botLogin: String) -> GitHost = ::GitHubHost,
@@ -72,8 +79,13 @@ internal class PrCommand(
         .check("must not be blank") { it.isNotBlank() }
     private val botLogins by option("--bot-logins", metavar = "<logins>", help = "The bots whose PRs are fixed, comma-separated")
         .convert { logins -> logins.split(",").map { it.trim() }.filter { it.isNotEmpty() } }
-        .default(listOf("renovate[bot]"), defaultForHelp = "renovate[bot]")
+        .default(DEFAULT_BOT_LOGINS, defaultForHelp = DEFAULT_BOT_LOGINS.joinToString(","))
         .check("must name at least one bot") { it.isNotEmpty() }
+    private val source by option(
+        "--source",
+        metavar = "<name>",
+        help = "The update source that must take the PR: ${SOURCE_NAMES.joinToString(", ")}. Empty for the first that recognizes it.",
+    ).check("must be one of ${SOURCE_NAMES.joinToString(", ")}") { it.isEmpty() || it in SOURCE_NAMES }
     private val mavenSettings by option(
         "--maven-settings",
         metavar = "<file>",
@@ -116,11 +128,11 @@ internal class PrCommand(
             PrPipeline(
                 // The App's bot commits under its login, so its name is also the author of the report comment.
                 host = host(event, apiUrl, serverUrl, token, botName),
-                sources = sources,
+                sources = sources(SourceOptions(botLogins.toSet())),
                 adapters = adapters(settings),
                 index = index(),
                 llm = llm(fixLoop.ollamaUrl, fixLoop.model),
-                settings = PrSettings(botLogins.toSet(), CommitIdentity(botName, botEmail), fixLoop.budgets()),
+                settings = PrSettings(CommitIdentity(botName, botEmail), fixLoop.budgets(), source?.ifEmpty { null }),
             )
         return pipeline.run(repo)
     }

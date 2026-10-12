@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.git
 
 import com.sun.net.httpserver.HttpServer
+import gmbh.vanella.lector.core.PrState
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.runProcess
@@ -123,6 +124,18 @@ class GitHubHostTest {
             ),
             pr,
         )
+    }
+
+    @Test
+    fun `reads the PR's labels and whether it is open, closed, or merged`() {
+        val labelled = host(event(labels = listOf("lector", "dependencies"))).pullRequest()
+        val closed = host(event(state = "closed" to false)).pullRequest()
+        val merged = host(event(state = "closed" to true)).pullRequest()
+
+        assertEquals(setOf("lector", "dependencies"), labelled.labels)
+        assertEquals(PrState.OPEN, labelled.state)
+        assertEquals(PrState.CLOSED, closed.state)
+        assertEquals(PrState.MERGED, merged.state)
     }
 
     @Test
@@ -335,6 +348,8 @@ class GitHubHostTest {
         author: String = "renovate[bot]",
         headRepository: String? = "acme/app",
         body: String? = "",
+        state: Pair<String, Boolean> = "open" to false,
+        labels: List<String> = emptyList(),
     ): Path {
         val event =
             buildJsonObject {
@@ -343,6 +358,9 @@ class GitHubHostTest {
                     "pull_request",
                     buildJsonObject {
                         put("number", 7)
+                        put("state", state.first)
+                        put("merged", state.second)
+                        put("labels", buildJsonArray { labels.forEach { add(buildJsonObject { put("name", it) }) } })
                         put("body", body)
                         put("user", buildJsonObject { put("login", author) })
                         put(

@@ -31,6 +31,7 @@ class PrCommandTest {
     private val hosts = mutableListOf<List<Any>>()
     private val clients = mutableListOf<Pair<URI, String>>()
     private val settings = mutableListOf<Path?>()
+    private val sourceOptions = mutableListOf<SourceOptions>()
     private val host = FakeHost()
     private val token = mapOf("LECTOR_GITHUB_TOKEN" to "ghs_token")
     private val bot = "--bot-name lector-ai[bot] --bot-email 1+lector-ai[bot]@users.noreply.github.com"
@@ -82,7 +83,7 @@ class PrCommandTest {
 
         val result = command().test("$repo --event $event $bot", envvars = token)
 
-        assertEquals("Skipped: the PR's author mallory is not one of the bot logins renovate[bot]\n", result.stdout)
+        assertEquals("Skipped: no update source recognizes the PR by mallory on renovate/spring-boot\n", result.stdout)
         assertEquals(0, result.statusCode)
         assertEquals(emptyList<String>(), host.comments)
     }
@@ -94,6 +95,35 @@ class PrCommandTest {
         val result = command().test("$repo --event $event $bot --bot-logins 'renovate[bot], my-renovate[bot] ,'", envvars = token)
 
         assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
+        assertEquals(listOf(SourceOptions(setOf("renovate[bot]", "my-renovate[bot]"))), sourceOptions)
+    }
+
+    @Test
+    fun `the bot logins default to Renovate's and Dependabot's`() {
+        host.pr = host.pr.copy(author = "mallory")
+
+        command().test("$repo --event $event $bot", envvars = token)
+
+        assertEquals(setOf("renovate[bot]", "dependabot[bot]"), sourceOptions.single().botLogins)
+    }
+
+    @Test
+    fun `a named source must recognize the PR, and an empty name means none`() {
+        host.pr = host.pr.copy(body = table(PARENT, "3.3.5", "3.4.1"))
+
+        val named = command(llm = ScriptedLlm(fix)).test("$repo --event $event $bot --source renovate", envvars = token)
+
+        assertEquals(0, named.statusCode, named.stderr)
+        assertEquals(listOf("Call fixed() instead of broken()"), host.pushed)
+
+        host.pr = host.pr.copy(author = "mallory")
+        val empty =
+            command().test(
+                listOf(repo.toString(), "--event", event.toString()) + bot.split(" ") + listOf("--source", ""),
+                envvars = token,
+            )
+
+        assertEquals("Skipped: no update source recognizes the PR by mallory on renovate/spring-boot\n", empty.stdout)
     }
 
     @Test
@@ -216,6 +246,7 @@ class PrCommandTest {
                 "invalid value for --event: file \"${repo.resolve("missing.json")}\" does not exist",
             "$repo --event $repo $bot" to "invalid value for --event: file \"$repo\" is a directory",
             "$repo --event $event $bot --bot-logins ' , '" to "invalid value for --bot-logins: must name at least one bot",
+            "$repo --event $event $bot --source snyk" to "invalid value for --source: must be one of renovate, dependabot, fallback",
         ).forEach { (args, error) ->
             val run = LectorCommand("1.2.3").subcommands(command()).executeInProcess("pr", *split(args))
 
@@ -250,7 +281,10 @@ class PrCommandTest {
             settings += mavenSettings
             listOf(FakeAdapter())
         },
-        sources = listOf(RenovateSource()),
+        sources = { options ->
+            sourceOptions += options
+            listOf(RenovateSource(options.botLogins))
+        },
         index = { index },
         llm = { url, model ->
             clients += url to model

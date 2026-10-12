@@ -3,6 +3,7 @@ package gmbh.vanella.lector.cli
 import com.sun.net.httpserver.HttpServer
 import gmbh.vanella.lector.core.runProcess
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -294,8 +295,8 @@ class LectorEndToEndTest {
                     ),
             )
 
-        assertEquals("Skipped: the PR's author mallory is not one of the bot logins renovate[bot]\n", run.stdout)
-        assertContains(run.stderr, "Skipping the PR: the PR's author mallory")
+        assertEquals("Skipped: no update source recognizes the PR by mallory on renovate/spring-boot\n", run.stdout)
+        assertContains(run.stderr, "Skipping the PR: no update source recognizes the PR by mallory")
         assertEquals(0, run.exitCode)
     }
 
@@ -365,6 +366,9 @@ class LectorEndToEndTest {
                     "pull_request",
                     buildJsonObject {
                         put("number", 7)
+                        put("state", "open")
+                        put("merged", false)
+                        put("labels", buildJsonArray {})
                         put("body", body)
                         put("user", buildJsonObject { put("login", author) })
                         put(

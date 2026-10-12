@@ -38,33 +38,108 @@ class PrPipelineTest {
     private var headSha = ""
 
     @Test
-    fun `a PR whose author isn't a bot login is skipped without a comment`() {
+    fun `a PR no source recognizes is skipped without a comment`() {
         val host = host(pr().copy(author = "mallory"))
 
         val outcome = pipeline(host).run(repo)
 
-        assertEquals(PrOutcome.Skipped("the PR's author mallory is not one of the bot logins renovate[bot]"), outcome)
+        assertEquals(PrOutcome.Skipped("no update source recognizes the PR by mallory on bot/lib"), outcome)
         assertNothingHappened(host)
     }
 
     @Test
-    fun `a PR from a fork is skipped without a comment`() {
+    fun `a PR from a fork is skipped without a comment, also with a source named`() {
         val host = host(pr().copy(headRepository = "mallory/app"))
 
         val outcome = pipeline(host).run(repo)
+        val named = pipeline(host, source = "bot").run(repo)
 
         assertEquals(PrOutcome.Skipped("the PR comes from mallory/app, not from acme/app"), outcome)
+        assertEquals(outcome, named)
         assertNothingHappened(host)
     }
 
     @Test
-    fun `a PR on a branch the source doesn't recognize is skipped without a comment`() {
-        val host = host(pr().copy(headBranch = "feature/bump"))
+    fun `the first source that recognizes the PR takes it`() {
+        val host = host(pr().copy(labels = setOf("lector")))
+        val first = FakeSource("bot", update = SourceUpdate(listOf(lib), null))
+        val second = FakeSource("label", recognizes = { "lector" in it.labels }, update = SourceUpdate(listOf(other), null))
 
-        val outcome = pipeline(host).run(repo)
+        val outcome = pipeline(host, sources = listOf(first, second)).run(repo)
 
-        assertEquals(PrOutcome.Skipped("no update source recognizes the branch feature/bump"), outcome)
-        assertNothingHappened(host)
+        assertEquals(listOf(lib.`package`), assertIs<PrOutcome.Reported>(outcome).report.changes.map { it.`package` })
+        assertEquals(1, first.reads)
+        assertEquals(0, second.reads)
+    }
+
+    @Test
+    fun `a named source takes the PR instead of the first, if it recognizes it`() {
+        val labelled = host(pr().copy(labels = setOf("lector")))
+        val first = FakeSource("bot", update = SourceUpdate(listOf(lib), null))
+        val second = FakeSource("label", recognizes = { "lector" in it.labels }, update = SourceUpdate(listOf(other), null))
+
+        val outcome = pipeline(labelled, sources = listOf(first, second), source = "label").run(repo)
+
+        assertEquals(listOf(other.`package`), assertIs<PrOutcome.Reported>(outcome).report.changes.map { it.`package` })
+        assertEquals(0, first.reads)
+
+        val unlabelled = host(pr())
+        val skipped = pipeline(unlabelled, sources = listOf(first, second), source = "label").run(repo)
+
+        assertEquals(PrOutcome.Skipped("the label source doesn't recognize the PR by renovate[bot] on bot/lib"), skipped)
+        assertNothingHappened(unlabelled)
+    }
+
+    @Test
+    fun `a named source that doesn't exist is a tool error`() {
+        val host = host(pr())
+
+        val error = assertFailsWith<ToolError> { pipeline(host, source = "snyk").run(repo) }
+
+        assertEquals("No update source is called snyk. The sources are bot.", error.message)
+    }
+
+    @Test
+    fun `a source can read the resolved versions of the base, in a worktree that is removed afterwards, and of the head`() {
+        val host = host(pr())
+        val versions = mutableListOf<Map<String, String>>()
+        val source =
+            object : UpdateSource by FakeSource("bot", update = SourceUpdate(listOf(lib), null)) {
+                override fun read(
+                    pr: PullRequest,
+                    context: SourceContext,
+                ): SourceUpdate {
+                    versions += context.baseVersions()
+                    versions += context.headVersions()
+                    assertEquals("test", context.ecosystem)
+                    return SourceUpdate(listOf(lib), null)
+                }
+            }
+
+        pipeline(host, sources = listOf(source)).run(repo)
+
+        assertEquals(
+            listOf(mapOf(lib.`package` to "1.0", other.`package` to "3.0"), mapOf(lib.`package` to "2.0", other.`package` to "4.0")),
+            versions,
+        )
+        assertEquals(1, git("worktree", "list").lines().count { it.isNotEmpty() })
+    }
+
+    @Test
+    fun `resolved versions of an ecosystem that can't read them are a tool error`() {
+        val host = host(pr())
+        val source =
+            object : UpdateSource by FakeSource("bot", update = SourceUpdate(listOf(lib), null)) {
+                override fun read(
+                    pr: PullRequest,
+                    context: SourceContext,
+                ) = SourceUpdate(listOf(lib.copy(toVersion = context.headVersions().getValue(lib.`package`))), null)
+            }
+
+        val error =
+            assertFailsWith<ToolError> { pipeline(host, adapter = FakeAdapter(readsVersions = false), sources = listOf(source)).run(repo) }
+
+        assertEquals("The test ecosystem can't read resolved versions", error.message)
     }
 
     @Test
@@ -84,7 +159,8 @@ class PrPipelineTest {
         val outcome = pipeline(host, updates = emptyList()).run(repo)
 
         assertEquals(PrOutcome.Skipped("the PR changes no version of the repository's test packages"), outcome)
-        assertNothingHappened(host)
+        assertEquals(emptyList(), host.comments)
+        assertEquals(emptyList(), host.pushes)
     }
 
     @Test
@@ -357,22 +433,25 @@ class PrPipelineTest {
         return FakeHost(withShas, acceptsPush)
     }
 
+    @Suppress("LongParameterList") // Every test sets only what it is about.
     private fun pipeline(
         host: FakeHost,
         adapter: FakeAdapter = FakeAdapter(),
         llm: LlmClient = ScriptedLlm(edits(fix, rationale = "Call fixed()")),
         updates: List<PackageUpdate> = listOf(lib),
         recipes: Map<String, Recipe> = emptyMap(),
+        sources: List<UpdateSource> = listOf(FakeSource("bot", update = SourceUpdate(updates, "lib 2.0 renames broken() to fixed()"))),
+        source: String? = null,
     ) = PrPipeline(
         host = host,
-        sources = listOf(FakeSource(SourceUpdate(updates, "lib 2.0 renames broken() to fixed()", BranchPolicy.IN_PLACE))),
+        sources = sources,
         adapters = listOf(adapter),
         index = { change, _ ->
             recipes[change.`package`]?.let { RecipeSelection(RecipeMatch(it, it.name, 1), emptyList()) }
                 ?: RecipeSelection.NONE
         },
         llm = llm,
-        settings = PrSettings(botLogins = setOf("renovate[bot]"), identity = bot, budgets = budgets),
+        settings = PrSettings(identity = bot, budgets = budgets, source = source),
     )
 
     private fun recipe(name: String) = Recipe(name, "org.example:recipes:1.0", "Apache-2.0")
@@ -452,13 +531,24 @@ class PrPipelineTest {
         }
     }
 
-    /** Recognizes `bot/` branches and reads the given update from every PR. */
+    /** Recognizes Renovate's PRs on `bot/` branches, unless told otherwise, and reads the given update from every PR. */
     private class FakeSource(
+        override val name: String,
+        override val branchPolicy: BranchPolicy = BranchPolicy.IN_PLACE,
+        private val recognizes: (PullRequest) -> Boolean = { it.author == "renovate[bot]" && it.headBranch.startsWith("bot/") },
         private val update: SourceUpdate,
     ) : UpdateSource {
-        override fun recognizes(pr: PullRequest) = pr.headBranch.startsWith("bot/")
+        var reads = 0
 
-        override fun read(pr: PullRequest) = update
+        override fun recognizes(pr: PullRequest) = recognizes.invoke(pr)
+
+        override fun read(
+            pr: PullRequest,
+            context: SourceContext,
+        ): SourceUpdate {
+            reads++
+            return update
+        }
     }
 
     /** Answers with the given functions in order, and records every request. */
@@ -482,6 +572,7 @@ class PrPipelineTest {
     private class FakeAdapter(
         private val detects: Boolean = true,
         private val slowWhen: String? = null,
+        readsVersions: Boolean = true,
     ) : EcosystemAdapter {
         val recipeRuns = mutableListOf<String>()
 
@@ -506,7 +597,13 @@ class PrPipelineTest {
                 }
             }
         override val resolvedVersions =
-            ResolvedVersions { dir -> dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') } }
+            if (readsVersions) {
+                ResolvedVersions { dir ->
+                    dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
+                }
+            } else {
+                null
+            }
         override val languageSupport = LanguageSupport { _, _ -> null }
 
         override fun detect(repo: Path) = detects

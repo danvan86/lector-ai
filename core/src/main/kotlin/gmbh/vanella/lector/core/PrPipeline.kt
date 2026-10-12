@@ -8,11 +8,14 @@ private val logger = LoggerFactory.getLogger(PrPipeline::class.java)
 /** The label of every PR the tool pushed to. */
 const val AI_ASSISTED = "ai-assisted"
 
-/** How a PR run is configured: the bots whose PRs it takes, who commits, and the fix loop's limits. */
+/**
+ * How a PR run is configured: who commits, the fix loop's limits, and the [source] that must take the PR, or null to let
+ * the first source that recognizes it take it.
+ */
 data class PrSettings(
-    val botLogins: Set<String>,
     val identity: CommitIdentity,
     val budgets: Budgets = Budgets(),
+    val source: String? = null,
 )
 
 /** A recipe that ran once for the [changes] that map to it, and its commit if it changed anything. */
@@ -60,8 +63,8 @@ sealed interface PrOutcome {
 /**
  * The pipeline for one dependency PR (concept section 8), the same for every source, ecosystem, and host:
  *
- * 1. Trigger checks: a bot login opened the PR from the same repository, on a branch one of the [sources] recognizes,
- *    and the head commit isn't the tool's own. Otherwise the run is skipped.
+ * 1. Trigger checks: the PR comes from the same repository, one of the [sources] recognizes it (the first in the list,
+ *    or the one the settings name), and the head commit isn't the tool's own. Otherwise the run is skipped.
  * 2. Verify the PR's head against its base. Green means stop: the PR stays as the bot made it.
  * 3. Run each distinct recipe of the PR's changes once, in the PR's order, one commit each. Then the fix loop.
  * 4. Push the commits, never by force, then the report comment, and the `ai-assisted` label if anything was pushed.
@@ -78,11 +81,36 @@ class PrPipeline(
 ) {
     fun run(repo: Path): PrOutcome {
         val pr = host.pullRequest()
-        val skip = skipReason(pr) ?: ownCommit(pr, repo)
-        if (skip != null) return skipped(skip)
-        val source = sources.first { it.recognizes(pr) }
+        if (pr.headRepository != pr.baseRepository) return skipped("the PR comes from ${pr.headRepository}, not from ${pr.baseRepository}")
+        val source = source(pr) ?: return skipped(unrecognized(pr))
+        val ownCommit = ownCommit(pr, repo)
+        return if (ownCommit == null) read(pr, source, repo) else skipped(ownCommit)
+    }
+
+    /** The source that takes [pr]: the first that recognizes it, or the one the settings name if it does. */
+    private fun source(pr: PullRequest): UpdateSource? {
+        val name = settings.source ?: return sources.firstOrNull { it.recognizes(pr) }
+        val named = sources.firstOrNull { it.name == name }
+        if (named == null) throw ToolError("No update source is called $name. The sources are ${sources.joinToString(", ") { it.name }}.")
+        return if (named.recognizes(pr)) named else null
+    }
+
+    private fun unrecognized(pr: PullRequest): String {
+        val by = "the PR by ${pr.author} on ${pr.headBranch}"
+        val name = settings.source
+        return if (name == null) "no update source recognizes $by" else "the $name source doesn't recognize $by"
+    }
+
+    /** Reads the PR's changes with [source], then verifies. */
+    private fun read(
+        pr: PullRequest,
+        source: UpdateSource,
+        repo: Path,
+    ): PrOutcome {
         val adapter = adapters.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in $repo")
-        val update = source.read(pr)
+        if (!GitWorkingTree.hasCommit(repo, pr.baseSha)) host.fetch(repo, pr, pr.baseSha)
+        val base = GitBaseCommit.resolve(repo, pr.baseSha)
+        val update = source.read(pr, RepositoryContext(repo, base, adapter))
         val changes =
             update.updates
                 .filter { it.ecosystem == null || it.ecosystem == adapter.ecosystem }
@@ -96,7 +124,7 @@ class PrPipeline(
                     )
                 }
         if (changes.isEmpty()) return skipped("the PR changes no version of the repository's ${adapter.ecosystem} packages")
-        return verifyFirst(pr, repo, adapter, changes, update.releaseNotes)
+        return verifyFirst(PrRun(pr, repo, adapter, base, changes, update.releaseNotes))
     }
 
     /** The last trigger check, on the working tree, which must be the PR's head: whether that commit is the tool's own. */
@@ -113,39 +141,12 @@ class PrPipeline(
     }
 
     /** Verifies the PR's head against its base. Green means stop, broken means heal. */
-    private fun verifyFirst(
-        pr: PullRequest,
-        repo: Path,
-        adapter: EcosystemAdapter,
-        changes: List<DependencyChange>,
-        releaseNotes: String?,
-    ): PrOutcome {
-        if (!GitWorkingTree.hasCommit(repo, pr.baseSha)) host.fetch(repo, pr, pr.baseSha)
-        val base = GitBaseCommit.resolve(repo, pr.baseSha)
-        val verification = attribute(adapter, repo, base)
-        if (verification.causedByUpdate.isNotEmpty()) return heal(pr, repo, adapter, base, changes, releaseNotes, verification)
-        host.comment(pr, PrComment.green(verification, pr.headSha), create = false)
+    private fun verifyFirst(run: PrRun): PrOutcome {
+        val verification = attribute(run.adapter, run.repo, run.base)
+        if (verification.causedByUpdate.isNotEmpty()) return heal(run, verification)
+        host.comment(run.pr, PrComment.green(verification, run.pr.headSha), create = false)
         return PrOutcome.Green(verification)
     }
-
-    private fun skipReason(pr: PullRequest): String? =
-        when {
-            pr.author !in settings.botLogins -> {
-                "the PR's author ${pr.author} is not one of the bot logins ${settings.botLogins.joinToString(", ")}"
-            }
-
-            pr.headRepository != pr.baseRepository -> {
-                "the PR comes from ${pr.headRepository}, not from ${pr.baseRepository}"
-            }
-
-            sources.none { it.recognizes(pr) } -> {
-                "no update source recognizes the branch ${pr.headBranch}"
-            }
-
-            else -> {
-                null
-            }
-        }
 
     private fun skipped(reason: String): PrOutcome {
         logger.info("Skipping the PR: {}", reason)
@@ -153,16 +154,13 @@ class PrPipeline(
     }
 
     /** Recipes, fix loop, push, and report, for a PR the update broke. */
-    @Suppress("LongParameterList") // One run's state, passed once from run().
     private fun heal(
-        pr: PullRequest,
-        repo: Path,
-        adapter: EcosystemAdapter,
-        base: BaseCommit,
-        changes: List<DependencyChange>,
-        releaseNotes: String?,
+        run: PrRun,
         verification: Verification,
     ): PrOutcome {
+        val (pr, repo, adapter) = run
+        val base = run.base
+        val changes = run.changes
         val lookups = changes.map { it to lookUp(it, adapter, base) }
         val withoutRecipe = lookups.mapNotNull { (change, lookup) -> (lookup as? Lookup.Stopped)?.let { change to it.outcome } }
         val recipes =
@@ -173,7 +171,7 @@ class PrPipeline(
         val commits = recipes.mapNotNull { it.commit }
         val afterRecipes = if (commits.isEmpty()) verification else attribute(adapter, repo, base)
         val recipeDiff = commits.joinToString("\n") { GitWorkingTree.diff(repo, it) }.ifEmpty { null }
-        val context = FixContext(changes, releaseNotes, recipeDiff)
+        val context = FixContext(changes, run.releaseNotes, recipeDiff)
         val fixLoop = FixLoop(adapter, llm, base, settings.budgets, settings.identity).run(repo, context, afterRecipes)
         val anyCommit = commits.isNotEmpty() || fixLoop.fixes.isNotEmpty()
         if (anyCommit && !host.push(repo, pr)) {
@@ -216,6 +214,16 @@ class PrPipeline(
             }
         return RecipeApplication(recipe, changes, outcome, commit)
     }
+
+    /** One run's state after the trigger checks. */
+    private data class PrRun(
+        val pr: PullRequest,
+        val repo: Path,
+        val adapter: EcosystemAdapter,
+        val base: BaseCommit,
+        val changes: List<DependencyChange>,
+        val releaseNotes: String?,
+    )
 
     private sealed interface Lookup {
         data class Found(
