@@ -1,0 +1,26 @@
+{
+    "reviewer": "A. Reviewer",
+    "runs": [
+        {
+            "case": "guava-21",
+            "mode": "fix-loop-only",
+            "repetition": 1,
+            "acceptedUnchanged": true,
+            "reason": "Uses MoreObjects.firstNonNull, as the release notes say"
+        },
+        {
+            "case": "guava-21",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 1,
+            "acceptedUnchanged": true,
+            "reason": "Same fix as in fix loop only"
+        },
+        {
+            "case": "boot-3",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 2,
+            "acceptedUnchanged": false,
+            "reason": "Catches the new exception instead of migrating the call"
+        }
+    ]
+}
