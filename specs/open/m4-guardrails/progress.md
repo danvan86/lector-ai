@@ -13,10 +13,14 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 5 | Report: every rejection, a count per rule, the runtime test count of the final verify | ✅ |
 | 6 | Quality gates verified | ✅ |
 | 7 | Docs in sync | ✅ |
+| 8 | Review and fixes: [`review.md`](review.md) | ✅ |
 
 ## Quality gates
 
-Final check from a clean state, each on its own: `ktlintCheck`, `detektMain detektTest`, `test` (368 unit tests),
+After the review: `clean build --rerun-tasks --no-build-cache` exits `0` with 378 unit tests (core 137, jvm 110, cli 81,
+llm 17, recipes 33), 16 end-to-end tests, and 100 % lines and branches per module.
+
+Before the review: each on its own from a clean state: `ktlintCheck`, `detektMain detektTest`, `test` (368 unit tests),
 `:cli:endToEndTest` (16), `koverVerify` (100 % lines and branches per module), and
 `clean build --rerun-tasks --no-build-cache`: all exit `0`. One `detektMain detektTest` run exited `1` with its log
 overwritten; four reruns, one in the same sequence, and the clean build passed.
