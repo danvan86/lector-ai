@@ -92,6 +92,11 @@ class RenovateSourceTest {
     }
 
     @Test
+    fun `a Node version PR has no version changes, Node in nvm, node-version, or setup-node is no npm package`() {
+        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured("node.md")), NoContext).updates)
+    }
+
+    @Test
     fun `a Gradle wrapper PR without badges has no version changes`() {
         assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured("gradle-wrapper.md")), NoContext).updates)
     }

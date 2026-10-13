@@ -24,6 +24,9 @@ private val ECOSYSTEMS =
     mapOf(
         "maven" to "maven",
         "gradle" to "maven",
+        // fetch-metadata reports `npm_and_yarn` for npm, pnpm, and Yarn alike.
+        "npm_and_yarn" to "npm",
+        "npm" to "npm",
     )
 
 // Gradle's wrapper: Dependabot updates it like a dependency, but it is the build tool, no package.
