@@ -34,7 +34,10 @@ private const val PNP_SCRIPT =
     "const pnp = require('pnpapi'); const [issuer, ...names] = process.argv.slice(1); const found = {}; " +
         "for (const name of names) { try { found[name] = pnp.resolveToUnqualified(name, issuer); } catch {} } " +
         "console.log(JSON.stringify(found));"
-private const val OUTPUT_TAIL_LINES = 20
+
+// The lines of a failed process's output a problem shows: the first and the last half. npm prints its error first and
+// its usage after it, pnpm and the test runners theirs last.
+private const val OUTPUT_LINES = 20
 
 // The variables of Node's package managers: registries, credentials, proxies, and Corepack's own (spec section 2).
 private val VARIABLE_PREFIXES = listOf("NPM_CONFIG_", "npm_config_", "YARN_", "COREPACK_")
@@ -108,10 +111,19 @@ internal class NodeBuild(
         val install = session.install(frozen = true)
         val problems = if (install == null && session.root !in built) session.build() else listOfNotNull(install)
         if (problems.isNotEmpty()) return problems
+        // A failure of a whole package reruns its whole test run.
         return tests
             .mapNotNull { it.test }
             .groupBy { session.owner(it.substringBefore('#')) }
-            .flatMap { (pkg, ids) -> session.test(pkg, ids).diagnostics }
+            .flatMap { (pkg, ids) ->
+                session
+                    .test(
+                        pkg,
+                        ids.takeIf { id ->
+                            id.none { it.startsWith(pkg.relative(PACKAGE_JSON) + "#") }
+                        },
+                    ).diagnostics
+            }
     }
 
     /** Installs without the frozen flag, so the lockfile follows the edited `package.json` files. Returns the lockfile if it changed. */
@@ -230,8 +242,8 @@ internal class NodeBuild(
             val command = TestScripts.command(script)?.takeIf { it.runner == Runner.VITEST || jestJunit != null }
             if (command == null) {
                 val result = run(commands.test(), pkg.dir(root))
-                val test = "${pkg.relative(PACKAGE_JSON)}#${commands.test().joinToString(" ")}"
-                val failures = if (result.exitCode == 0) emptyList() else listOf(failure(commands.test(), pkg, result, test = test))
+                val name = commands.test().joinToString(" ")
+                val failures = if (result.exitCode == 0) emptyList() else listOf(packageFailure(commands.test(), pkg, result, name))
                 return TestRun(failures, null)
             }
             val report = temp.resolve("report-${++reports}.xml")
@@ -240,15 +252,21 @@ internal class NodeBuild(
             val result = run(line, pkg.dir(root), command.environment + environment)
             val failures = if (report.exists()) NodeTestReports.diagnostics(report, pkg, command.runner) else emptyList()
             val diagnostics =
-                if (result.exitCode != 0 &&
-                    failures.isEmpty()
-                ) {
-                    listOf(failure(line, pkg, result, tool = command.runner.bin))
-                } else {
-                    failures
-                }
+                if (result.exitCode != 0 && failures.isEmpty()) listOf(packageFailure(line, pkg, result, command.runner.bin)) else failures
             return TestRun(diagnostics, if (report.exists()) NodeTestReports.count(report) else 0)
         }
+
+        /**
+         * A package's tests that failed without saying which: a test script that runs no runner the adapter knows, or a
+         * runner that failed without a report (no tests found, a config it can't load). It is a test failure of the
+         * whole package, named by its runner, `npm test` say, so it is rerun, and run on the base commit, like any other.
+         */
+        private fun packageFailure(
+            command: List<String>,
+            pkg: NodePackage,
+            result: ProcessResult,
+            runner: String,
+        ) = failure(command, pkg, result, tool = runner.substringBefore(' '), test = "${pkg.relative(PACKAGE_JSON)}#$runner")
 
         /** The runner's arguments and variables: the script's, the reporter's, and the files and names of [tests], if any. */
         private fun runnerArguments(
@@ -344,16 +362,14 @@ internal class NodeBuild(
         tool: String = command.first(),
         test: String? = null,
     ): Diagnostic {
-        val tail =
-            result.output
-                .lines()
-                .filter { it.isNotBlank() }
-                .takeLast(OUTPUT_TAIL_LINES)
+        val lines = result.output.lines().filter { it.isNotBlank() }
+        val shown = if (lines.size <= OUTPUT_LINES) lines else lines.take(OUTPUT_LINES / 2) + "…" + lines.takeLast(OUTPUT_LINES / 2)
         val where = if (pkg.dir.isEmpty()) "" else " in ${pkg.dir}"
         val message =
             (
-                listOf("`${command.joinToString(" ")}`$where failed with exit code ${result.exitCode}. The end of its output:") +
-                    tail
+                listOf(
+                    "`${command.joinToString(" ")}`$where failed with exit code ${result.exitCode}. Its output:",
+                ) + shown
             ).joinToString("\n")
         return Diagnostic(null, null, null, null, message, Severity.ERROR, tool, test)
     }

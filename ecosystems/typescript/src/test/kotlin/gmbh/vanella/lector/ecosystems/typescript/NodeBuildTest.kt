@@ -101,12 +101,23 @@ class NodeBuildTest {
                 null,
                 null,
                 null,
-                "`pnpm run build` in packages/lib failed with exit code 1. The end of its output:\nsh: rollup: command not found",
+                "`pnpm run build` in packages/lib failed with exit code 1. Its output:\nsh: rollup: command not found",
                 Severity.ERROR,
                 "pnpm",
             ),
             problem,
         )
+    }
+
+    @Test
+    fun `a long output shows its first and its last lines, where the package managers print their errors`() {
+        fixture("npm-jest")
+        val output = listOf("npm error Invalid: lock file's vitest@3.2.7 does not satisfy vitest@4.1.11") + (1..30).map { "usage $it" }
+        answer = { ProcessResult(1, output.joinToString("\n")) }
+
+        val message = build().verify(repo, 1.hours).single().message
+
+        assertEquals(listOf("`npm ci` failed with exit code 1. Its output:") + output.take(10) + "…" + output.takeLast(10), message.lines())
     }
 
     @Test
@@ -164,7 +175,7 @@ class NodeBuildTest {
     }
 
     @Test
-    fun `the test script's variables and arguments go to the runner, and a runner that fails without a report is one problem`() {
+    fun `the test script's variables and arguments go to the runner, and a runner that fails without a report fails the package`() {
         fixture("npm-jest")
         edit("package.json") { it.replace("\"test\": \"jest\"", "\"test\": \"TZ=UTC jest --config jest.config.js\"") }
         answer = { run -> ProcessResult(if ("jest" in run.command) 1 else 0, "Error: Cannot find module 'ts-jest'") }
@@ -177,7 +188,7 @@ class NodeBuildTest {
         )
         assertEquals("UTC", runs.last().environment["TZ"])
         assertEquals("jest", problem.tool)
-        assertEquals(null, problem.test, "a runner that didn't run the tests is a build problem")
+        assertEquals("package.json#jest", problem.test, "a failure of the package's whole test run")
     }
 
     @Test
@@ -195,7 +206,7 @@ class NodeBuildTest {
                 null,
                 null,
                 null,
-                "`yarn test` failed with exit code 1. The end of its output:\n✖ shouts\nℹ fail 1",
+                "`yarn test` failed with exit code 1. Its output:\n✖ shouts\nℹ fail 1",
                 Severity.ERROR,
                 "yarn",
                 "package.json#yarn test",
@@ -240,6 +251,22 @@ class NodeBuildTest {
             ),
             commands(),
             "a working tree that wasn't verified, like the base commit's, is installed first",
+        )
+    }
+
+    @Test
+    fun `runTests of a runner's failure without a report runs the package's tests again, all of them`() {
+        fixture("pnpm-workspace")
+
+        build().runTests(
+            repo,
+            listOf(test("packages/app/package.json#vitest", "vitest"), test("packages/app/src/a.test.ts#x", "vitest")),
+            1.hours,
+        )
+
+        assertEquals(
+            "pnpm exec vitest run --reporter=default --reporter=junit --outputFile.junit=<report> in packages/app",
+            commands().last(),
         )
     }
 
@@ -302,7 +329,7 @@ class NodeBuildTest {
         answer = { ProcessResult(1, "ERR_PNPM_NO_MATCHING_VERSION No matching version found for vitest@99.0.0") }
         assertEquals(
             LockfileUpdate.Failed(
-                "`pnpm install --no-frozen-lockfile` failed with exit code 1. The end of its output:\n" +
+                "`pnpm install --no-frozen-lockfile` failed with exit code 1. Its output:\n" +
                     "ERR_PNPM_NO_MATCHING_VERSION No matching version found for vitest@99.0.0",
             ),
             build.updateLockfiles(repo, 1.hours),
