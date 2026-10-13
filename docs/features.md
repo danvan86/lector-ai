@@ -99,13 +99,17 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** we have first numbers for JVM/Maven and know whether the 90/10 assumption holds.
 
-## M7 – Gradle ⬜
+## M7 – Gradle 🟨
 
 **Goal:** JVM projects on Gradle work too.
 
-- Run recipes through a Gradle init script (no build file edits)
-- Verify and diagnostics for Gradle
-- Fixture repos for Gradle (Groovy and Kotlin DSL)
+- `GradleAdapter` next to `MavenAdapter` in `ecosystems:jvm`, sharing parsers, grounding, cluster keys, and guardrails; Gradle 8 and 9, always through the project's wrapper
+- Run recipes through a Gradle init script (no build file edits), with the OpenRewrite Gradle plugin shipped in the tool image
+- Verify and diagnostics for Gradle: every source set compiles first, then every `Test` task runs (not `check`)
+- The recipe index covers Gradle plugin upgrades (Spring Boot as a plugin); Renovate's plugin rows map to the plugin's marker coordinates
+- `--gradle-init` and the action's `gradle-init` input, for mirrors and credentials
+- Fixture repos for Gradle (Groovy DSL, Kotlin DSL with a version catalog, a multi-project build), and integration tests with real Gradle
+- Still open: the run on a real Renovate PR in a Gradle test repository on GitHub
 
 **Done when:** the M5 flow works the same for a Gradle repo.
 
@@ -138,3 +142,4 @@ Not planned in detail yet. Prioritize after M9 based on demand and benchmark res
 - GitLab CI support
 - Embedding fallback for recipes without structured metadata
 - Better error clustering and smarter grounding (migration-guide index per dependency)
+- Linters bound to Maven `verify` can block the last fix attempt, the same problem M7 Q17 solved for Gradle

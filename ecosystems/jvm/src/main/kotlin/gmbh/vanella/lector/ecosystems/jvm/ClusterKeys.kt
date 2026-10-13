@@ -3,8 +3,8 @@ package gmbh.vanella.lector.ecosystems.jvm
 import gmbh.vanella.lector.core.Diagnostic
 
 /**
- * Root causes in javac, kotlinc, and Maven messages, as cluster keys: `symbol:<name>`, `package:<name>`, and
- * `artifact:<group>:<artifact>`. The messages are the English ones; the container image runs Maven in that locale.
+ * Root causes in javac, kotlinc, Maven, and Gradle messages, as cluster keys: `symbol:<name>`, `package:<name>`, and
+ * `artifact:<group>:<artifact>`. The messages are the English ones; the container image runs the builds in that locale.
  */
 internal object ClusterKeys {
     // javac: `symbol:   method greetPolitely(java.lang.String)`, `symbol:   class Strng`
@@ -16,7 +16,8 @@ internal object ClusterKeys {
     private val javacPackage = Regex("""^package ([\w.]+) does not exist""")
 
     // Maven: `Could not find artifact org.apache.commons:commons-lang3:jar:99.0.0 in central (…)`
-    private val missingArtifact = Regex("""Could not find artifact ([^:\s]+):([^:\s]+):""")
+    // Gradle: `Could not find org.apache.commons:commons-lang3:99.0.0.`
+    private val missingArtifact = Regex("""Could not find (?:artifact )?([^:\s]+):([^:\s]+):""")
 
     fun of(diagnostic: Diagnostic): String? =
         when {
@@ -24,7 +25,7 @@ internal object ClusterKeys {
                 null
             }
 
-            diagnostic.tool == "maven" -> {
+            diagnostic.tool == "maven" || diagnostic.tool == "gradle" -> {
                 missingArtifact.find(diagnostic.message)?.let { "artifact:${it.groupValues[1]}:${it.groupValues[2]}" }
             }
 

@@ -60,6 +60,37 @@ class RenovateSourceTest {
     }
 
     @Test
+    fun `a Gradle plugin row is read as the plugin's marker coordinates from its badges`() {
+        val update = source.read(pr(body = captured("gradle-spring-boot-plugin.md")))
+
+        assertEquals(
+            listOf(
+                PackageUpdate("maven", "org.springframework.boot:org.springframework.boot.gradle.plugin", "4.0.5", "4.1.1"),
+                PackageUpdate("maven", "org.springframework.boot:spring-boot-gradle-plugin", "4.0.5", "4.1.1"),
+            ),
+            update.updates,
+        )
+    }
+
+    @Test
+    fun `a version catalog row is read by its package, not by the alias the table shows, and the wrapper row is left out`() {
+        val update = source.read(pr(body = captured("gradle-catalog-alias.md")))
+
+        assertEquals(
+            listOf(
+                PackageUpdate("maven", "org.jetbrains.kotlin:kotlin-gradle-plugin", "2.4.20", "2.4.21"),
+                PackageUpdate("maven", "ch.qos.logback:logback-classic", "1.6.4", "1.6.5"),
+            ),
+            update.updates,
+        )
+    }
+
+    @Test
+    fun `a Gradle wrapper PR without badges has no version changes`() {
+        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured("gradle-wrapper.md"))).updates)
+    }
+
+    @Test
     fun `extracts the release notes from the body, without Renovate's configuration and footer`() {
         val notes = assertNotNull(source.read(pr(body = captured("single-update.md"))).releaseNotes)
 

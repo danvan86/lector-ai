@@ -18,6 +18,9 @@ tree-sitter-kotlin = "0.3.8.1"
 # (`:recipes:checkRewritePluginVersion`).
 rewrite-recipe-bom = "3.37.0"
 rewrite-maven-plugin = "6.46.1"
+# The OpenRewrite Gradle plugin, shipped in the tool image for recipes in Gradle builds. It must be built on the BOM's
+# OpenRewrite version, too (`:recipes:checkRewriteGradlePluginVersion`).
+rewrite-gradle-plugin = "7.39.0"
 maven-help-plugin = "3.5.2"
 testcontainers = "2.0.5"
 
@@ -40,6 +43,8 @@ rewrite-core = { module = "org.openrewrite:rewrite-core" }
 # Maven plugins the JVM adapter calls by coordinates in the user's build. Declared here so Dependabot updates them.
 rewrite-maven-plugin = { module = "org.openrewrite.maven:rewrite-maven-plugin", version.ref = "rewrite-maven-plugin" }
 maven-help-plugin = { module = "org.apache.maven.plugins:maven-help-plugin", version.ref = "maven-help-plugin" }
+# The Gradle plugin the JVM adapter applies with an init script. Only on the Gradle Plugin Portal.
+rewrite-gradle-plugin = { module = "org.openrewrite:plugin", version.ref = "rewrite-gradle-plugin" }
 # The BOM pins every JUnit artifact, including the ones kotlin-test-junit5 brings in.
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }

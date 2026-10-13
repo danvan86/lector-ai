@@ -1,0 +1,30 @@
+
+> Task :compileJava FAILED
+/work/repo/src/main/java/com/example/Counter.java:3: error: cannot find symbol
+public class Counter extends MissingBase {
+                             ^
+  symbol: class MissingBase
+1 error
+
+> Task :processResources NO-SOURCE
+> Task :processTestResources NO-SOURCE
+
+[Incubating] Problems report is available at: file:///work/repo/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler output below.
+  /work/repo/src/main/java/com/example/Counter.java:3: error: cannot find symbol
+  public class Counter extends MissingBase {
+                               ^
+    symbol: class MissingBase
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights.
+
+BUILD FAILED in 395ms
+1 actionable task: 1 executed

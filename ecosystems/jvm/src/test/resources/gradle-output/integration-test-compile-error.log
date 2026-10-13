@@ -1,0 +1,54 @@
+> Task :lib:compileJava
+> Task :app:compileJava
+> Task :app:processResources NO-SOURCE
+> Task :app:classes
+> Task :app:jar
+
+> Task :app:compileIntegrationTestJava FAILED
+/work/repo/app/src/integrationTest/java/com/example/app/GreetingIT.java:10: error: cannot find symbol
+        assertEquals("1 + 1 = 2", App.greet());
+                                     ^
+  symbol:   method greet()
+  location: class App
+/work/repo/app/src/integrationTest/java/com/example/app/GreetingIT.java:15: error: cannot find symbol
+        assertEquals("1 + 1 = 3", App.greet());
+                                     ^
+  symbol:   method greet()
+  location: class App
+2 errors
+
+> Task :app:processIntegrationTestResources NO-SOURCE
+> Task :app:compileTestJava NO-SOURCE
+> Task :app:processTestResources NO-SOURCE
+> Task :app:testClasses UP-TO-DATE
+> Task :lib:processResources NO-SOURCE
+> Task :lib:classes
+> Task :lib:compileTestJava
+> Task :lib:processTestResources NO-SOURCE
+> Task :lib:testClasses
+
+[Incubating] Problems report is available at: file:///work/repo/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileIntegrationTestJava' (registered by plugin class 'org.gradle.api.plugins.JavaBasePlugin').
+> Compilation failed; see the compiler output below.
+  /work/repo/app/src/integrationTest/java/com/example/app/GreetingIT.java:10: error: cannot find symbol
+          assertEquals("1 + 1 = 2", App.greet());
+                                       ^
+    symbol:   method greet()
+    location: class App
+  /work/repo/app/src/integrationTest/java/com/example/app/GreetingIT.java:15: error: cannot find symbol
+          assertEquals("1 + 1 = 3", App.greet());
+                                       ^
+    symbol:   method greet()
+    location: class App
+  2 errors
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+BUILD FAILED in 482ms
+5 actionable tasks: 5 executed

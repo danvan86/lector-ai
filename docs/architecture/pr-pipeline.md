@@ -23,7 +23,7 @@ flowchart LR
     image --> pipeline["PrPipeline<br/>(core)"]
     pipeline --> source["UpdateSource<br/>RenovateSource (sources)"]
     pipeline --> host["GitHost<br/>GitHubHost (git)"]
-    pipeline --> adapter["EcosystemAdapter<br/>MavenAdapter (ecosystems:jvm)"]
+    pipeline --> adapter["EcosystemAdapter<br/>MavenAdapter, GradleAdapter (ecosystems:jvm)"]
     pipeline --> loop["FixLoop + Guardrails<br/>(core)"]
     loop --> llm["LlmClient<br/>OllamaClient (llm)"]
     llm --> sidecar
@@ -42,14 +42,14 @@ flowchart LR
 | | `RecipeStep.kt` | Split for the pipeline: `recipeBlocker` (rules 1 and 2), `runRecipe` (rule 3), `RecipeOutcome.reason`. |
 | | `GitWorkingTree.kt` | `CommitIdentity` (`TOOL` = `lector` for the CLI), `commit(…, identity)`, `head`, `authorEmail`, `hasCommit`, `SHORT_COMMIT`. |
 | | `Processes.kt` | `runProcess` starts every process with only the allowlisted variables (`ALLOWED_VARIABLES`, prefixes `LC_` and `MAVEN_`) plus the ones the caller adds. |
-| `sources` | `RenovateSource.kt` | Recognizes the `renovate/` branch prefix; reads every row of the PR body's update table and the release notes. |
+| `sources` | `RenovateSource.kt` | Recognizes the `renovate/` branch prefix; reads every row of the PR body's update table and the release notes. Since M7 the package comes from the row's badge, so Gradle plugin and version catalog rows work. |
 | `git` | `GitHubHost.kt` | The PR from the `pull_request` event file, comment and label over REST with the JDK `HttpClient`, fetch and push with the `git` CLI. |
-| `ecosystems:jvm` | `JdkSelection.kt` | Picks the smallest installed JDK that the root POM's `maven.compiler.release`, else `java.version`, needs (default 21). `MavenAdapter` sets `JAVA_HOME` per Maven run. `installedJdks(environment)` reads the installed JDKs from `LECTOR_JDK_<release>` variables, for `cli` and the benchmark. |
+| `ecosystems:jvm` | `JdkSelection.kt` | Picks the smallest installed JDK that the root POM's `maven.compiler.release`, else `java.version`, needs (default 21). `MavenAdapter` sets `JAVA_HOME` per Maven run. Gradle picks its JDK differently (`DaemonJdk` and toolchains, M7, see [Gradle adapter](gradle-adapter.md#how-gradle-runs)). `installedJdks(environment)` reads the installed JDKs from `LECTOR_JDK_<release>` variables, for `cli` and the benchmark (M6). |
 | `cli` | `PrCommand.kt` | `lector pr`: options, the token from the environment, the exit code, the comment text on stdout. |
 | | `FixLoopOptions.kt` | The options `heal` and `pr` share: `--ollama-url`, `--model` (`DEFAULT_MODEL`), the five budgets; `httpUrl()`. |
-| | `RootCommand.kt` | Wires `RenovateSource` into `PrCommand`, and `MavenAdapter` with the JDKs of `installedJdks()` (`JdkSelection.kt` in `ecosystems:jvm`, since M6), which reads `LECTOR_JDK_<release>`. |
-| — | `action/action.yml` | Docker container action on `ghcr.io/danvan86/lector:<version>`: inputs → `pr` options; token and Maven settings through the environment. |
-| — | `docker/lector/Dockerfile` | Tool image: `eclipse-temurin` 25 base, JDK 17 and 21 stages copied in, Maven, `git`, the installed distribution. No model, no recipe JARs. |
+| | `RootCommand.kt` | Wires `RenovateSource` into `PrCommand`; `adapters()` builds `GradleAdapter` and `MavenAdapter` with the JDKs `installedJdks()` (`JdkSelection.kt`) reads from `LECTOR_JDK_<release>`. |
+| — | `action/action.yml` | Docker container action on `ghcr.io/danvan86/lector:<version>`: inputs → `pr` options; token, Maven settings, and Gradle init script through the environment; `GRADLE_USER_HOME=/github/home/.gradle`, so a workflow can cache it. |
+| — | `docker/lector/Dockerfile` | Tool image: `eclipse-temurin` 25 base, JDK 17 and 21 stages copied in, Maven, `git`, the installed distribution with the OpenRewrite Gradle plugin (`LECTOR_REWRITE_GRADLE_PLUGIN`). No model, no recipe JARs, no Gradle. |
 | — | `docker/ollama/Dockerfile` | Ollama image: `ARG MODEL`, pulled at build time, `OLLAMA_KEEP_ALIVE=-1`. Its `FROM` is also the real-model test's Ollama. |
 | — | `.github/workflows/release.yml` | On a `v*` tag: `check` (tag = version, MSAL check done), then `tool-image` and the `ollama-image` matrix (7B, 30B). |
 
@@ -63,7 +63,7 @@ sequenceDiagram
     participant P as PrPipeline
     participant H as GitHubHost
     participant S as RenovateSource
-    participant E as MavenAdapter
+    participant E as EcosystemAdapter
     participant F as FixLoop
     A->>P: run(repo)
     P->>H: pullRequest()
@@ -113,6 +113,7 @@ sequenceDiagram
 | Bot identity | `--bot-name` (commit author and the login of the report comment), `--bot-email` (commit email, and the own-commit check). |
 | Bot logins | `--bot-logins`, comma-separated, trimmed, default `renovate[bot]`. |
 | Maven settings | `--maven-settings` / `LECTOR_MAVEN_SETTINGS`; empty means none. |
+| Gradle init script | `--gradle-init` / `LECTOR_GRADLE_INIT`; empty means none (M7). |
 | Fix loop | `--ollama-url`, `--model`, the budgets (`FixLoopOptions`). |
 
 | Outcome | stdout | Exit |
@@ -126,7 +127,7 @@ sequenceDiagram
 
 ### Renovate PR body
 
-`RenovateSource` reads the table after `This PR contains the following updates:`. Columns are found by header name (`Package`, `Change`, optional `Update`). A row is a change when `Change` has `` `from` → `to` `` (or `->`), the update type isn't `digest`, `pinDigest`, `pin`, or `lockFileMaintenance`, and the versions aren't both commit hashes. The ecosystem comes from the datasource in the merge-confidence badge URL (`maven`, `npm`, `pypi` in `ECOSYSTEMS`); a row without a badge is the repository's, a row with an unknown datasource is left out. Release notes are the text after `### Release Notes`, up to Renovate's configuration section or footer.
+`RenovateSource` reads the table after `This PR contains the following updates:`. Columns are found by header name (`Package`, `Change`, optional `Update`). A row is a change when `Change` has `` `from` → `to` `` (or `->`), the update type isn't `digest`, `pinDigest`, `pin`, or `lockFileMaintenance`, and the versions aren't both commit hashes. The ecosystem comes from the datasource in the merge-confidence badge URL (`maven`, `npm`, `pypi` in `ECOSYSTEMS`), and since M7 the package too, because the table may show a Gradle plugin ID or a version catalog alias. A row without a badge is the repository's, with the table's package name; a row with an unknown datasource is left out. A Gradle wrapper row (datasource `gradle-version`, or the unbadged package `gradle`) has no ecosystem, so a wrapper-only PR is skipped. Release notes are the text after `### Release Notes`, up to Renovate's configuration section or footer.
 
 ### GitHub
 
@@ -145,7 +146,7 @@ sequenceDiagram
 
 | Artifact | Contents | Published as |
 |---|---|---|
-| Tool image | lector on JDK 25; JDKs 17, 21, 25 as `LECTOR_JDK_17/21/25`; Maven; `git` with `safe.directory '*'`; `.dockerignore` admits only `cli/build/install/lector` | `ghcr.io/<owner>/lector:<version>` |
+| Tool image | lector on JDK 25; JDKs 17, 21, 25 as `LECTOR_JDK_17/21/25`; Maven; the OpenRewrite Gradle plugin in `/opt/lector/rewrite-gradle-plugin`; `git` with `safe.directory '*'`; `.dockerignore` admits only `cli/build/install/lector` | `ghcr.io/<owner>/lector:<version>` |
 | Ollama image | `ollama/ollama` with one model pulled at build time | `ghcr.io/<owner>/lector-ollama:<model-tag>` and `:<version>-<model-tag>` (`qwen2.5-coder-7b`, `qwen3-coder-30b`) |
 
 Dependabot watches both Dockerfiles; major updates of `eclipse-temurin` are ignored so each JDK stage stays on its release.
@@ -156,7 +157,7 @@ Dependabot watches both Dockerfiles; major updates of `eclipse-temurin` are igno
 |---|---|---|---|
 | Unit, pipeline | `test` | `PrPipeline` on a real shallow clone with fake host, source, adapter, and model: every trigger check, green stop, recipe grouping and order, push, rejected push, label, time budget | `PrPipelineTest` |
 | Unit, comment | `test` | Rendered Markdown for every section and the green comment | `PrCommentTest` |
-| Unit, Renovate | `test` | Captured PR bodies under `sources/src/test/resources/renovate/` (single, monorepo and Maven groups, digest, pin, lock-file maintenance) | `RenovateSourceTest` |
+| Unit, Renovate | `test` | Captured PR bodies under `sources/src/test/resources/renovate/` (single, monorepo and Maven groups, digest, pin, lock-file maintenance, and since M7 a Gradle plugin, a version catalog alias, and a wrapper update) | `RenovateSourceTest` |
 | Unit, GitHub | `test` | A local `HttpServer` as the REST API, a real bare remote for push and fetch | `GitHubHostTest` |
 | Unit, JDK and env | `test` | JDK choice from the POM; a child process sees no token or `INPUT_*` | `JdkSelectionTest`, `ProcessesTest` |
 | Unit, CLI | `test` | Options, exit codes, stdout and stderr of `pr`; a red-to-green flow through the real adapters with local fakes for GitHub and Ollama and a scripted `mvnw` | `PrCommandTest`, `PrFlowTest` |
@@ -171,9 +172,9 @@ The real end-to-end run (a Renovate PR in a test repository on GitHub, published
 |---|---|---|
 | The tool's own head commit is a skip with exit `0`, so the PR's latest check is green even when something is left | A verify-only run per push costs a full build; state in comments was decided against (review F4) | If users miss the red check |
 | `UpdateSource` returns `PackageUpdate`s; the pipeline builds `DependencyChange`s | The update type depends on the ecosystem's version scheme, which the source doesn't know | — |
-| Ecosystem from Renovate's datasource badge, not its manager | The PR body names no manager | Self-hosted Renovate without badges |
+| Ecosystem and package from Renovate's datasource badge, not its manager | The PR body names no manager; the table names Gradle plugins by ID and catalog entries by alias | Self-hosted Renovate without badges |
 | Only in-place commits, unsigned | Simplest; Renovate branches are usually unprotected | M8 (companion PRs) |
 | Fetch uses the token too | A private repository's base commit needs it | — |
 | Builds run in the same container and as the same user as the tool | Builds don't see the token in their environment, but could read it from `/proc` | A separate user or container for builds |
 | The 30B Ollama image has a single ~19 GB layer, GHCR takes up to 10 GB | Built in its own matrix job with `fail-fast: false`, so the 7B image doesn't depend on it | First release |
-| Only Renovate, GitHub, Maven | M5 scope | M7, M8, Later |
+| Only Renovate and GitHub; Maven, and Gradle since M7 | M5 and M7 scope | M8, Later |

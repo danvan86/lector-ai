@@ -1,13 +1,18 @@
 package gmbh.vanella.lector.cli
 
 import com.github.ajalt.clikt.testing.test
+import gmbh.vanella.lector.ecosystems.jvm.GradleAdapter
+import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
+import kotlin.io.path.createDirectories
 import kotlin.io.path.createFile
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class RootCommandTest {
     @Test
@@ -86,5 +91,40 @@ class RootCommandTest {
 
         assertEquals("Skipped: no update source recognizes the branch feature/x\n", result.stdout)
         assertEquals(0, result.statusCode)
+    }
+
+    @Test
+    fun `verify detects Gradle repositories, and refuses one with a pom_xml next to its Gradle files`(
+        @TempDir repo: Path,
+    ) {
+        repo.resolve("settings.gradle.kts").createFile()
+        repo.resolve("gradlew").createFile()
+        repo.resolve("gradle/wrapper").createDirectories().resolve("gradle-wrapper.properties").writeText(
+            "distributionUrl=https\\://services.gradle.org/distributions/gradle-9.1.0-bin.zip\n",
+        )
+
+        val detected = rootCommand("1.2.3").test("verify $repo --base no-such-ref")
+        repo.resolve("pom.xml").createFile()
+        val both = rootCommand("1.2.3").test("verify $repo")
+
+        assertContains(detected.stderr, "Error: Base ref no-such-ref is not a commit in $repo")
+        assertContains(both.stderr, "Error: $repo has both a pom.xml and Gradle build files at the root.")
+        assertEquals(listOf(2, 2), listOf(detected.statusCode, both.statusCode))
+    }
+
+    @Test
+    fun `Gradle comes before Maven, and gets the Gradle user home and the shipped OpenRewrite plugin from the environment`() {
+        val environment =
+            mapOf(
+                "GRADLE_USER_HOME" to "/github/home/.gradle",
+                "LECTOR_REWRITE_GRADLE_PLUGIN" to "/opt/lector/rewrite-gradle-plugin",
+            )
+
+        val adapters = adapters(BuildConfig(), environment)
+        val withoutPlugin = adapters(BuildConfig(), mapOf("LECTOR_REWRITE_GRADLE_PLUGIN" to " "))
+
+        assertEquals(listOf(GradleAdapter::class, MavenAdapter::class), adapters.map { it::class })
+        assertNotNull(adapters.first().recipeRunner)
+        assertNull(withoutPlugin.first().recipeRunner, "a blank value is no plugin")
     }
 }

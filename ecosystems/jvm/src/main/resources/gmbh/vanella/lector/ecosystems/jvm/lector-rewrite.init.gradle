@@ -1,0 +1,21 @@
+// lector-ai's recipe run (GradleAdapter): applies the OpenRewrite Gradle plugin to the root project and runs the recipe
+// -Plector.recipe from the artifact -Plector.recipeArtifact. No build file is edited. The plugin's JARs ship with the
+// tool; the recipe artifact and the OpenRewrite libraries resolve through the project's repositories.
+
+initscript {
+    dependencies {
+        classpath files(new File('@PLUGIN_DIRECTORY@').listFiles().findAll { it.name.endsWith('.jar') })
+    }
+}
+
+gradle.rootProject { root ->
+    root.apply plugin: org.openrewrite.gradle.RewritePlugin
+    root.rewrite { activeRecipe(root.property('lector.recipe').toString()) }
+    root.dependencies { rewrite(root.property('lector.recipeArtifact').toString()) }
+}
+
+// rewriteRun depends on compiling every source set, so it would fail exactly when the update broke the build. It parses
+// the sources itself, with the resolved compile classpaths (M7 Q19).
+gradle.projectsEvaluated {
+    gradle.rootProject.tasks.named('rewriteRun') { it.setDependsOn([]) }
+}

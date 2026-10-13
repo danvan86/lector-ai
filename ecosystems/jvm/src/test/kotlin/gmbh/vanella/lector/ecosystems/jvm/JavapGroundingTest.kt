@@ -25,7 +25,7 @@ class JavapGroundingTest {
     lateinit var localRepository: Path
 
     private val change = DependencyChange("maven", "org.example:lib-core", "1.0", "2.0", UpdateType.MAJOR)
-    private val grounding by lazy { JavapGrounding(localRepository) }
+    private val grounding by lazy { JavapGrounding(localRepositoryJars(localRepository)) }
     private val app = "src/main/java/com/example/App.java"
 
     @BeforeTest
@@ -141,7 +141,7 @@ class JavapGroundingTest {
         val output =
             "Error: class not found: org.example.lib.Gone\n" +
                 "Compiled from \"Greeter.java\"\npublic class org.example.lib.Greeter {\n}\n"
-        val failing = JavapGrounding(localRepository) { _, _ -> ProcessResult(1, output) }
+        val failing = JavapGrounding(localRepositoryJars(localRepository)) { _, _ -> ProcessResult(1, output) }
 
         val text = failing.ground(repo, change, listOf(javac(app, "cannot find symbol")))
 

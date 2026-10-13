@@ -5,7 +5,7 @@ Milestone: [M3](../features.md#m3--fix-loop-cli-only-no-ci-yet-) · Spec: [`m3-f
 > **Summary for agents**
 >
 > - `lector heal <repo> --package … --from … --to …` runs M2's recipe step, commits the recipe's result, then runs `FixLoop` in `core`: one cluster of diagnostics caused by the update per attempt, a grounded `FixRequest` to the `LlmClient` port, search/replace `Edit`s back, applied, verified, and either committed or reset. The exit code follows the final verification, like `verify`. Since M5, `lector pr` runs the same `FixLoop` for every change of a PR ([PR pipeline](pr-pipeline.md)).
-> - Ports: `LlmClient.propose(FixRequest): Proposal` and, since M6, `LlmClient.fits(FixRequest)` (`LlmClient.kt`), and on `EcosystemAdapter` `ground`, `clusterKey`, `isBuildFile`. The only implementations are `OllamaClient` in the new module `llm` and `MavenAdapter` (`ClusterKeys`, `JavapGrounding`). `core` knows no LLM vendor and no language.
+> - Ports: `LlmClient.propose(FixRequest): Proposal` and, since M6, `LlmClient.fits(FixRequest)` (`LlmClient.kt`), and on `EcosystemAdapter` `ground`, `clusterKey`, `isBuildFile`. The implementations are `OllamaClient` in the module `llm`, and `MavenAdapter` and, since M7, `GradleAdapter`, which share `ClusterKeys` and `JavapGrounding`. `core` knows no LLM vendor and no language.
 > - An attempt is accepted only if `Progress` (build errors without a location, compile errors, test failures, compared in that order) gets lower. Accepted: one local commit, as the `CommitIdentity` the loop gets (`lector` for `heal`, the GitHub App's bot for `pr`), with the edited, tracked files only. Anything else: `GitWorkingTree.reset()`, also on any exception or error inside the attempt. Since M4, every attempt passes the [guardrails](guardrails.md) before it is verified.
 > - The prompt's limits live in `Prompt` (`CONTEXT_TOKENS`, `ANSWER_TOKENS`, `MAX_CHARS`), the answer's structure in `FixSchema`, the budget defaults in `Budgets`, the options and the default model `DEFAULT_MODEL` in `FixLoopOptions.kt` (shared by `heal` and `pr`), and the Ollama image for the real-model test in the `FROM` line of `docker/ollama/Dockerfile`.
 > - Easiest rules to break: never send diagnostics that aren't `causedByUpdate` to the model; never cut a diagnostic or its code: a request carries whole diagnostics, as many as fit (M6); never repair an edit that doesn't apply (rule 4); never stage more than the edited files in a fix commit (`git add --all` would take build output).
@@ -23,6 +23,7 @@ flowchart LR
     ollama --> api["Ollama /api/chat"]
     loop --> adapterPort["EcosystemAdapter<br/>ground, clusterKey, isBuildFile (core)"]
     maven["MavenAdapter<br/>ClusterKeys, JavapGrounding<br/>(ecosystems:jvm)"] -. implements .-> adapterPort
+    gradle["GradleAdapter<br/>(ecosystems:jvm, M7)"] -. implements .-> adapterPort
     loop --> attr["attribute()<br/>(core, M1)"]
     loop --> git["GitWorkingTree<br/>commit, reset (core)"]
     cli --> report["FixLoopReport<br/>(cli)"]
@@ -43,14 +44,15 @@ flowchart LR
 | `llm` | `OllamaClient.kt` | The `LlmClient`: one `POST /api/chat` per attempt with the JDK `HttpClient`. Connect timeout 30 s, answer timeout 15 min. `fits()` builds the prompt and checks it against `Prompt.fits`, without a request. |
 | | `Prompt.kt` | The system prompt, the user prompt with trimming, and the context limits. |
 | | `FixSchema.kt` | The answer's JSON schema (`analysis`, `rationale`, `edits`) and `parse()`, which strips code fences and turns every mismatch into `Proposal.Invalid`. |
-| `ecosystems:jvm` | `ClusterKeys.kt` | Cluster keys from javac, kotlinc, and Maven messages; `missingSymbol()` for grounding. |
-| | `JavapGrounding.kt` | `javap -public` on the new version's JARs in the local Maven repository. |
+| `ecosystems:jvm` | `ClusterKeys.kt` | Cluster keys from javac, kotlinc, Maven, and Gradle messages; `missingSymbol()` for grounding. |
+| | `JavapGrounding.kt` | `javap -public` on the new version's JARs, found by a function the adapter passes: `localRepositoryJars()` (the local Maven repository) or, for Gradle, the compile classpath its query task reported. |
 | | `MavenAdapter.kt` | Wires both, and `isBuildFile`: `pom.xml` at any depth (since M4 also `mvnw`, `mvnw.cmd`, and `.mvn/…`). Takes `localRepository` (default `~/.m2/repository`). |
+| | `GradleAdapter.kt` | The same for Gradle (M7), see [Gradle adapter](gradle-adapter.md). |
 | `cli` | `HealCommand.kt` | The `heal` subcommand: clean check, recipe, recipe commit, fix loop, report. |
 | | `FixLoopOptions.kt` | The Ollama and budget options, shared by `heal` and `pr`; `DEFAULT_MODEL`; `httpUrl()`, the URL check. |
 | | `UpdateCommand.kt` | `--package`, `--from`, `--to`, and `change(adapter)`, shared by `migrate` and `heal`. Extends `RepositoryCommand`. |
 | | `FixLoopReport.kt` | The fix-loop section in text and JSON. |
-| | `RootCommand.kt` | Wires `HealCommand` with `MavenAdapter` and `BundledRecipeIndex.load()`; the `LlmClient` factory defaults to `::OllamaClient`. |
+| | `RootCommand.kt` | Wires `HealCommand` with `adapters()` (`GradleAdapter`, `MavenAdapter`) and `BundledRecipeIndex.load()`; the `LlmClient` factory defaults to `::OllamaClient`. |
 
 ```mermaid
 flowchart TB
@@ -166,15 +168,16 @@ The time budget is also the deadline of an attempt's builds and test runs (M5): 
 
 | Capability | Implementation | Notes |
 |---|---|---|
-| `clusterKey` | `ClusterKeys.of()` | `artifact:<group>:<artifact>` from Maven's `Could not find artifact`; `package:<name>` from javac's `package … does not exist`; `symbol:<name>` from javac's `symbol:` line or kotlinc's `Unresolved reference` (2.x and 1.9). Test failures have no key. English messages only. |
-| `ground` | `JavapGrounding.ground()` | JARs: every artifact of the package's group at `toVersion` under `localRepository` (no sources, Javadoc, or test JARs). Classes: the erroring files' imports and qualified names in the messages, plus classes in those packages or anywhere in the JARs that declare or are named like the missing symbol, at most 300, nested classes left out. One `javap -public -cp <jars> <classes>` run, 2 min timeout; a failure is logged and yields what was parsed. Nothing is downloaded. |
+| `clusterKey` | `ClusterKeys.of()` | `artifact:<group>:<artifact>` from Maven's `Could not find artifact` and Gradle's `Could not find <group>:<artifact>:<version>.`; `package:<name>` from javac's `package … does not exist`; `symbol:<name>` from javac's `symbol:` line or kotlinc's `Unresolved reference` (2.x and 1.9). Test failures have no key. English messages only. |
+| `ground` | `JavapGrounding.ground()` | JARs: every artifact of the package's group at `toVersion` under `localRepository` (no sources, Javadoc, or test JARs); for Gradle, the JARs of that group and version on the compile classpaths of the last model, none if it couldn't be read. Classes: the erroring files' imports and qualified names in the messages, plus classes in those packages or anywhere in the JARs that declare or are named like the missing symbol, at most 300, nested classes left out. One `javap -public -cp <jars> <classes>` run, 2 min timeout; a failure is logged and yields what was parsed. Nothing is downloaded. |
 | `isBuildFile` | `MavenAdapter` | `pom.xml` or `*/pom.xml`, and since M4 `mvnw`, `mvnw.cmd`, and `.mvn/…` at the root: Maven reads them on every run, and they can set properties. |
+| `isBuildFile` | `GradleAdapter` | Build and settings scripts, `gradle.properties`, `gradle/…`, the wrapper, `buildSrc/`, `build-logic/`, and every included build ([Gradle adapter](gradle-adapter.md#guardrails)). |
 
 Grounding is how `MoreObjects.firstNonNull` reaches the model for Guava's removed `Objects.firstNonNull`: the symbol `firstNonNull` is missing, and `MoreObjects` in the imported package declares it.
 
 ## CLI contract
 
-`lector heal <repo> --package <package> --from <version> --to <version> [--base <git-ref>] [--release-notes <file>] [--format text|json] [--maven-settings <file>] [--ollama-url <url>] [--model <name>] [--max-attempts-per-cluster <n>] [--max-attempts <n>] [--time-limit <minutes>] [--max-attempts-without-progress <n>] [--max-changed-lines <n>]`
+`lector heal <repo> --package <package> --from <version> --to <version> [--base <git-ref>] [--release-notes <file>] [--format text|json] [--maven-settings <file>] [--gradle-init <file>] [--ollama-url <url>] [--model <name>] [--max-attempts-per-cluster <n>] [--max-attempts <n>] [--time-limit <minutes>] [--max-attempts-without-progress <n>] [--max-changed-lines <n>]`
 
 Defaults: `--ollama-url http://localhost:11434`, `--model qwen2.5-coder:7b`, budgets as above, `--max-changed-lines 50` (the [diff-size guardrail](guardrails.md#the-rules)). `heal --help` shows them. `lector pr` has the same options (`FixLoopOptions`).
 
@@ -236,7 +239,7 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
 | `analysis` field first in the schema | Measured: without it, `qwen2.5-coder:7b` never added the import of a moved method's class. | M6 |
 | Feedback after no progress names the errors after the edits | With only the counts, the model repeated its edit. | — |
 | Clusters by the adapter's key, from English compiler messages | Error messages are language- and locale-specific. The tool image sets `LANG=C.UTF-8`, so the JDK runs in English. | — |
-| Grounding reads `~/.m2/repository` only | A `localRepository` in the Maven settings is not followed. | When a user's setup needs it |
+| Maven grounding reads `~/.m2/repository` only | A `localRepository` in the Maven settings is not followed. | When a user's setup needs it |
 | Snippets are ±40 lines, not the enclosing method | Needs a parser; M4's `LanguageSupport` reports methods, but snippets don't use it yet. | Open |
 | The time budget bounds builds and test runs, not the model's answer | An Ollama request has its own 15-minute timeout; the budget is checked again before the next one. | — |
 | Removing the PR's own package is not a downgrade | Open decision (review D2); M4 left the rule as it is. | Open |

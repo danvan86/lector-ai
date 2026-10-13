@@ -20,7 +20,6 @@ import kotlin.io.path.createFile
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import kotlin.time.Duration
 
 class VerifyCommandTest {
@@ -31,7 +30,7 @@ class VerifyCommandTest {
     private val oldBug = Diagnostic("src/OldTest.java", 9, null, null, "expected <1>", Severity.ERROR, "surefire", "OldTest#fails")
     private val flaky = Diagnostic(null, null, null, null, "timed out", Severity.ERROR, "surefire", "SlowTest#waits")
 
-    private val settingsPassed = mutableListOf<Path?>()
+    private val configsPassed = mutableListOf<BuildConfig>()
     private val basesResolved = mutableListOf<String>()
 
     @Test
@@ -90,7 +89,39 @@ class VerifyCommandTest {
 
         command(FakeAdapter()).test("$repo --maven-settings $settings")
 
-        assertEquals(listOf<Path?>(settings), settingsPassed)
+        assertEquals(listOf(BuildConfig(mavenSettings = settings)), configsPassed)
+    }
+
+    @Test
+    fun `--gradle-init is handed to the adapters`() {
+        val init = repo.resolve("mirror.gradle").createFile()
+
+        command(FakeAdapter()).test("$repo --gradle-init $init")
+
+        assertEquals(listOf(BuildConfig(gradleInit = init)), configsPassed)
+    }
+
+    @Test
+    fun `a Gradle init script that doesn't exist is a tool error with exit 2`() {
+        val result = command(FakeAdapter()).test("$repo --gradle-init ${repo.resolve("missing.gradle")}")
+
+        assertEquals("", result.stdout)
+        assertEquals("Error: Gradle init script ${repo.resolve("missing.gradle")} is not a file\n", result.stderr)
+        assertEquals(2, result.statusCode)
+        assertEquals(emptyList(), configsPassed, "nothing is built")
+    }
+
+    @Test
+    fun `the adapters are closed after the run, also when it fails`() {
+        val green = FakeAdapter()
+        val failing = FakeAdapter(failure = OutOfMemoryError("no memory"))
+
+        command(green).test(repo.toString())
+        val result = command(failing).test(repo.toString())
+
+        assertEquals(1, green.closed)
+        assertEquals(1, failing.closed)
+        assertEquals(2, result.statusCode)
     }
 
     @Test
@@ -98,7 +129,11 @@ class VerifyCommandTest {
         val result = command(FakeAdapter(detects = false)).test(repo.toString())
 
         assertEquals("", result.stdout)
-        assertEquals("Error: No supported ecosystem in $repo. Supported: Maven (pom.xml at the root).\n", result.stderr)
+        assertEquals(
+            "Error: No supported ecosystem in $repo. Supported: Maven (pom.xml at the root) and Gradle (settings.gradle(.kts) or " +
+                "build.gradle(.kts) at the root).\n",
+            result.stderr,
+        )
         assertEquals(2, result.statusCode)
     }
 
@@ -197,8 +232,8 @@ class VerifyCommandTest {
 
     private fun command(adapter: FakeAdapter) =
         VerifyCommand(
-            adapters = { settings ->
-                settingsPassed += settings
+            adapters = { config ->
+                configsPassed += config
                 listOf(adapter)
             },
             baseCommit = { _, ref ->
@@ -215,8 +250,14 @@ class VerifyCommandTest {
         private val headRerun: List<Diagnostic> = emptyList(),
         private val baseRun: List<Diagnostic> = emptyList(),
         private val failure: Throwable? = null,
-    ) : EcosystemAdapter {
+    ) : EcosystemAdapter,
+        AutoCloseable {
         var verifyCalls = 0
+        var closed = 0
+
+        override fun close() {
+            closed++
+        }
 
         override val ecosystem = "maven"
 
