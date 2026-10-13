@@ -1,6 +1,6 @@
 # Architecture – Benchmark
 
-Milestone: [M6](../features.md#m6--benchmark-) · Spec: [`m6-benchmark/spec.md`](../../specs/open/m6-benchmark/spec.md) · Review: [`review.md`](../../specs/open/m6-benchmark/review.md)
+Milestone: [M6](../features.md#m6--benchmark-) · Spec: [`m6-benchmark/spec.md`](../../specs/done/m6-benchmark/spec.md) · Review: [`review.md`](../../specs/done/m6-benchmark/review.md)
 
 > **Summary for agents**
 >

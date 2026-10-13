@@ -91,7 +91,7 @@ Dependabot PRs and labelled manual dependency PRs go through the same pipeline a
 - **End-to-end** on a GitHub test repository with the documented workflow:
   - a real Dependabot PR that breaks the build gets a companion PR with a fix commit, and a sticky comment on the Dependabot PR;
   - a manual dependency PR with the opt-in label gets the same.
-- **Benchmark:** the M6 harness passes no release notes to the fix loop, because Dependabot PRs had none in the product ([M6 review](../m6-benchmark/review.md) F4). With the Dependabot source, store each historical case's notes with the corpus and pass them in, and drop the report's "no release notes" line.
+- **Benchmark:** the M6 harness passes no release notes to the fix loop, because Dependabot PRs had none in the product ([M6 review](../../done/m6-benchmark/review.md) F4). With the Dependabot source, store each historical case's notes with the corpus and pass them in, and drop the report's "no release notes" line.
 
 **Why:** fakes cover the lifecycle branches quickly. The end-to-end runs are the M8 "done when": Dependabot and manual PRs are fixed the same way as Renovate PRs.
 
