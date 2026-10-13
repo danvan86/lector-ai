@@ -99,9 +99,12 @@ jobs:
           --health-interval 5s
           --health-retries 30
     steps:
-      # What Dependabot updated, read from its commit. Only on Dependabot's PRs.
+      # What Dependabot updated, read from its commit. Only on Dependabot's PRs. It refuses once the head commit isn't
+      # Dependabot's (lector-ai's own commit in place, the merged companion PR, a push by a person): Dependabot no longer
+      # owns the branch then, and lector-ai skips the run instead of failing it.
       - id: metadata
         if: github.event.pull_request.user.login == 'dependabot[bot]'
+        continue-on-error: true
         uses: dependabot/fetch-metadata@v3
       - id: app-token
         uses: actions/create-github-app-token@v3
@@ -114,7 +117,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
-      - uses: danvan86/lector-ai/action@v0.1.0
+      - if: steps.metadata.outcome != 'failure'
+        uses: danvan86/lector-ai/action@v0.1.0
         with:
           token: ${{ steps.app-token.outputs.token }}
           bot-name: my-lector[bot]
@@ -155,6 +159,7 @@ What happens on each run:
 | The update broke a Renovate PR | Recipe and fix commits, pushed to the branch; the comment; the `ai-assisted` label | green if nothing the update caused is left, red otherwise |
 | The update broke a Dependabot PR or a labelled PR | Recipe and fix commits in the companion PR; the comment on the PR, with a link; the `ai-assisted` label on the companion PR | green if nothing the update caused is left, red otherwise |
 | Renovate pushed while lector-ai was working | Nothing is pushed; the new head gets its own run | green |
+| A Dependabot PR whose head commit isn't Dependabot's: lector-ai's own in place, the merged companion PR, a person's push | Nothing: `fetch-metadata` refuses, and the lector-ai step is skipped | green |
 | The PR was closed or merged | Closes its companion PR and deletes the companion branch | green |
 | lector-ai itself failed (configuration, network, a timeout), or can't tell what a PR changes | Nothing is pushed; the comment says why if it got that far | red, exit code 2 |
 
@@ -175,23 +180,27 @@ summary.
 - **Merge the companion PR first, then Dependabot's PR.** The companion PR goes into Dependabot's branch, so its fixes
   then arrive with the update.
 - When Dependabot updates its PR, lector-ai rebuilds the companion branch from the new head and force-pushes it. The
-  companion PR stays the same, so the review discussion stays in one place.
+  companion PR stays the same, so the review discussion stays in one place. If the new head gets no fixes, lector-ai
+  closes the companion PR of the old head instead: merging it would bring the old head back.
+- Once the companion PR is merged, Dependabot's branch has a head that isn't Dependabot's, so later runs on that PR
+  skip (see the table above). Merge Dependabot's PR next.
 - When Dependabot's PR is closed or merged, or a later run finds it green, lector-ai closes the companion PR and deletes
-  its branch. A superseding Dependabot PR has a new branch, so it gets a companion PR of its own.
+  its branch, also a branch whose companion PR was merged already. A superseding Dependabot PR has a new branch, so it gets a companion PR of its own.
 - The `heal/` branches are lector-ai's: it force-pushes them and deletes them. Don't push your own work there.
 
 **In-place for Dependabot.** With `mode: in-place`, lector-ai pushes onto Dependabot's branch instead, like for
 Renovate. Then Dependabot no longer rebases that PR: resolve conflicts yourself, or close the PR and let Dependabot open
-a new one. Each new head gets its own run either way.
+a new one. A head commit that isn't Dependabot's is skipped (see the table above), so lector-ai works on each head
+Dependabot pushes, once.
 
 `dependabot/fetch-metadata` reads what Dependabot updated, every dependency of a grouped update included. Without its
-output, a run on a Dependabot PR fails with exit code 2. lector-ai fixes `maven` and `gradle` updates; Dependabot's
-other ecosystems are skipped. The release notes come from Dependabot's PR body.
+output, a run on a Dependabot PR fails with exit code 2. lector-ai fixes `maven` updates; `gradle` updates need Gradle
+support (see the limitations), and Dependabot's other ecosystems are skipped. The release notes come from Dependabot's PR body.
 
 ### Other dependency PRs: the opt-in label
 
 For a manual version bump, a Snyk PR, or any other bot, add the label **`lector`** to the PR. lector-ai then compares
-the resolved versions of the PR's base and head (the effective POM) and treats every difference as a change,
+the resolved versions of the PR's base and head and treats every difference as a change,
 transitive dependencies included. This catches changes made through properties, BOM imports, and parents. The fixes go
 into a companion PR, as for Dependabot. There are no release notes for these PRs.
 
