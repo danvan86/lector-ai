@@ -39,8 +39,10 @@ private const val PNP_SCRIPT =
 // its usage after it, pnpm and the test runners theirs last.
 private const val OUTPUT_LINES = 20
 
-// The variables of Node's package managers: registries, credentials, proxies, and Corepack's own (spec section 2).
+// The variables of Node's package managers: registries, credentials, proxies, and Corepack's own (spec section 2), and
+// the registry tokens an `.npmrc` reads by convention (`${NODE_AUTH_TOKEN}`, as setup-node writes it).
 private val VARIABLE_PREFIXES = listOf("NPM_CONFIG_", "npm_config_", "YARN_", "COREPACK_")
+private val VARIABLE_NAMES = setOf("NODE_AUTH_TOKEN", "NPM_TOKEN")
 
 /** Runs [command] in [workDir] with [environment] on top of the allowlisted one, for at most [timeout]. */
 internal typealias ProcessRunner = (
@@ -68,7 +70,7 @@ internal class NodeBuild(
     private val jestJunit: Path?,
     private val run: ProcessRunner,
 ) : AutoCloseable {
-    private val variables = environment.filterKeys { name -> VARIABLE_PREFIXES.any { name.startsWith(it) } }
+    private val variables = environment.filterKeys { name -> name in VARIABLE_NAMES || VARIABLE_PREFIXES.any { name.startsWith(it) } }
 
     // Per working tree: what the last install installed, whether the dependency builds ran since, and the test count.
     private val installed = mutableMapOf<Path, String>()
@@ -87,7 +89,7 @@ internal class NodeBuild(
         val session = Session(repo.toRealPath(), timeout)
         testsRun.remove(session.root)
         val install = session.install(frozen = true)
-        val stage1 = if (install == null) (session.build() + session.typeCheck()).distinct() else listOf(install)
+        val stage1 = install.ifEmpty { (session.build() + session.typeCheck()).distinct() }
         if (stage1.isNotEmpty()) return stage1
         val runs = session.project.packages.map { session.test(it, only = null) }
         val counts = runs.map { it.count }
@@ -109,7 +111,7 @@ internal class NodeBuild(
     ): List<Diagnostic> {
         val session = Session(repo.toRealPath(), timeout)
         val install = session.install(frozen = true)
-        val problems = if (install == null && session.root !in built) session.build() else listOfNotNull(install)
+        val problems = install.ifEmpty { if (session.root !in built) session.build() else emptyList() }
         if (problems.isNotEmpty()) return problems
         // A failure of a whole package reruns its whole test run.
         return tests
@@ -135,7 +137,11 @@ internal class NodeBuild(
         val lockfile = session.root.resolve(session.project.manager.lockfile)
         val before = lockfile.readText()
         val failure = session.install(frozen = false)
-        if (failure != null) return LockfileUpdate.Failed(failure.message)
+        if (failure.isNotEmpty()) {
+            return LockfileUpdate.Failed(
+                failure.joinToString("\n") { listOfNotNull(it.file, it.message).joinToString(": ") },
+            )
+        }
         return LockfileUpdate.Updated(if (lockfile.readText() == before) emptyList() else listOf(session.project.manager.lockfile))
     }
 
@@ -184,17 +190,22 @@ internal class NodeBuild(
         private val deadline = TimeSource.Monotonic.markNow() + timeout
         private val variables = variables(root, project)
 
-        /** The install, unless the last one in this working tree installed the same files. Returns its failure, or null. */
-        fun install(frozen: Boolean): Diagnostic? {
+        /** The install, unless the last one in this working tree installed the same files. Returns its problems, if it failed. */
+        fun install(frozen: Boolean): List<Diagnostic> {
             val fingerprint = fingerprint()
-            if (frozen && installed[root] == fingerprint) return null
+            if (frozen && installed[root] == fingerprint) return emptyList()
             installed.remove(root)
             built.remove(root)
             val command = commands.install(frozen)
             val result = run(command, root)
-            if (result.exitCode != 0) return failure(command, project.root, result)
+            // Lifecycle scripts build: a failed install yields their tsc errors, like a failed build script.
+            if (result.exitCode !=
+                0
+            ) {
+                return TscOutput.parse(result.output, root, root).ifEmpty { listOf(failure(command, project.root, result)) }
+            }
             installed[root] = fingerprint()
-            return null
+            return emptyList()
         }
 
         /** Stage 1, step 1: the `build` script of every workspace package another one depends on, in dependency order. */

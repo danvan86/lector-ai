@@ -310,6 +310,19 @@ class NodeBuildTest {
     }
 
     @Test
+    fun `an install whose lifecycle scripts fail with tsc errors yields them, also when the lockfile follows an edit`() {
+        fixture("npm-jest")
+        val output = "> prepare\n> gulp build\n$TSC_ERROR\n[21:18:30] 'build' errored after 2.58 s\nnpm error code 1"
+        answer = { run -> ProcessResult(if ("tsc" in run.command) 0 else 1, output) }
+
+        assertEquals(listOf("src/welcome.ts:1"), build().verify(repo, 1.hours).map { "${it.file}:${it.line}" })
+        assertEquals(
+            LockfileUpdate.Failed("src/welcome.ts: Cannot find module '@fixture/lib' or its corresponding type declarations."),
+            build().updateLockfiles(repo, 1.hours),
+        )
+    }
+
+    @Test
     fun `updateLockfiles installs without the frozen flag and names the lockfile if it changed`() {
         fixture("pnpm-workspace")
         val build = build()
@@ -349,6 +362,9 @@ class NodeBuildTest {
                 "npm_config_cache" to "/cache/npm",
                 "YARN_NPM_AUTH_TOKEN" to "registry",
                 "COREPACK_NPM_REGISTRY" to "https://npm.example.org/",
+                "NODE_AUTH_TOKEN" to "registry",
+                "NPM_TOKEN" to "registry",
+                "GITHUB_TOKEN" to "secret",
                 "LECTOR_GITHUB_TOKEN" to "secret",
                 "INPUT_TOKEN" to "secret",
             )
@@ -362,6 +378,8 @@ class NodeBuildTest {
                 "npm_config_cache" to "/cache/npm",
                 "YARN_NPM_AUTH_TOKEN" to "registry",
                 "COREPACK_NPM_REGISTRY" to "https://npm.example.org/",
+                "NODE_AUTH_TOKEN" to "registry",
+                "NPM_TOKEN" to "registry",
                 "COREPACK_ENABLE_DOWNLOAD_PROMPT" to "0",
                 "CI" to "true",
                 "PATH" to "${node.resolve("bin")}:/usr/bin",
