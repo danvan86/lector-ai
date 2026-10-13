@@ -10,6 +10,11 @@ private const val SECONDS_PER_MINUTE = 60.0
 // The manual review's sample: at least this many green fix-loop runs, or all of them if there are fewer (spec section 4).
 private const val REVIEW_SAMPLE = 10
 
+// The harness passes no release notes to the fix loop (review F4): Dependabot PRs have none in the product before M8.
+private const val NO_RELEASE_NOTES =
+    "The fix requests carry no release notes. `lector pr` passes the notes of a Renovate PR's body, so for those cases " +
+        "the fix-loop numbers are a lower bound."
+
 /** `report.md`: the numbers of one benchmark run (spec section 5), from its results and the manual [review], if there is one. */
 object Report {
     fun render(
@@ -42,6 +47,8 @@ object Report {
             |Tool commit `${results.toolCommit.take(SHORT_COMMIT)}` · model `${results.model}` · runner ${results.runner} · ${results.date}
             |
             |${cases.size} cases, ${invalid.size} invalid$invalidNote.
+            |
+            |$NO_RELEASE_NOTES
             """.trimMargin()
     }
 

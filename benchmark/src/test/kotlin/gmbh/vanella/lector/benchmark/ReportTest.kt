@@ -15,6 +15,15 @@ class ReportTest {
     }
 
     @Test
+    fun `the report says that the fix requests carried no release notes`() {
+        assertContains(
+            Report.render(results, review),
+            "The fix requests carry no release notes. `lector pr` passes the notes of a Renovate PR's body, so for those " +
+                "cases the fix-loop numbers are a lower bound.",
+        )
+    }
+
+    @Test
     fun `without a review, the report says so`() {
         assertContains(Report.render(results, null), "## Manual review\n\nNot done yet: add `review.json` and generate the report again.")
     }

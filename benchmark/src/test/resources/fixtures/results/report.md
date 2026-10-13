@@ -4,6 +4,8 @@ Tool commit `0123456` · model `qwen2.5-coder:7b` · runner GitHub-hosted ubuntu
 
 3 cases, 1 invalid: jackson-3, excluded from the numbers.
 
+The fix requests carry no release notes. `lector pr` passes the notes of a Renovate PR's body, so for those cases the fix-loop numbers are a lower bound.
+
 ## 90/10 verdict
 
 The hypothesis **doesn't hold**: on 4 green recipe + fix-loop runs, the recipe commits changed 47.5% of the lines on average, the fix commits the rest (holds at 90.0% or more).

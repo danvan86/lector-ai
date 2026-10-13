@@ -142,6 +142,7 @@ class Harness(
             initial: Verification,
         ): FixLoopResult {
             val recipeDiff = if (step == null) null else step.diff(repo)
+            // No release notes: the product reads none from Dependabot PRs before M8, and the report says so (review F4).
             return FixLoop(adapter, llm, base).run(repo, FixContext(changes, null, recipeDiff), initial)
         }
 
