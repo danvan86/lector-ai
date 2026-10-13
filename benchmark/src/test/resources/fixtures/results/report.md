@@ -58,12 +58,15 @@ Mean minutes per run.
 
 ## Manual review
 
-2 of 3 reviewed green runs (of 6 in the fix-loop modes) would be accepted unchanged (66.7%). Reviewer: A. Reviewer.
+5 of 6 reviewed green runs (of 6 in the fix-loop modes) would be accepted unchanged (83.3%). Reviewer: A. Reviewer.
 
 | Case | Mode | Repetition | Accepted unchanged | Reason |
 |---|---|---|---|---|
 | guava-21 | Fix loop only | 1 | yes | Uses MoreObjects.firstNonNull, as the release notes say |
+| guava-21 | Fix loop only | 2 | yes | Same fix as in repetition 1 |
 | guava-21 | Recipe + fix loop | 1 | yes | Same fix as in fix loop only |
+| guava-21 | Recipe + fix loop | 2 | yes | Same fix as in repetition 1 |
+| boot-3 | Recipe + fix loop | 1 | yes | Only the recipe's commit, no fix commit to review |
 | boot-3 | Recipe + fix loop | 2 | no | Catches the new exception instead of migrating the call |
 
 ## Errors and missing runs

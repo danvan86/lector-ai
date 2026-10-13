@@ -10,10 +10,31 @@
         },
         {
             "case": "guava-21",
+            "mode": "fix-loop-only",
+            "repetition": 2,
+            "acceptedUnchanged": true,
+            "reason": "Same fix as in repetition 1"
+        },
+        {
+            "case": "guava-21",
             "mode": "recipe-and-fix-loop",
             "repetition": 1,
             "acceptedUnchanged": true,
             "reason": "Same fix as in fix loop only"
+        },
+        {
+            "case": "guava-21",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 2,
+            "acceptedUnchanged": true,
+            "reason": "Same fix as in repetition 1"
+        },
+        {
+            "case": "boot-3",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 1,
+            "acceptedUnchanged": true,
+            "reason": "Only the recipe's commit, no fix commit to review"
         },
         {
             "case": "boot-3",

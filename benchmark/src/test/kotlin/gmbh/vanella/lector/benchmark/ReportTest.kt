@@ -33,6 +33,30 @@ class ReportTest {
     }
 
     @Test
+    fun `a review that covers a run twice, or fewer runs than the sample needs, is rejected`() {
+        val first = review.runs.first()
+
+        assertEquals(
+            "The review covers ${first.key} more than once",
+            assertFailsWith<IllegalArgumentException> { Report.render(results, review.copy(runs = review.runs + first)) }.message,
+        )
+        assertEquals(
+            "The review covers 5 runs, not the 6 it needs: at least 10 green runs of the fix-loop modes, or all if there are fewer",
+            assertFailsWith<IllegalArgumentException> { Report.render(results, review.copy(runs = review.runs.drop(1))) }.message,
+        )
+    }
+
+    @Test
+    fun `a review of 10 runs is enough when there are more green runs`() {
+        val green = List(12) { RunResult("case-$it", Mode.FIX_LOOP_ONLY, 1, "abc", "m", RunStatus.VALID, null, metrics(true)) }
+        val reviewed = green.map { ReviewedRun(it.case, it.mode, 1, true, "fine") }
+        val many = results.copy(runs = green)
+
+        assertContains(Report.render(many, Review("A. Reviewer", reviewed.take(10))), "10 of 10 reviewed green runs (of 12")
+        assertFailsWith<IllegalArgumentException> { Report.render(many, Review("A. Reviewer", reviewed.take(9))) }
+    }
+
+    @Test
     fun `without counted runs, there is no verdict, no rate, and no mean`() {
         val invalid = results.copy(runs = results.runs.filter { it.case == "jackson-3" })
 

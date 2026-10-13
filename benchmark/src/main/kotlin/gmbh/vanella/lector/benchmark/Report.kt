@@ -7,6 +7,9 @@ private val MODE_NAMES =
     mapOf(Mode.RECIPE_ONLY to "Recipe only", Mode.FIX_LOOP_ONLY to "Fix loop only", Mode.RECIPE_AND_FIX_LOOP to "Recipe + fix loop")
 private const val SECONDS_PER_MINUTE = 60.0
 
+// The manual review's sample: at least this many green fix-loop runs, or all of them if there are fewer (spec section 4).
+private const val REVIEW_SAMPLE = 10
+
 /** `report.md`: the numbers of one benchmark run (spec section 5), from its results and the manual [review], if there is one. */
 object Report {
     fun render(
@@ -173,6 +176,18 @@ object Report {
                 "The review covers ${reviewed.key}, which is not a green run of a fix-loop mode"
             }
         }
+        val twice =
+            review.runs
+                .groupBy { it.key }
+                .filterValues { it.size > 1 }
+                .keys
+        require(twice.isEmpty()) { "The review covers ${twice.joinToString(", ")} more than once" }
+        val greenRuns = results.runs.count { it.mode.usesFixLoop && it.metrics?.green == true }
+        val needed = minOf(REVIEW_SAMPLE, greenRuns)
+        require(review.runs.size >= needed) {
+            "The review covers ${review.runs.size} runs, not the $needed it needs: at least $REVIEW_SAMPLE green runs of the " +
+                "fix-loop modes, or all if there are fewer"
+        }
         val accepted = review.runs.count { it.acceptedUnchanged }
         val rows =
             review.runs.map {
@@ -180,7 +195,6 @@ object Report {
                     it.mode,
                 )} | ${it.repetition} | ${if (it.acceptedUnchanged) "yes" else "no"} | ${it.reason} |"
             }
-        val greenRuns = results.runs.count { it.mode.usesFixLoop && it.metrics?.green == true }
         return table(
             "## Manual review",
             "$accepted of ${review.runs.size} reviewed green runs (of $greenRuns in the fix-loop modes) would be accepted " +
