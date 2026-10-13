@@ -17,11 +17,13 @@ object PrComment {
         val fixLoop = report.fixLoop
         val left = report.verification.causedByUpdate
         val merge = report.companion?.let { "Merge the companion PR #$it into this PR's branch first, then this PR." }
+        val closed = report.closedCompanion?.let { companionClosed(it, "this run has no fixes for the PR's head") }
         val sections =
             listOf(
                 TITLE,
                 headline(report),
                 merge,
+                closed,
                 "#### Recipes\n" + recipes(report).ifEmpty { listOf("- none") }.joinToString("\n"),
                 "#### Fixes\n" + fixes(fixLoop).ifEmpty { listOf("- none") }.joinToString("\n"),
                 "The fix loop made ${count(fixLoop.attempts.size, "attempt")} and stopped: ${fixLoop.stopReason.description}.",
@@ -51,12 +53,11 @@ object PrComment {
     /** A comment that is only [text]. */
     fun note(text: String) = "$TITLE\n\n$text"
 
-    /** Why the tool closed companion PR [number] and deleted its [branch]. */
+    /** Why the tool closed companion PR [number] and deleted its branch. */
     fun companionClosed(
         number: Int,
-        branch: String,
         reason: String,
-    ) = "lector-ai closed its companion PR #$number and deleted $branch: $reason."
+    ) = "lector-ai closed its companion PR #$number and deleted its branch: $reason."
 
     /** The description of the companion PR of [source]: where it goes, the merge order, and the summary of [report]. */
     fun companionDescription(

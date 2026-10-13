@@ -328,7 +328,7 @@ class LectorEndToEndTest {
     }
 
     @Test
-    fun `pr of a closed PR without a companion PR looks for one on GitHub and exits with 0`(
+    fun `pr of a closed PR without a companion PR looks for one on GitHub, deletes a companion branch left over, and exits with 0`(
         @TempDir repo: Path,
     ) {
         val requests = mutableListOf<String>()
@@ -360,7 +360,7 @@ class LectorEndToEndTest {
             }
 
         assertEquals("The PR is closed. It has no companion PR.\n", run.stdout)
-        assertEquals(listOf("GET /repos/acme/app/pulls"), requests)
+        assertEquals(listOf("GET /repos/acme/app/pulls", "DELETE /repos/acme/app/git/refs/heads/heal/renovate/spring-boot"), requests)
         assertEquals(0, run.exitCode, run.stderr)
     }
 

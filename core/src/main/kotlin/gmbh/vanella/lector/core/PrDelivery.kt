@@ -7,14 +7,18 @@ private val logger = LoggerFactory.getLogger(PrDelivery::class.java)
 
 /**
  * The end of a PR run on the host: the commits pushed as the branch policy says, the report comment on the PR, the
- * `ai-assisted` label on the PR that carries the commits, and the companion PR closed once it has no reason left.
+ * `ai-assisted` label on the PR that carries the commits, and the companion PR closed once it has no reason left: its PR
+ * is closed or green, or a run on a new head has no commits for it.
  */
 internal class PrDelivery(
     private val host: GitHost,
 ) {
     private val companions = Companions(host)
 
-    /** Delivers the commits of [report], if it has any, as [policy] says, then the comment. */
+    /**
+     * Delivers the commits of [report] as [policy] says, then the comment. Without commits, a companion PR is closed: it
+     * is on an earlier head, and merging it would bring that head back.
+     */
     fun deliver(
         pr: PullRequest,
         repo: Path,
@@ -22,9 +26,10 @@ internal class PrDelivery(
         policy: BranchPolicy,
     ): PrOutcome =
         when {
-            !report.pushed -> reported(pr, report)
-            policy == BranchPolicy.IN_PLACE -> inPlace(pr, repo, report)
-            else -> companion(pr, repo, report)
+            report.pushed && policy == BranchPolicy.IN_PLACE -> inPlace(pr, repo, report)
+            report.pushed -> companion(pr, repo, report)
+            policy == BranchPolicy.COMPANION -> reported(pr, report.copy(closedCompanion = companions.close(pr)))
+            else -> reported(pr, report)
         }
 
     /** Closes the companion PR of a green PR, and updates the comment. */
@@ -33,18 +38,17 @@ internal class PrDelivery(
         verification: Verification,
     ): PrOutcome {
         val companion = companions.close(pr)
-        val reason = "verify is green without it"
-        val closed = if (companion == null) null else PrComment.companionClosed(companion, companions.branch(pr), reason)
+        val closed = if (companion == null) null else PrComment.companionClosed(companion, "verify is green without it")
         host.comment(pr, PrComment.green(verification, pr.headSha, closed), create = false)
         return PrOutcome.Green(verification, companion)
     }
 
-    /** Closes the companion PR of a PR that is closed or merged, and says why in the comment. */
+    /** Closes the companion PR of a PR that is closed or merged, deletes its branch, and says why in the comment. */
     fun closed(pr: PullRequest): PrOutcome {
-        val companion = companions.close(pr)
+        val companion = companions.retire(pr)
         if (companion != null) {
             val reason = if (pr.state == PrState.MERGED) "this PR was merged" else "this PR was closed"
-            host.comment(pr, PrComment.note(PrComment.companionClosed(companion, companions.branch(pr), reason)), create = false)
+            host.comment(pr, PrComment.note(PrComment.companionClosed(companion, reason)), create = false)
         }
         logger.info("The PR is closed. Companion PR closed: {}", companion)
         return PrOutcome.Closed(pr.state, companion)

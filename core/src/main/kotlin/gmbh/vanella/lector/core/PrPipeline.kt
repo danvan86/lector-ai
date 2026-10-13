@@ -28,8 +28,9 @@ data class RecipeApplication(
 )
 
 /**
- * What a run did to a PR the update broke: the recipes, the changes without one and why, the fix loop, the push, and the
- * [companion] PR the commits went to, or null if they went onto the PR's own branch or nowhere.
+ * What a run did to a PR the update broke: the recipes, the changes without one and why, the fix loop, the push, the
+ * [companion] PR the commits went to, or null if they went onto the PR's own branch or nowhere, and the companion PR of
+ * an earlier head that a run without commits [closed][closedCompanion].
  */
 data class PrReport(
     val changes: List<DependencyChange>,
@@ -38,6 +39,7 @@ data class PrReport(
     val fixLoop: FixLoopResult,
     val pushed: Boolean,
     val companion: Int? = null,
+    val closedCompanion: Int? = null,
 ) {
     /** The verification of the last commit. */
     val verification get() = fixLoop.verification

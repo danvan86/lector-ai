@@ -236,11 +236,11 @@ class PrCommentTest {
 
     @Test
     fun `a green run with a closed companion PR says so`() {
-        val closed = PrComment.companionClosed(21, "heal/dependabot/maven/guava", "verify is green without it")
+        val closed = PrComment.companionClosed(21, "verify is green without it")
 
         assertEquals(
             "### lector-ai\n\nVerify is green on 4444444: nothing caused by the update. lector-ai changed nothing.\n\n" +
-                "lector-ai closed its companion PR #21 and deleted heal/dependabot/maven/guava: verify is green without it.",
+                "lector-ai closed its companion PR #21 and deleted its branch: verify is green without it.",
             PrComment.green(Verification(), "4444444", closed),
         )
     }
