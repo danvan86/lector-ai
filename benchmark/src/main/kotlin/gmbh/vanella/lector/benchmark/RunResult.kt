@@ -5,8 +5,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * The result of one run. Every run records the tool commit and the model. Only [RunStatus.VALID] runs have [metrics] and
- * count in the numbers; the others say in [reason] why not.
+ * The result of one run. Every run records the tool commit, the model, and its case's [ecosystem]. Only
+ * [RunStatus.VALID] runs have [metrics] and count in the numbers; the others say in [reason] why not.
  */
 @Serializable
 data class RunResult(
@@ -18,6 +18,7 @@ data class RunResult(
     val status: RunStatus,
     val reason: String?,
     val metrics: Metrics?,
+    val ecosystem: String,
 ) {
     val key get() = RunKey(case, mode, repetition)
 }

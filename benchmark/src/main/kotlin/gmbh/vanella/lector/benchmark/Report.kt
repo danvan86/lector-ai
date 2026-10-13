@@ -15,26 +15,46 @@ private const val NO_RELEASE_NOTES =
     "The fix requests carry no release notes. `lector pr` passes the notes of a Renovate PR's body, so for those cases " +
         "the fix-loop numbers are a lower bound."
 
-/** `report.md`: the numbers of one benchmark run (spec section 5), from its results and the manual [review], if there is one. */
+// How the report names the ecosystems whose numbers it shows apart (concept section 11, M9).
+private val ECOSYSTEM_NAMES = mapOf(MAVEN to "JVM", "npm" to "TypeScript")
+
+/**
+ * `report.md`: the numbers of one benchmark run (spec section 5), from its results and the manual [review], if there is
+ * one. With cases of more than one ecosystem, each ecosystem gets its own numbers, JVM first.
+ */
 object Report {
     fun render(
         results: Results,
         review: Review?,
     ): String {
-        val runs = counted(results)
-        val sections =
-            listOf(
-                header(results),
-                verdictSection(runs),
-                greenRates(runs),
-                cases(results),
-                fixLoop(runs),
-                rejections(runs),
-                runtime(runs),
-                reviewSection(results, review),
-                problems(results),
-            )
+        val ecosystems =
+            (listOf(MAVEN) + results.runs.map { it.ecosystem }.sorted()).distinct().filter { e ->
+                results.runs.any {
+                    it.ecosystem ==
+                        e
+                }
+            }
+        val numbers =
+            ecosystems.flatMap { ecosystem ->
+                val part = results.copy(runs = results.runs.filter { it.ecosystem == ecosystem })
+                val heading =
+                    if (ecosystems.size >
+                        1
+                    ) {
+                        listOf("# ${ECOSYSTEM_NAMES[ecosystem] ?: ecosystem} (`$ecosystem`)")
+                    } else {
+                        emptyList()
+                    }
+                heading + numbers(part)
+            }
+        val sections = listOf(header(results)) + numbers + listOf(reviewSection(results, review), problems(results))
         return sections.joinToString("\n\n") + "\n"
+    }
+
+    /** The numbers of [results]: the verdict, the green rates, the cases, the fix loop, the rejections, the runtime. */
+    private fun numbers(results: Results): List<String> {
+        val runs = counted(results)
+        return listOf(verdictSection(runs), greenRates(runs), cases(results), fixLoop(runs), rejections(runs), runtime(runs))
     }
 
     private fun header(results: Results): String {

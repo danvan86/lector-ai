@@ -6,7 +6,7 @@ import kotlin.test.assertFailsWith
 
 class PlanTest {
     private fun case(id: String) =
-        Case(id, SYNTHETIC, "https://github.com/example/$id.git", "a".repeat(40), "b".repeat(40), emptyList(), null)
+        Case(id, SYNTHETIC, "https://github.com/example/$id.git", "a".repeat(40), "b".repeat(40), emptyList(), null, MAVEN)
 
     private val corpus = Corpus(listOf(case("one"), case("two")))
 

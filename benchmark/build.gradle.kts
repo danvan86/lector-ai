@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":recipes"))
     implementation(project(":llm"))
     implementation(project(":ecosystems:jvm"))
+    implementation(project(":ecosystems:typescript"))
     implementation(libs.clikt)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.slf4j.api)

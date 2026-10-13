@@ -24,13 +24,14 @@ data class Results(
     companion object {
         /**
          * Merges the [runs] of one benchmark run into its results, in the order of [planned]. A planned run without a
-         * result is [RunStatus.MISSING]. Fails if the runs come from more than one tool commit or model, or weren't planned.
+         * result is [RunStatus.MISSING], in its case's ecosystem from [ecosystems] (case → ecosystem). Fails if the runs come from more than one tool commit or model, or weren't planned.
          */
         fun merge(
             planned: List<RunKey>,
             runs: List<RunResult>,
             runner: String,
             date: String,
+            ecosystems: Map<String, String>,
         ): Results {
             val toolCommit = runs.map { it.toolCommit }.distinct().singleOrNull()
             val model = runs.map { it.model }.distinct().singleOrNull()
@@ -42,7 +43,17 @@ data class Results(
             require(unplanned.isEmpty()) { "Runs that weren't planned: ${unplanned.joinToString(", ")}" }
             val merged =
                 planned.map { key ->
-                    byKey[key] ?: RunResult(key.case, key.mode, key.repetition, toolCommit, model, RunStatus.MISSING, "no result", null)
+                    byKey[key] ?: RunResult(
+                        key.case,
+                        key.mode,
+                        key.repetition,
+                        toolCommit,
+                        model,
+                        RunStatus.MISSING,
+                        "no result",
+                        null,
+                        ecosystems.getValue(key.case),
+                    )
                 }
             return Results(toolCommit, model, runner, date, merged)
         }

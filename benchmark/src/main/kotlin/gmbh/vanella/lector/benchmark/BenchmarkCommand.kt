@@ -16,6 +16,8 @@ import com.github.ajalt.clikt.parameters.types.path
 import com.github.ajalt.clikt.parameters.types.restrictTo
 import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
 import gmbh.vanella.lector.ecosystems.jvm.installedJdks
+import gmbh.vanella.lector.ecosystems.typescript.TypeScriptAdapter
+import gmbh.vanella.lector.ecosystems.typescript.installedNodes
 import gmbh.vanella.lector.llm.OllamaClient
 import gmbh.vanella.lector.recipes.BundledRecipeIndex
 import kotlinx.serialization.json.JsonArray
@@ -53,8 +55,26 @@ internal fun realHarness(
     model: String,
     toolCommit: String,
     mavenSettings: Path?,
+) = realHarness(ollamaUrl, model, toolCommit, mavenSettings, System.getenv())
+
+/** The harness of the product's adapters, configured from [environment] as the CLI configures them. */
+internal fun realHarness(
+    ollamaUrl: URI,
+    model: String,
+    toolCommit: String,
+    mavenSettings: Path?,
+    environment: Map<String, String>,
 ) = Harness(
-    adapters = listOf(MavenAdapter(mavenSettings, jdks = installedJdks(System.getenv()))),
+    adapters =
+        listOf(
+            MavenAdapter(mavenSettings, jdks = installedJdks(environment)),
+            // The workflow installs Node and jest-junit as the tool image has them (LECTOR_NODE_<major>, LECTOR_JEST_JUNIT).
+            TypeScriptAdapter(
+                nodes = installedNodes(environment),
+                environment = environment,
+                jestJunit = environment["LECTOR_JEST_JUNIT"]?.let { Path.of(it) },
+            ),
+        ),
     index = BundledRecipeIndex.load(),
     llm = OllamaClient(ollamaUrl, model),
     checkout = GitCheckout,
@@ -186,7 +206,7 @@ private class MergeCommand(
                 .toList()
         // All jobs can fail before they write a result, e.g. if the Ollama image wasn't built.
         require(results.isNotEmpty()) { "No run results under $runs" }
-        val merged = Results.merge(plan(corpus(), cases), results, runner, date)
+        val merged = Results.merge(plan(corpus(), cases), results, runner, date, corpus().cases.associate { it.id to it.ecosystem })
         output.toAbsolutePath().parent.createDirectories()
         output.writeText(merged.encode())
         echo("${merged.runs.size} runs in $output")

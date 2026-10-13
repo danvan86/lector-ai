@@ -13,7 +13,8 @@
           "to": "2.0"
         }
       ],
-      "note": "Compile error: SnakeYAML 2.0 removed the Constructor(Class) constructor used in proxy ConfigUtils.java (incompatible types: Class cannot be converted to LoaderOptions). verified locally (JDK 21): base test-compile ok, head compile error."
+      "note": "Compile error: SnakeYAML 2.0 removed the Constructor(Class) constructor used in proxy ConfigUtils.java (incompatible types: Class cannot be converted to LoaderOptions). verified locally (JDK 21): base test-compile ok, head compile error.",
+      "ecosystem": "maven"
     },
     {
       "id": "microservice-api-spring-boot-4",
@@ -28,7 +29,8 @@
           "to": "4.1.1"
         }
       ],
-      "note": "Test compile error: Spring Boot 4 moved @DataJpaTest/TestEntityManager out of org.springframework.boot.test.autoconfigure.orm.jpa (UserRepositoryTest.java). verified locally (JDK 21): base 7 tests green, head test-compile error. Head mirrored to branch case/microservice-api-spring-boot-4 of the corpus repository, from https://github.com/jonashackt/microservice-api-spring-boot.git: the PR is still open."
+      "note": "Test compile error: Spring Boot 4 moved @DataJpaTest/TestEntityManager out of org.springframework.boot.test.autoconfigure.orm.jpa (UserRepositoryTest.java). verified locally (JDK 21): base 7 tests green, head test-compile error. Head mirrored to branch case/microservice-api-spring-boot-4 of the corpus repository, from https://github.com/jonashackt/microservice-api-spring-boot.git: the PR is still open.",
+      "ecosystem": "maven"
     },
     {
       "id": "deckard-spring-boot-4",
@@ -48,7 +50,8 @@
           "to": "4.1.1"
         }
       ],
-      "note": "Compile error in main code: package org.springframework.boot.autoconfigure.kafka no longer exists in Boot 4 (moved to the spring-boot-kafka module); KafkaProducerAutoConfiguration, DeckardPropertiesAutoConfiguration. verified locally (JDK 21): base tests green, head compile error. Head mirrored to branch case/deckard-spring-boot-4 of the corpus repository, from https://github.com/idealo/deckard.git: the PR is still open."
+      "note": "Compile error in main code: package org.springframework.boot.autoconfigure.kafka no longer exists in Boot 4 (moved to the spring-boot-kafka module); KafkaProducerAutoConfiguration, DeckardPropertiesAutoConfiguration. verified locally (JDK 21): base tests green, head compile error. Head mirrored to branch case/deckard-spring-boot-4 of the corpus repository, from https://github.com/idealo/deckard.git: the PR is still open.",
+      "ecosystem": "maven"
     },
     {
       "id": "javaparser-junit-6",
@@ -63,7 +66,8 @@
           "to": "6.1.3"
         }
       ],
-      "note": "Test errors (behavior change): with JUnit 6 the record declaration tests in javaparser-symbol-solver-testing error (ReflectionRecordDeclarationTest 26 errors, JavaParserRecordDeclarationTest, JavassistRecordDeclarationTest); CI fails on JDK 17-21. verified locally (JDK 21): base 2165 symbol-solver tests green, head test errors. Head mirrored to branch case/javaparser-junit-6 of the corpus repository, from https://github.com/javaparser/javaparser.git: the PR is still open."
+      "note": "Test errors (behavior change): with JUnit 6 the record declaration tests in javaparser-symbol-solver-testing error (ReflectionRecordDeclarationTest 26 errors, JavaParserRecordDeclarationTest, JavassistRecordDeclarationTest); CI fails on JDK 17-21. verified locally (JDK 21): base 2165 symbol-solver tests green, head test errors. Head mirrored to branch case/javaparser-junit-6 of the corpus repository, from https://github.com/javaparser/javaparser.git: the PR is still open.",
+      "ecosystem": "maven"
     },
     {
       "id": "dropwizard-config-providers-kiwi-5",
@@ -78,7 +82,8 @@
           "to": "5.0.0"
         }
       ],
-      "note": "Test failure (behavior change): kiwi 5 defaults TLS contexts to TLSv1.3, TlsConfigProviderTest.shouldBuildUsingTheProvidedContextAsDefault expects TLSv1.2. verified locally (JDK 21): base 130 tests green, head 1 failure. Head mirrored to branch case/dropwizard-config-providers-kiwi-5 of the corpus repository, from https://github.com/kiwiproject/dropwizard-config-providers.git: the PR is still open."
+      "note": "Test failure (behavior change): kiwi 5 defaults TLS contexts to TLSv1.3, TlsConfigProviderTest.shouldBuildUsingTheProvidedContextAsDefault expects TLSv1.2. verified locally (JDK 21): base 130 tests green, head 1 failure. Head mirrored to branch case/dropwizard-config-providers-kiwi-5 of the corpus repository, from https://github.com/kiwiproject/dropwizard-config-providers.git: the PR is still open.",
+      "ecosystem": "maven"
     },
     {
       "id": "exec-maven-plugin-testing-harness",
@@ -93,7 +98,8 @@
           "to": "3.5.0"
         }
       ],
-      "note": "Test errors (behavior change): harness 3.5.0 runs Mojo tests under strict Mockito stubbing, 18 ExecJavaMojoTest tests fail with UnnecessaryStubbingException. verified locally (JDK 21): base 41 tests green, head 18 errors."
+      "note": "Test errors (behavior change): harness 3.5.0 runs Mojo tests under strict Mockito stubbing, 18 ExecJavaMojoTest tests fail with UnnecessaryStubbingException. verified locally (JDK 21): base 41 tests green, head 18 errors.",
+      "ecosystem": "maven"
     },
     {
       "id": "ayza-mockito-4-2",
@@ -108,7 +114,8 @@
           "to": "4.2.0"
         }
       ],
-      "note": "Test errors (behavior change): Mockito 4.2 rejects the project's mockStatic usage, new errors in KeyStoreUtilsShould and CertificateUtilsShould (sslcontext-kickstart module). verified locally (JDK 17, macOS): head adds these errors; note 3 tests on system trust stores (CertificateUtilsShould.getSystemTrustedCertificates etc.) already fail at base on macOS only (expected pre-existing/environment-specific, CI on Linux was green)."
+      "note": "Test errors (behavior change): Mockito 4.2 rejects the project's mockStatic usage, new errors in KeyStoreUtilsShould and CertificateUtilsShould (sslcontext-kickstart module). verified locally (JDK 17, macOS): head adds these errors; note 3 tests on system trust stores (CertificateUtilsShould.getSystemTrustedCertificates etc.) already fail at base on macOS only (expected pre-existing/environment-specific, CI on Linux was green).",
+      "ecosystem": "maven"
     },
     {
       "id": "assertj-commons-collections4-4-5",
@@ -123,7 +130,8 @@
           "to": "4.5.0"
         }
       ],
-      "note": "Test failure (behavior change): CollectionAssert_isUnmodifiable_Test.should_fail_with_commons_collections_UnmodifiableNavigableSet fails with commons-collections4 4.5.0. verified locally (JDK 21): base 14506 assertj-core tests green, head 1 failure. Large test suite (~7 min locally)."
+      "note": "Test failure (behavior change): CollectionAssert_isUnmodifiable_Test.should_fail_with_commons_collections_UnmodifiableNavigableSet fails with commons-collections4 4.5.0. verified locally (JDK 21): base 14506 assertj-core tests green, head 1 failure. Large test suite (~7 min locally).",
+      "ecosystem": "maven"
     },
     {
       "id": "java-web-security-hibernate-7",
@@ -138,7 +146,8 @@
           "to": "7.4.11.Final"
         }
       ],
-      "note": "Compile error (moved package): Hibernate 6+/7 dropped javax.persistence, entities in Ch05_AccessReferenceMaps (Account.java, User.java) no longer compile; javax->jakarta, recipe-covered. verified locally (JDK 21): base build and tests green, head compile errors."
+      "note": "Compile error (moved package): Hibernate 6+/7 dropped javax.persistence, entities in Ch05_AccessReferenceMaps (Account.java, User.java) no longer compile; javax->jakarta, recipe-covered. verified locally (JDK 21): base build and tests green, head compile errors.",
+      "ecosystem": "maven"
     },
     {
       "id": "kiwi-kiwi-bom-1-1",
@@ -153,7 +162,8 @@
           "to": "1.1.0"
         }
       ],
-      "note": "Test failure (behavior change): after the BOM update a ZonedDateTime round trip through the Dropwizard ObjectMapper no longer compares equal (upstream fix: 'Normalize the ZoneId in JsonHelperBasicsTest'), JsonHelperBasicsTest.shouldCreateNewDropwizardJsonHelper/ObjectMapper fail on equality. verified locally (JDK 17, en_US/UTC): base 7184 tests green, head 2 failures."
+      "note": "Test failure (behavior change): after the BOM update a ZonedDateTime round trip through the Dropwizard ObjectMapper no longer compares equal (upstream fix: 'Normalize the ZoneId in JsonHelperBasicsTest'), JsonHelperBasicsTest.shouldCreateNewDropwizardJsonHelper/ObjectMapper fail on equality. verified locally (JDK 17, en_US/UTC): base 7184 tests green, head 2 failures.",
+      "ecosystem": "maven"
     },
     {
       "id": "dropwizard-kafka-clients-3",
@@ -183,7 +193,8 @@
           "to": "3.0.0"
         }
       ],
-      "note": "Compile error (removed constant): ClientDnsLookup.DEFAULT was removed in Kafka 3.0, KafkaAdminClientFactory.java no longer compiles (all four artifacts share kafka-client.version). verified locally (JDK 17): base 80 tests green (embedded Kafka, no Docker), head compile error."
+      "note": "Compile error (removed constant): ClientDnsLookup.DEFAULT was removed in Kafka 3.0, KafkaAdminClientFactory.java no longer compiles (all four artifacts share kafka-client.version). verified locally (JDK 17): base 80 tests green (embedded Kafka, no Docker), head compile error.",
+      "ecosystem": "maven"
     },
     {
       "id": "dropwizard-flyway-9",
@@ -198,7 +209,8 @@
           "to": "9.15.1"
         }
       ],
-      "note": "Compile error (removed methods): Flyway 9 removed ignoreFutureMigrations/ignoreMissingMigrations/... from FluentConfiguration, FlywayFactory.java no longer compiles. verified locally (JDK 17): base 10 tests green (H2), head compile error."
+      "note": "Compile error (removed methods): Flyway 9 removed ignoreFutureMigrations/ignoreMissingMigrations/... from FluentConfiguration, FlywayFactory.java no longer compiles. verified locally (JDK 17): base 10 tests green (H2), head compile error.",
+      "ecosystem": "maven"
     },
     {
       "id": "kiwi-test-prod-deps",
@@ -223,7 +235,8 @@
           "to": "2.0.26"
         }
       ],
-      "note": "Grouped update. Test errors (behavior change): the BOM brings a MongoDB driver that needs wire version 8, the in-memory mongo-java-server used by MongoServerExtension reports 7 (MongoIncompatibleDriverException), 14 errors in MongoServerExtension*Test. verified locally (JDK 21, en_US/UTC): base 1882 tests green, head 14 errors."
+      "note": "Grouped update. Test errors (behavior change): the BOM brings a MongoDB driver that needs wire version 8, the in-memory mongo-java-server used by MongoServerExtension reports 7 (MongoIncompatibleDriverException), 14 errors in MongoServerExtension*Test. verified locally (JDK 21, en_US/UTC): base 1882 tests green, head 14 errors.",
+      "ecosystem": "maven"
     },
     {
       "id": "dropwizard-metrics-mockito-4",
@@ -238,7 +251,8 @@
           "to": "4.0.0"
         }
       ],
-      "note": "Test compile error (removed method): Mockito 4 removed verifyZeroInteractions and other deprecated APIs, metrics-core tests (MetricRegistryListenerTest, TimerTest, ...) no longer compile (15 errors); Mockito migration recipe covers it. Renovate PR on release/4.2.x. verified locally (JDK 17): base all 19 modules build and test green, head test-compile errors."
+      "note": "Test compile error (removed method): Mockito 4 removed verifyZeroInteractions and other deprecated APIs, metrics-core tests (MetricRegistryListenerTest, TimerTest, ...) no longer compile (15 errors); Mockito migration recipe covers it. Renovate PR on release/4.2.x. verified locally (JDK 17): base all 19 modules build and test green, head test-compile errors.",
+      "ecosystem": "maven"
     },
     {
       "id": "powertools-lambda-events-3-11-2",
@@ -253,7 +267,8 @@
           "to": "3.11.2"
         }
       ],
-      "note": "Test failures from a patch release (behavior change): with aws-lambda-java-events 3.11.2 BasePersistenceStoreTest in powertools-idempotency fails (7 failures, 1 error: the idempotency key hash computed from the deserialized test event changes, e.g. expected 'testFunction.myfunc#47261bd5...' but was '...#7b40f56c...'). Bump also touches the example poms. verified locally (JDK 17): base build and tests green (~3 min), head failures."
+      "note": "Test failures from a patch release (behavior change): with aws-lambda-java-events 3.11.2 BasePersistenceStoreTest in powertools-idempotency fails (7 failures, 1 error: the idempotency key hash computed from the deserialized test event changes, e.g. expected 'testFunction.myfunc#47261bd5...' but was '...#7b40f56c...'). Bump also touches the example poms. verified locally (JDK 17): base build and tests green (~3 min), head failures.",
+      "ecosystem": "maven"
     },
     {
       "id": "dropwizard-flyway-7",
@@ -268,7 +283,8 @@
           "to": "7.1.0"
         }
       ],
-      "note": "Compile error (changed signature): Flyway 7 changed Flyway.migrate() to return MigrateResult instead of int, DbMigrateCommand.java no longer compiles. verified locally (JDK 17): base 9 tests green, head compile error."
+      "note": "Compile error (changed signature): Flyway 7 changed Flyway.migrate() to return MigrateResult instead of int, DbMigrateCommand.java no longer compiles. verified locally (JDK 17): base 9 tests green, head compile error.",
+      "ecosystem": "maven"
     },
     {
       "id": "petclinic-spring-boot-3",
@@ -283,7 +299,8 @@
           "to": "3.0.0"
         }
       ],
-      "note": "Upstream https://github.com/spring-projects/spring-petclinic.git (Apache-2.0), branch case/petclinic-spring-boot-3. Build error first: Boot 3.0 no longer manages org.ehcache:ehcache ('dependencies.dependency.version ... is missing'); once that is fixed, the javax.persistence/javax.validation imports and java.version 1.8 break against Spring 6 (not reached locally; upstream migration commit 1315cf6e changed exactly these) - the classic Boot 2->3 migration, covered by the UpgradeSpringBoot_3_0 recipe. verified locally (JDK 21): base 41 tests green, head fails at POM validation."
+      "note": "Upstream https://github.com/spring-projects/spring-petclinic.git (Apache-2.0), branch case/petclinic-spring-boot-3. Build error first: Boot 3.0 no longer manages org.ehcache:ehcache ('dependencies.dependency.version ... is missing'); once that is fixed, the javax.persistence/javax.validation imports and java.version 1.8 break against Spring 6 (not reached locally; upstream migration commit 1315cf6e changed exactly these) - the classic Boot 2->3 migration, covered by the UpgradeSpringBoot_3_0 recipe. verified locally (JDK 21): base 41 tests green, head fails at POM validation.",
+      "ecosystem": "maven"
     },
     {
       "id": "petclinic-spring-boot-4",
@@ -298,7 +315,8 @@
           "to": "4.0.0"
         }
       ],
-      "note": "Upstream https://github.com/spring-projects/spring-petclinic.git (Apache-2.0), branch case/petclinic-spring-boot-4. Build error: Boot 4 manages Testcontainers 2, whose artifacts were renamed, so org.testcontainers:junit-jupiter and org.testcontainers:mysql lose their managed version; behind it test-slice packages moved (not reached locally; UpgradeSpringBoot_4_0 recipe). verified locally (JDK 21): base 58 tests green (Docker-based MySQL/Postgres tests skip without Docker), head fails at POM validation."
+      "note": "Upstream https://github.com/spring-projects/spring-petclinic.git (Apache-2.0), branch case/petclinic-spring-boot-4. Build error: Boot 4 manages Testcontainers 2, whose artifacts were renamed, so org.testcontainers:junit-jupiter and org.testcontainers:mysql lose their managed version; behind it test-slice packages moved (not reached locally; UpgradeSpringBoot_4_0 recipe). verified locally (JDK 21): base 58 tests green (Docker-based MySQL/Postgres tests skip without Docker), head fails at POM validation.",
+      "ecosystem": "maven"
     },
     {
       "id": "easy-random-datafaker",
@@ -313,7 +331,8 @@
           "to": "2.5.4"
         }
       ],
-      "note": "Upstream https://github.com/j-easy/easy-random.git (MIT), branch case/easy-random-datafaker. Test failures (behavior change, no recipe): seeded Datafaker values changed, 22 failures in RandomizersTest (expected city/country/ISBN/... strings). verified locally (JDK 17): head 23 failures vs. 1 at base. Caveat: ReflectionUtilsTest fails at base too ('Expected size: 21 but was: 20', JDK-dependent) - a pre-existing failure, base is not fully green."
+      "note": "Upstream https://github.com/j-easy/easy-random.git (MIT), branch case/easy-random-datafaker. Test failures (behavior change, no recipe): seeded Datafaker values changed, 22 failures in RandomizersTest (expected city/country/ISBN/... strings). verified locally (JDK 17): head 23 failures vs. 1 at base. Caveat: ReflectionUtilsTest fails at base too ('Expected size: 21 but was: 20', JDK-dependent) - a pre-existing failure, base is not fully green.",
+      "ecosystem": "maven"
     },
     {
       "id": "easy-rules-jexl-3-3",
@@ -328,7 +347,8 @@
           "to": "3.3"
         }
       ],
-      "note": "Upstream https://github.com/j-easy/easy-rules.git (MIT), branch case/easy-rules-jexl-3-3; bump is in easy-rules-jexl/pom.xml. Test failures (behavior change, no recipe): JEXL 3.3 restricts permissions by default, so expressions calling methods/properties on facts fail (JexlActionTest, JexlConditionTest, JexlRuleTest: 3 failures, 3 errors). verified locally (JDK 17): base all modules green, head JEXL module fails."
+      "note": "Upstream https://github.com/j-easy/easy-rules.git (MIT), branch case/easy-rules-jexl-3-3; bump is in easy-rules-jexl/pom.xml. Test failures (behavior change, no recipe): JEXL 3.3 restricts permissions by default, so expressions calling methods/properties on facts fail (JexlActionTest, JexlConditionTest, JexlRuleTest: 3 failures, 3 errors). verified locally (JDK 17): base all modules green, head JEXL module fails.",
+      "ecosystem": "maven"
     },
     {
       "id": "vavr-assertj-3-26",
@@ -343,7 +363,8 @@
           "to": "3.26.3"
         }
       ],
-      "note": "Upstream https://github.com/vavr-io/vavr.git (MIT, version/0.x line), branch case/vavr-assertj-3-26. Test compile errors (removed/changed API, no version recipe): FactoryBasedNavigableIterableAssert.assertThat no longer applies and type inference fails in AbstractMapTest, AbstractMultimapTest, AbstractTraversableTest and others (24 errors). Upstream fixed it by hand in 6f22f4ab (7 test files). verified locally (JDK 17): base tests green, head test-compile errors."
+      "note": "Upstream https://github.com/vavr-io/vavr.git (MIT, version/0.x line), branch case/vavr-assertj-3-26. Test compile errors (removed/changed API, no version recipe): FactoryBasedNavigableIterableAssert.assertThat no longer applies and type inference fails in AbstractMapTest, AbstractMultimapTest, AbstractTraversableTest and others (24 errors). Upstream fixed it by hand in 6f22f4ab (7 test files). verified locally (JDK 17): base tests green, head test-compile errors.",
+      "ecosystem": "maven"
     },
     {
       "id": "assertj-mockito-5",
@@ -358,7 +379,8 @@
           "to": "5.16.0"
         }
       ],
-      "note": "Upstream https://github.com/assertj/assertj.git (Apache-2.0), branch case/assertj-mockito-5; bump is the mockito.version property in assertj-parent/pom.xml. Test errors (behavior change in Mockito 5: inline mock maker, any() no longer matches varargs): PathsBaseTest fails to initialize (spy on a static field), 43 errors + 1 failure in assertj-core. Upstream fixed it by hand in 3232dab4. verified locally (JDK 21): base 15916 assertj-core tests green, head 44 broken. Large test suite (~7 min locally)."
+      "note": "Upstream https://github.com/assertj/assertj.git (Apache-2.0), branch case/assertj-mockito-5; bump is the mockito.version property in assertj-parent/pom.xml. Test errors (behavior change in Mockito 5: inline mock maker, any() no longer matches varargs): PathsBaseTest fails to initialize (spy on a static field), 43 errors + 1 failure in assertj-core. Upstream fixed it by hand in 3232dab4. verified locally (JDK 21): base 15916 assertj-core tests green, head 44 broken. Large test suite (~7 min locally).",
+      "ecosystem": "maven"
     }
   ]
 }

@@ -52,7 +52,7 @@ class HarnessTest {
         origin.resolve("pom.xml").writeText("$LIB 2.0\n")
         git(origin, "commit", "--quiet", "-am", "Update $LIB to 2.0")
         val head = git(origin, "rev-parse", "HEAD").trim()
-        case = Case("lib-2", SYNTHETIC, origin.toString(), base, head, listOf(Change(LIB, "1.0", "2.0")), null)
+        case = Case("lib-2", SYNTHETIC, origin.toString(), base, head, listOf(Change(LIB, "1.0", "2.0")), null, MAVEN)
     }
 
     @Test
@@ -266,6 +266,18 @@ class HarnessTest {
 
         assertEquals(RunStatus.ERROR, result.status)
         assertEquals("No supported ecosystem in $origin", result.reason)
+    }
+
+    @Test
+    fun `a run records its case's ecosystem, and a repository of another ecosystem than the corpus says is an error`() {
+        val npm = case.copy(ecosystem = "npm")
+
+        val result = harness().run(npm, Mode.RECIPE_ONLY, 1, work)
+
+        assertEquals("npm", result.ecosystem)
+        assertEquals(RunStatus.ERROR, result.status)
+        assertEquals("${case.id} is a npm case in the corpus, but its repository is a maven build", result.reason)
+        assertEquals(MAVEN, harness().run(case, Mode.RECIPE_ONLY, 1, work.resolve("again")).ecosystem)
     }
 
     @Test

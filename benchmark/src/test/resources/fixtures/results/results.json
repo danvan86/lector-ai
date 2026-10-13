@@ -49,7 +49,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "guava-21",
@@ -89,7 +90,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "guava-21",
@@ -131,7 +133,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "guava-21",
@@ -174,7 +177,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 1
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "guava-21",
@@ -221,7 +225,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "guava-21",
@@ -268,7 +273,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "guava-21",
@@ -278,7 +284,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "error",
             "reason": "Ollama is not reachable at http://localhost:11434: java.net.ConnectException",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         },
         {
             "case": "boot-3",
@@ -325,7 +332,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "boot-3",
@@ -365,7 +373,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "boot-3",
@@ -405,7 +414,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "boot-3",
@@ -445,7 +455,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "boot-3",
@@ -492,7 +503,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "boot-3",
@@ -539,7 +551,8 @@
                 "unattributed": 0,
                 "testsRun": 42,
                 "requestsWithDiagnosticsLeftOut": 0
-            }
+            },
+            "ecosystem": "maven"
         },
         {
             "case": "boot-3",
@@ -549,7 +562,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "missing",
             "reason": "no result",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         },
         {
             "case": "jackson-3",
@@ -559,7 +573,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "invalid",
             "reason": "the head commit has no failure caused by the update",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         },
         {
             "case": "jackson-3",
@@ -569,7 +584,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "invalid",
             "reason": "the head commit has no failure caused by the update",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         },
         {
             "case": "jackson-3",
@@ -579,7 +595,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "invalid",
             "reason": "the head commit has no failure caused by the update",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         },
         {
             "case": "jackson-3",
@@ -589,7 +606,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "invalid",
             "reason": "the head commit has no failure caused by the update",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         },
         {
             "case": "jackson-3",
@@ -599,7 +617,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "invalid",
             "reason": "the head commit has no failure caused by the update",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         },
         {
             "case": "jackson-3",
@@ -609,7 +628,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "invalid",
             "reason": "the head commit has no failure caused by the update",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         },
         {
             "case": "jackson-3",
@@ -619,7 +639,8 @@
             "model": "qwen2.5-coder:7b",
             "status": "invalid",
             "reason": "the head commit has no failure caused by the update",
-            "metrics": null
+            "metrics": null,
+            "ecosystem": "maven"
         }
     ]
 }
