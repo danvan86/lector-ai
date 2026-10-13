@@ -31,7 +31,7 @@ import kotlin.io.path.readText
  * verification, like `verify`.
  */
 internal class HealCommand(
-    adapters: (mavenSettings: Path?) -> List<EcosystemAdapter>,
+    adapters: (BuildConfig) -> List<EcosystemAdapter>,
     private val index: () -> RecipeIndex,
     private val llm: (url: URI, model: String) -> LlmClient = ::OllamaClient,
     baseCommit: (repo: Path, ref: String) -> BaseCommit = GitBaseCommit::resolve,

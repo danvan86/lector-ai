@@ -5,14 +5,20 @@ package gmbh.vanella.lector.core
  * misconfigured, it fails with a [ToolError]. A reply that isn't the expected structure is [Proposal.Invalid]: a failed
  * attempt, not a tool error.
  */
-fun interface LlmClient {
+interface LlmClient {
     fun propose(request: FixRequest): Proposal
+
+    /**
+     * Whether the parts of [request] that are never trimmed (the diagnostics, the code, the earlier attempts) fit into the
+     * model's context. The fix loop sends only as many diagnostics as fit.
+     */
+    fun fits(request: FixRequest): Boolean
 }
 
 /**
  * Everything the model gets for one attempt on one cluster: the [changes], the [diagnostics], the code around them, the
  * API surface of the new versions ([grounding]), the [releaseNotes] and the [recipeDiff] if there are any, and on a retry the
- * [previousAttempts] with why they failed. The client decides how it fits into the model's context.
+ * [previousAttempts] with why they failed. The client trims the optional parts to fit into the model's context.
  */
 data class FixRequest(
     val changes: List<DependencyChange>,

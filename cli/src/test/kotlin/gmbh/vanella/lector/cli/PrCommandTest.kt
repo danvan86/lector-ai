@@ -34,6 +34,7 @@ class PrCommandTest {
     private val clients = mutableListOf<Pair<URI, String>>()
     private val settings = mutableListOf<Path?>()
     private val sourceOptions = mutableListOf<SourceOptions>()
+    private val inits = mutableListOf<Path?>()
     private val host = FakeHost()
     private val token = mapOf("LECTOR_GITHUB_TOKEN" to "ghs_token")
     private val bot = "--bot-name lector-ai[bot] --bot-email 1+lector-ai[bot]@users.noreply.github.com"
@@ -87,6 +88,17 @@ class PrCommandTest {
         val result = command().test("$repo --event $event $bot", envvars = token)
 
         assertEquals("Skipped: no update source recognizes the PR by mallory on renovate/spring-boot\n", result.stdout)
+        assertEquals(0, result.statusCode)
+        assertEquals(emptyList<String>(), host.comments)
+    }
+
+    @Test
+    fun `a PR that only updates the Gradle wrapper is skipped with exit 0`() {
+        host.pr = host.pr.copy(body = table("[gradle](https://gradle.org)", "9.2.1", "9.5.1"))
+
+        val result = command().test("$repo --event $event $bot", envvars = token)
+
+        assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
         assertEquals(0, result.statusCode)
         assertEquals(emptyList<String>(), host.comments)
     }
@@ -344,6 +356,31 @@ class PrCommandTest {
     }
 
     @Test
+    fun `an empty Gradle init script value means none, and a file is passed on`() {
+        host.pr = host.pr.copy(author = "mallory")
+        val file = dir.resolve("mirror.gradle")
+        file.writeText("")
+
+        command().test(
+            listOf(repo.toString(), "--event", event.toString()) + bot.split(" ") + listOf("--gradle-init", ""),
+            envvars = token,
+        )
+        command().test("$repo --event $event $bot --gradle-init $file", envvars = token)
+        command().test("$repo --event $event $bot", envvars = token + mapOf("LECTOR_GRADLE_INIT" to ""))
+        command().test("$repo --event $event $bot", envvars = token + mapOf("LECTOR_GRADLE_INIT" to file.toString()))
+
+        assertEquals(listOf(null, file, null, file), inits)
+    }
+
+    @Test
+    fun `a Gradle init script that doesn't exist is a tool error with exit 2`() {
+        val result = command().test("$repo --event $event $bot --gradle-init ${dir.resolve("none.gradle")}", envvars = token)
+
+        assertContains(result.stderr, "Error: Gradle init script ${dir.resolve("none.gradle")} is not a file")
+        assertEquals(2, result.statusCode)
+    }
+
+    @Test
     fun `a Maven settings file that doesn't exist is a tool error with exit 2`() {
         val result = command().test("$repo --event $event $bot --maven-settings ${dir.resolve("none.xml")}", envvars = token)
 
@@ -427,8 +464,9 @@ class PrCommandTest {
         index: RecipeIndex = RecipeIndex { _, _ -> RecipeSelection.NONE },
         adapter: FakeAdapter = FakeAdapter(),
     ) = PrCommand(
-        adapters = { mavenSettings ->
-            settings += mavenSettings
+        adapters = { config ->
+            settings += config.mavenSettings
+            inits += config.gradleInit
             listOf(adapter)
         },
         sources = { options ->

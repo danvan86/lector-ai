@@ -22,13 +22,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
 import java.net.URI
 import java.net.URLEncoder
-import java.net.http.HttpResponse
 import java.nio.file.Path
 import java.util.Base64
 import kotlin.io.path.readText
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.toJavaDuration
 
 private val logger = LoggerFactory.getLogger(GitHubHost::class.java)
 

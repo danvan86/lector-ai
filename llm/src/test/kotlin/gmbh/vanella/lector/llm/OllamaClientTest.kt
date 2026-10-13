@@ -28,6 +28,8 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /** Runs the client against a local fake of Ollama's `/api/chat`. */
@@ -112,6 +114,16 @@ class OllamaClientTest {
                 .getValue("content")
                 .jsonPrimitive.content,
         )
+    }
+
+    @Test
+    fun `a request fits if its errors, code, and earlier attempts fit, whatever the size of the optional parts`() {
+        val client = OllamaClient(url, "qwen2.5-coder:7b")
+        val huge = request.copy(snippets = List(10) { Snippet("App.java", it * 100 + 1, it * 100 + 1, "x".repeat(5_000) + "\n") })
+
+        assertTrue(client.fits(request.copy(grounding = "g".repeat(100_000))))
+        assertFalse(client.fits(huge))
+        assertEquals(emptyList(), requests, "checking sends nothing")
     }
 
     @Test

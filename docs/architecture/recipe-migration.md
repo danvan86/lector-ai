@@ -5,10 +5,10 @@ Milestone: [M2](../features.md#m2--recipe-index-and-openrewrite-run-) · Spec: [
 > **Summary for agents**
 >
 > - `lector migrate <repo> --package … --from … --to …` builds a `DependencyChange`, lets `applyRecipe()` in `core` find and apply an OpenRewrite recipe, then runs M1's `attribute()`. The recipe is optional: its outcome never decides the exit code.
-> - The recipe index is generated at build time by `:recipes:generateRecipeIndex` from `rewrite-recipe-bom` and ships as the resource `recipe-index.json`. OpenRewrite is only on the `generator` source set's classpath, never in the distribution. Versions of the BOM and of the Maven plugins live in `gradle/libs.versions.toml`; `:recipes:checkRewritePluginVersion` fails the build if the rewrite plugin and the BOM drift apart.
+> - The recipe index is generated at build time by `:recipes:generateRecipeIndex` from `rewrite-recipe-bom` and ships as the resource `recipe-index.json`. OpenRewrite is only on the `generator` source set's classpath, never in the distribution. Versions of the BOM and of the Maven plugins live in `gradle/libs.versions.toml`; `:recipes:checkRewritePluginVersion` fails the build if the rewrite plugin and the BOM drift apart, `:recipes:checkRewriteGradlePluginVersion` the same for the OpenRewrite Gradle plugin (M7).
 > - Every version and selector question goes through the adapter's `VersionScheme` (`MavenVersionScheme` for Maven). `core` and `recipes` contain no version syntax and no Maven terms; `ecosystem` is the package namespace (`maven`), not the build tool.
 > - A new ecosystem gets recipes by implementing `versionScheme`, `recipeRunner`, and `resolvedVersions` in its adapter and adding index entries for its namespace. No change to `core`.
-> - Easiest rule to break: the working tree must be clean before the recipe, and every outcome other than `Applied` resets it with `GitWorkingTree.reset()`. Never edit the target's `pom.xml` to run a recipe, and never use the plugin's `run` goal: `runNoFork` by coordinates only.
+> - Easiest rule to break: the working tree must be clean before the recipe, and every outcome other than `Applied` resets it with `GitWorkingTree.reset()`. Never edit the target's `pom.xml` to run a recipe, and never use the plugin's `run` goal: `runNoFork` by coordinates only. Gradle: an init script applies the plugin, and `rewriteRun` loses its compile dependencies ([Gradle adapter](gradle-adapter.md#recipe-runner)).
 
 ## Overview
 
@@ -20,9 +20,11 @@ flowchart LR
     step --> index["BundledRecipeIndex<br/>(recipes)"]
     step --> port["EcosystemAdapter<br/>versionScheme, recipeRunner,<br/>resolvedVersions (core)"]
     maven["MavenAdapter<br/>(ecosystems:jvm)"] -. implements .-> port
+    gradle["GradleAdapter<br/>(ecosystems:jvm, M7)"] -. implements .-> port
     step --> tree["GitWorkingTree<br/>(core)"]
     cli --> attr["attribute()<br/>(core, M1)"]
     maven --> mvn["mvn: help:effective-pom,<br/>rewrite:runNoFork"]
+    gradle --> gradlew["gradlew: lectorQuery,<br/>rewriteRun"]
     cli --> report["RecipeReport + TextReport / JsonReport<br/>(cli)"]
 ```
 
@@ -34,7 +36,7 @@ flowchart LR
 | | `VersionScheme.kt` | The port for version syntax: `compare`, `contains(selector, version)`, `compareSelectors`, `updateType`. |
 | | `Recipe.kt` | `Recipe(name, artifact, license)`, `RecipeMatch`, `RecipeSelection(chosen, alternatives)`, and the ports `RecipeIndex`, `RecipeRunner` (returns `RecipeRun.Applied` or `Failed`), `ResolvedVersions` (`package → version`). |
 | | `EcosystemAdapter.kt` | Grew by `ecosystem`, `versionScheme` (required), `recipeRunner` and `resolvedVersions` (nullable). |
-| | `RecipeStep.kt` | `applyRecipe(change, adapter, index, repo, base)`: the three downgrade rules, the run, and `RecipeOutcome`. Since M5 in two parts that `lector pr` also calls: rules 1 and 2 (`recipeBlocker()` for one change, `recipeBlockers()` for all changes of a PR, the base's versions read at most once) and `runRecipe()` (the run and rule 3). A new or removed package (an empty version) is no upgrade. `RecipeOutcome.reason(change)` is the reason text of every outcome but `Applied`. |
+| | `RecipeStep.kt` | `applyRecipe(change, adapter, index, repo, base)`: the three downgrade rules, the run, and `RecipeOutcome`. Since M5 in two parts that `applyRecipes()` (`RecipeGroup.kt`, for `lector pr` and the benchmark) also calls: rules 1 and 2 (`recipeBlocker()` for one change, `recipeBlockers()` for all changes of a group, the base's versions read at most once through `baseVersions()`) and `runRecipe()` (the run and rule 3). A new or removed package (an empty version) is no upgrade. `RecipeOutcome.reason(change)` is the reason text of every outcome but `Applied`. |
 | | `GitWorkingTree.kt` | `requireClean`, `changedFiles`, `reset` (`git reset --hard` + `git clean -d --force`). Ignored files are kept. M3 added `commit` and `diff` for `heal`, M5 the commit identity and `head`, `authorEmail`, `hasCommit` for `pr`. |
 | `recipes` | `BundledRecipeIndex.kt` | The `RecipeIndex` that ships: `load()` reads `recipe-index.json` from the classpath; `find()` selects and ranks. |
 | | `IndexFormat.kt` | `IndexEntry` and the JSON format `{"entries": [...]}`. |
@@ -43,14 +45,15 @@ flowchart LR
 | | `generator/GenerateRecipeIndex.kt` | The `generator` source set: a thin adapter that scans the OpenRewrite JARs and calls `IndexBuilder`. `skipReason()` uses OpenRewrite's `Semver`. |
 | `ecosystems:jvm` | `MavenVersionScheme.kt` | `ComparableVersion` ordering, exact versions and X-ranges (`3.4.x`, `3.x`, `3.*`). |
 | | `MavenAdapter.kt` | `recipeRunner` (`runNoFork`) and `resolvedVersions` (`help:effective-pom`). |
+| | `GradleAdapter.kt` | `recipeRunner` (`rewriteRun` through `lector-rewrite.init.gradle`) and `resolvedVersions` (the `lectorQuery` task), M7, see [Gradle adapter](gradle-adapter.md). |
 | | `EffectivePom.kt` | Parses the effective POM into `group:artifact → version`. |
 | | `MavenPlugins.kt` | Reads `maven-plugins.properties`, generated by `generateMavenPluginsResource` from the catalog's `rewrite-maven-plugin` and `maven-help-plugin`. |
 | | `XmlDocumentBuilder.kt` | The hardened XML parser (no DOCTYPE, errors off stderr) shared by `EffectivePom` and `TestReports`. |
 | `cli` | `MigrateCommand.kt` | The `migrate` subcommand: clean check, change, recipe, verify, report. |
 | | `UpdateCommand.kt` | `--package`, `--from`, `--to`, and the `DependencyChange`, shared with `heal` (M3). |
-| | `RepositoryCommand.kt` | What `verify`, `migrate`, and `heal` share (`pr` has its own options): `<repo>`, `--base`, `--format`, `--maven-settings`, adapter detection, exit codes. |
+| | `RepositoryCommand.kt` | What `verify`, `migrate`, and `heal` share (`pr` has its own options): `<repo>`, `--base`, `--format`, `--maven-settings`, `--gradle-init`, adapter detection, exit codes. |
 | | `RecipeReport.kt` | The recipe section in text and JSON, with the reason from `RecipeOutcome.reason()`. |
-| | `RootCommand.kt` | Wires `MigrateCommand` with `MavenAdapter` and `BundledRecipeIndex.load()`. |
+| | `RootCommand.kt` | Wires `MigrateCommand` with `adapters()` (`GradleAdapter`, `MavenAdapter`) and `BundledRecipeIndex.load()`. |
 
 ```mermaid
 flowchart TB
@@ -85,8 +88,8 @@ flowchart LR
 | Artifact coordinates | `generateRecipeIndex` arguments | `<jar path>=<group>:<name>:<version>` from Gradle's resolution, not from the manifest (some manifests name a snapshot). |
 | License | `License-Name` in the JAR manifest | `unknown` if missing. `rewrite-spring` and most recipe modules are under the Moderne Source Available License. |
 | Recipes per JAR | `Environment.builder().scanJar(jar, others, …)` | One environment per JAR tells which artifact a recipe comes from. The other JARs resolve included recipes. |
-| Leaves | `VERSION_LEAVES` in `IndexBuilder.kt` | `org.openrewrite.maven.UpgradeDependencyVersion`, `org.openrewrite.java.dependencies.UpgradeDependencyVersion`, `org.openrewrite.maven.UpgradeParentVersion`, `org.openrewrite.maven.UpgradePluginVersion`, at any depth. A recipe is not its own leaf. |
-| Selectors | `skipReason()` in `GenerateRecipeIndex.kt` | Exact versions and X-ranges are kept. Skipped and counted: OpenRewrite's type name for anything else (`LatestRelease`, `SetRange`, `HyphenRange`, `ExactVersionWithPattern`, …), `XRange with versionPattern`, `invalid selector`, and `missing option` (no `groupId`, `artifactId`, or `newVersion`). |
+| Leaves | `VERSION_LEAVES` in `IndexBuilder.kt` | `org.openrewrite.maven.UpgradeDependencyVersion`, `org.openrewrite.java.dependencies.UpgradeDependencyVersion`, `org.openrewrite.maven.UpgradeParentVersion`, `org.openrewrite.maven.UpgradePluginVersion`, at any depth; since M7 also `org.openrewrite.gradle.plugins.UpgradePluginVersion` (`GRADLE_PLUGIN_LEAF`), whose `pluginIdPattern` becomes the marker coordinates `<id>:<id>.gradle.plugin`. A recipe is not its own leaf. |
+| Selectors | `skipReason()` in `GenerateRecipeIndex.kt` | Exact versions and X-ranges are kept. Skipped and counted: OpenRewrite's type name for anything else (`LatestRelease`, `SetRange`, `HyphenRange`, `ExactVersionWithPattern`, …), `XRange with versionPattern`, `invalid selector`, and `missing option` (no `groupId`, `artifactId`, or `newVersion`; for the Gradle plugin leaf no `pluginIdPattern` or `newVersion`). |
 | Entries | `IndexBuilder.entries()` | Sorted by recipe name; one entry per package pattern and selector per recipe, at its shallowest depth. Ecosystem is always `maven`. |
 
 The index is a build output, not committed. Building it needs network access to Maven Central, like any other dependency resolution. Regenerate it with `./gradlew :recipes:generateRecipeIndex`; the counts and licenses are in `recipe-index-report.md` next to it.
@@ -155,11 +158,13 @@ The order is fixed by the spec: rule 1, rule 2, find, versions before, run, rule
 | `resolvedVersions` | `org.apache.maven.plugins:maven-help-plugin:<v>:effective-pom -Doutput=<temp file>` | Parents, dependencies, and build plugins of every module, without compiling. `dependencyManagement`, `pluginManagement`, the build's own modules, and transitive dependencies are left out. The highest version wins if modules disagree. A failed run or unreadable XML is a `ToolError`. |
 | `recipeRunner` | `org.openrewrite.maven:rewrite-maven-plugin:<v>:runNoFork -Drewrite.recipeArtifactCoordinates=<artifact> -Drewrite.activeRecipes=<recipe>` | By coordinates, so `pom.xml` is never touched for the run. `runNoFork` skips the forked lifecycle that would compile first, which fails exactly when the update broke the build. The user's Maven fetches the recipe JAR through its configured mirror. Runs on the PR head as it is. |
 
-The plugin versions come from the catalog through `generateMavenPluginsResource` (`ecosystems/jvm/build.gradle.kts`) into `maven-plugins.properties`, read by `MavenPlugins.load()`. The rewrite plugin must be built on the BOM's OpenRewrite version; `:recipes:checkRewritePluginVersion` (in `check`) compares the plugin POM's `rewrite.version` with the `rewrite-core` the BOM resolves to.
+The plugin versions come from the catalog through `generateMavenPluginsResource` (`ecosystems/jvm/build.gradle.kts`) into `maven-plugins.properties`, read by `MavenPlugins.load()`. The rewrite plugin must be built on the BOM's OpenRewrite version; `:recipes:checkRewritePluginVersion` (in `check`) compares the plugin POM's `rewrite.version` with the `rewrite-core` the BOM resolves to; `:recipes:checkRewriteGradlePluginVersion` compares the Gradle plugin JAR's `rewrite/versions.properties` with it.
+
+The Gradle adapter's runner and resolved versions are in [Gradle adapter](gradle-adapter.md#recipe-runner).
 
 ## CLI contract
 
-`lector migrate <repo> --package <package> --from <version> --to <version> [--base <git-ref>] [--format text|json] [--maven-settings <file>]`
+`lector migrate <repo> --package <package> --from <version> --to <version> [--base <git-ref>] [--format text|json] [--maven-settings <file>] [--gradle-init <file>]`
 
 `ecosystem` comes from the detected adapter, `updateType` from its version scheme.
 
@@ -169,7 +174,7 @@ The plugin versions come from the catalog through `generateMavenPluginsResource`
 | At least one diagnostic caused by the update | Report | Logs | `1` |
 | Working tree has uncommitted changes, or isn't a Git working tree | empty | `Error: <repo> has uncommitted changes. Commit or stash them first: <files>` / `Error: git status failed …` | `2` |
 | Missing `--package`, `--from`, or `--to`, or other invalid usage | empty | Usage and `Error: …` | `2` |
-| Not a directory, no supported ecosystem, invalid `--base`, `--maven-settings` not a file, Maven or Git can't start | empty | `Error: …`, as for [`verify`](verify-pipeline.md#cli-contract) | `2` |
+| Not a directory, no supported ecosystem, invalid `--base`, `--maven-settings` or `--gradle-init` not a file, Maven, Gradle, or Git can't start | empty | `Error: …`, as for [`verify`](verify-pipeline.md#cli-contract) | `2` |
 
 The clean check runs after adapter detection and `--base` resolution, before anything else.
 
@@ -201,7 +206,7 @@ Recipe (applied)
 | Unit | `test` | Selection and ranking on a hand-written index; index building, format, and report on fake `RecipeTree`s; the downgrade rules with a fake adapter on a temporary Git repo; Maven version scheme; effective-POM parsing on captured output; runner command lines with a fake process runner; the command through Clikt's `test()` | `BundledRecipeIndexTest`, `IndexBuilderTest`, `IndexFormatTest`, `IndexReportTest`, `RecipeStepTest`, `GitWorkingTreeTest`, `MavenVersionSchemeTest`, `EffectivePomTest`, `MavenAdapterTest`, `MavenPluginsTest`, `MigrateCommandTest`, `RecipeReportsTest` |
 | Unit, generator | `:recipes:test` | The `generator` source set with OpenRewrite on the test classpath: `skipReason()`, scanning real recipe JARs. `GeneratedIndexTest` checks the index as it ships (`UpgradeSpringBoot_3_4`, `3.4.x`, depth 1, `rewrite-spring`, MSAL). | `GenerateRecipeIndexTest`, `GeneratedIndexTest` |
 | End-to-end | `endToEndTest` | The start script: `--help` lists exactly `verify`, `migrate`, `heal`, and `pr`; missing `--package` and a dirty tree exit `2`; the bundled index finds `UpgradeSpringBoot_3_4` and calls the plugin through a fake `mvnw`; `--format json` is one object with `recipe` and `verification` | `LectorEndToEndTest` |
-| Integration | `:cli:integrationTest` (opt-in) | Real Maven on `cli/src/test/resources/fixtures/spring-boot-upgrade` (base 3.3.5, head bumps the parent to 3.4.1): the recipe is chosen and applied, the type-based rename `setConnectTimeout` → `connectTimeout` happens, verify passes, `pom.xml` has no plugin, `HEAD` is unchanged, one worktree is left. Needs `mvn` and network. | `MigrateIntegrationTest` |
+| Integration | `:cli:integrationTest` (opt-in) | Real Maven on `cli/src/test/resources/fixtures/spring-boot-upgrade` (base 3.3.5, head bumps the parent to 3.4.1): the recipe is chosen and applied, the type-based rename `setConnectTimeout` → `connectTimeout` happens, verify passes, `pom.xml` has no plugin, `HEAD` is unchanged, one worktree is left. Needs `mvn` and network. Since M7 the same for a Spring Boot Gradle plugin bump ([Gradle adapter](gradle-adapter.md#tests)). | `MigrateIntegrationTest`, `GradleIntegrationTest` |
 
 Fixtures: `recipes/src/test/resources/.../test-recipe-index.json` (hand-written), `ecosystems/jvm/src/test/resources/maven-output/effective-pom-*.xml` (captured, cut down; see `fixtures/README.md`), `cli/src/test/resources/fixtures/spring-boot-upgrade/` (`base/` and the `head/` overlay, committed by `FixtureRepository`).
 
@@ -212,10 +217,10 @@ Gates: the `generator` source set has its own ktlint and detekt tasks (`detektGe
 | Decision / limit | Reason | Revisit |
 |---|---|---|
 | Index generated at build time, from the official BOM only | Runtime stays small, offline for the index, and deterministic per tool version. A BOM bump rebuilds it. | — |
-| Recipe JARs are not shipped; the user's Maven fetches them | Keeps the license question manageable and uses the configured mirror. | M5, legal check of the MSAL |
-| Only the three leaf types, exact versions, and X-ranges | They cover what bots bump in Maven projects. `latest.*` and ranges are unbounded or need OpenRewrite at run time. | When a skipped count matters |
+| Recipe JARs are not shipped; the user's Maven or Gradle fetches them | Keeps the license question manageable and uses the configured mirror. | M5, legal check of the MSAL |
+| Only the version leaves above, exact versions, and X-ranges | They cover what bots bump in Maven and Gradle projects. `latest.*` and ranges are unbounded or need OpenRewrite at run time. | When a skipped count matters |
 | Recipe runs on the PR head as it is | Simpler than resetting manifests. The integration test's type-based rename proves type information survives. | If the integration test loses the rename |
 | Version changes beyond the PR are kept and reported | Framework recipes move managed dependencies on purpose. Only downgrades are rejected. | — |
-| Resolved versions keep the highest per package across modules | The port is `package → version`. A downgrade in one module can hide behind a higher version in another (review F4). | M7, or a multi-module fixture that shows it |
+| Resolved versions keep the highest per package across modules | The port is `package → version`. A downgrade in one module can hide behind a higher version in another (review F4). Gradle's model does the same across projects and configurations (M7). | A multi-module fixture that shows it |
 | Only a `ToolError` from the runner resets the tree | Any other exception exits `2`; CI throws the checkout away (review F6). | M5, when the run commits the result |
 | One change per `migrate` run, from explicit options | Easy to test and benchmark. `lector pr` (M5) takes every change of a grouped PR from the source adapter and runs each distinct recipe once ([PR pipeline](pr-pipeline.md)). Diff detection for PRs without a source adapter comes later. | M8 |

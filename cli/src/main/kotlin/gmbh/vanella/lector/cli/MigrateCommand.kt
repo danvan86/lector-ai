@@ -17,7 +17,7 @@ import java.nio.file.Path
  * the exit code. Its changes stay in the working tree, uncommitted.
  */
 internal class MigrateCommand(
-    adapters: (mavenSettings: Path?) -> List<EcosystemAdapter>,
+    adapters: (BuildConfig) -> List<EcosystemAdapter>,
     private val index: () -> RecipeIndex,
     baseCommit: (repo: Path, ref: String) -> BaseCommit = GitBaseCommit::resolve,
 ) : UpdateCommand("migrate", adapters, baseCommit) {

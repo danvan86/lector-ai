@@ -1,0 +1,44 @@
+
+> Task :compileJava FAILED
+/work/repo/src/main/java/com/example/Greeter.java:7: error: cannot find symbol
+        return "Hello, " + StringUtils.capitalizeFully(name);
+                                      ^
+  symbol:   method capitalizeFully(String)
+  location: class StringUtils
+/work/repo/src/main/java/com/example/Counter.java:5: error: incompatible types: int cannot be converted to String
+        String length = text.length();
+                                   ^
+/work/repo/src/main/java/com/example/Counter.java:6: error: incompatible types: String cannot be converted to int
+        return length;
+               ^
+3 errors
+
+> Task :processResources NO-SOURCE
+> Task :processTestResources NO-SOURCE
+
+[Incubating] Problems report is available at: file:///work/repo/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler output below.
+  /work/repo/src/main/java/com/example/Counter.java:5: error: incompatible types: int cannot be converted to String
+          String length = text.length();
+                                     ^
+  /work/repo/src/main/java/com/example/Counter.java:6: error: incompatible types: String cannot be converted to int
+          return length;
+                 ^
+  /work/repo/src/main/java/com/example/Greeter.java:7: error: cannot find symbol
+          return "Hello, " + StringUtils.capitalizeFully(name);
+                                        ^
+    symbol:   method capitalizeFully(String)
+    location: class StringUtils
+  3 errors
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights.
+
+BUILD FAILED in 1s
+1 actionable task: 1 executed

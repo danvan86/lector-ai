@@ -187,7 +187,7 @@ class MigrateCommandTest {
         val result = command(FakeAdapter(detects = false)).test("$repo --package $parent --from 3.3.5 --to 3.4.1")
 
         assertEquals("", result.stdout)
-        assertEquals("Error: No supported ecosystem in $repo. Supported: Maven (pom.xml at the root).\n", result.stderr)
+        assertEquals("Error: No supported ecosystem in $repo. $SUPPORTED\n", result.stderr)
         assertEquals(2, result.statusCode)
     }
 

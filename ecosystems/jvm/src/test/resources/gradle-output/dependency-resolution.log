@@ -1,0 +1,24 @@
+> Task :compileJava FAILED
+> Task :processResources NO-SOURCE
+> Task :processTestResources NO-SOURCE
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileJava'.
+> Could not resolve all files for configuration ':compileClasspath'.
+   > Could not find org.apache.commons:commons-lang3:99.0.0.
+     Searched in the following locations:
+       - https://repo.maven.apache.org/maven2/org/apache/commons/commons-lang3/99.0.0/commons-lang3-99.0.0.pom
+     Required by:
+         root project :
+
+* Try:
+> If the artifact you are trying to retrieve can be found in the repository but without metadata in 'Maven POM' format, you need to adjust the 'metadataSources { ... }' of the repository declaration.
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 889ms
+1 actionable task: 1 executed

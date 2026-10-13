@@ -58,7 +58,7 @@ internal data class SourceOptions(
  * `2`. Reads the GitHub Actions environment: the event file, the API and server URLs.
  */
 internal class PrCommand(
-    private val adapters: (mavenSettings: Path?) -> List<EcosystemAdapter>,
+    private val adapters: (BuildConfig) -> List<EcosystemAdapter>,
     private val sources: (SourceOptions) -> List<UpdateSource>,
     private val index: () -> RecipeIndex,
     private val llm: (url: URI, model: String) -> LlmClient = ::OllamaClient,
@@ -101,6 +101,12 @@ internal class PrCommand(
         metavar = "<file>",
         envvar = "LECTOR_MAVEN_SETTINGS",
         help = "Maven settings file, passed to Maven. Empty for none.",
+    ).path()
+    private val gradleInit by option(
+        "--gradle-init",
+        metavar = "<file>",
+        envvar = "LECTOR_GRADLE_INIT",
+        help = "Gradle init script, passed to every Gradle run, e.g. for a mirror. Empty for none.",
     ).path()
     private val mode by option(
         "--mode",
@@ -154,21 +160,25 @@ internal class PrCommand(
         val token = currentContext.readEnvvar(TOKEN_VARIABLE).orEmpty()
         ensure(token.isNotBlank()) { "Set $TOKEN_VARIABLE to the GitHub App's installation token" }
         ensure(repo.isDirectory()) { "$repo is not a directory" }
-        // The action passes an empty value when no settings file is configured.
+        // The action passes an empty value when no file is configured.
         val settings = mavenSettings?.takeIf { it.toString().isNotEmpty() }
         ensure(settings?.isRegularFile() != false) { "Maven settings $settings is not a file" }
-        val pipeline =
-            PrPipeline(
-                // The App's bot commits under its login, so its name is also the author of the report comment.
-                host = host(event, apiUrl, serverUrl, token, botName),
-                sources = sources(SourceOptions(botLogins.toSet(), fallbackLabel, metadata())),
-                adapters = adapters(settings),
-                index = index(),
-                llm = llm(fixLoop.ollamaUrl, fixLoop.model),
-                settings =
-                    PrSettings(CommitIdentity(botName, botEmail), fixLoop.budgets(), source?.ifEmpty { null }, mode?.let(MODES::get)),
-            )
-        return pipeline.run(repo)
+        val init = gradleInit?.takeIf { it.toString().isNotEmpty() }
+        ensure(init?.isRegularFile() != false) { "Gradle init script $init is not a file" }
+        return adapters(BuildConfig(settings, init)).use { all ->
+            val pipeline =
+                PrPipeline(
+                    // The App's bot commits under its login, so its name is also the author of the report comment.
+                    host = host(event, apiUrl, serverUrl, token, botName),
+                    sources = sources(SourceOptions(botLogins.toSet(), fallbackLabel, metadata())),
+                    adapters = all,
+                    index = index(),
+                    llm = llm(fixLoop.ollamaUrl, fixLoop.model),
+                    settings =
+                        PrSettings(CommitIdentity(botName, botEmail), fixLoop.budgets(), source?.ifEmpty { null }, mode?.let(MODES::get)),
+                )
+            pipeline.run(repo)
+        }
     }
 
     // The action passes an empty value when the workflow ran no fetch-metadata. The option was validated when parsed.

@@ -194,8 +194,8 @@ a new one. A head commit that isn't Dependabot's is skipped (see the table above
 Dependabot pushes, once.
 
 `dependabot/fetch-metadata` reads what Dependabot updated, every dependency of a grouped update included. Without its
-output, a run on a Dependabot PR fails with exit code 2. lector-ai fixes `maven` updates; `gradle` updates need Gradle
-support (see the limitations), and Dependabot's other ecosystems are skipped. The release notes come from Dependabot's PR body.
+output, a run on a Dependabot PR fails with exit code 2. lector-ai fixes `maven` and `gradle` updates;
+Dependabot's other ecosystems are skipped. The release notes come from Dependabot's PR body.
 
 ### Other dependency PRs: the opt-in label
 
@@ -225,12 +225,34 @@ and says why in the comment.
 | `time-limit` | `30` | Minutes before the fix loop stops |
 | `max-changed-lines` | `50` | Lines one attempt may change before it is rejected |
 | `maven-settings` | none | A Maven settings file in the workspace, e.g. for a mirror; credentials in it can come from `MAVEN_*` variables |
+| `gradle-init` | none | A Gradle init script in the workspace, passed to every Gradle run, e.g. to point the repositories at a mirror; credentials can come from `GRADLE_*` and `ORG_GRADLE_PROJECT_*` variables |
 
 There is no configuration file in your repository: everything is in the workflow.
 
 **Maven and Java.** The tool image has JDKs 17, 21, and 25 and Maven 3.9. lector-ai builds with the smallest JDK that is
 at least `maven.compiler.release` (or `<java.version>`) of the root POM, 21 if none is set. A project's Maven wrapper
 (`mvnw`) is used if it has one. Maven downloads dependencies and recipes from your repositories as usual.
+
+**Gradle and Java.** A Gradle build needs its wrapper (`gradlew` and `gradle/wrapper/`) committed, and Gradle 8 or newer.
+lector-ai always runs the wrapper, so the image has no Gradle: the wrapper downloads the distribution its
+`distributionUrl` names, so point that URL at your mirror if you need one. Gradle runs on the JDK that
+`gradle/gradle-daemon-jvm.properties` asks for, otherwise on the newest of 17, 21, and 25 that your Gradle version
+supports. Toolchains resolve from the same three JDKs only, never by auto-detection or a download: a toolchain for
+another Java version (8, 11) is a tool error. The project's own repositories provide dependencies, recipes, and the
+OpenRewrite libraries; the OpenRewrite Gradle plugin itself comes with the image.
+
+The Gradle user home is `/github/home/.gradle` in the action's container, which is `${{ runner.temp }}/_github_home/.gradle`
+on the runner. Cache it to skip the downloads of the distribution and the dependencies, with a step before lector-ai:
+
+```yaml
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ${{ runner.temp }}/_github_home/.gradle/caches
+            ${{ runner.temp }}/_github_home/.gradle/wrapper
+          key: lector-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', 'gradle/*.versions.toml') }}
+          restore-keys: lector-gradle-
+```
 
 ## 4. Runners and models
 
@@ -243,7 +265,14 @@ With the 30B image, set `model: qwen3-coder:30b` in the action's inputs.
 
 ## Limitations
 
-- **Maven only.** Gradle comes with M7.
+- **Maven and Gradle only**, and only at the repository root. A repository with both a `pom.xml` and Gradle build files
+  at the root is refused: lector-ai doesn't pick a build tool.
+- **Gradle:** no Android or Kotlin Multiplatform builds (the image has no Android SDK), no Gradle 7 or older, no build
+  without a wrapper. Groovy sources (Spock tests) are never edited: their failures are reported, but the model can only
+  fix the Java or Kotlin code they call. Linters bound to `check` (Spotless, Checkstyle, detekt) don't run: verify
+  compiles every source set and runs every `Test` task. Test reports are read from `build/test-results/` in each
+  project's directory, Gradle's default: with another build directory, failing tests count as a build failure. PRs that
+  only update the Gradle wrapper are skipped.
 - **GitHub only.**
 - **Unsigned commits.** If your branches require signed commits, the push is rejected.
 - **The token is not isolated from the build.** Builds and tests run without the token in their environment, but in the

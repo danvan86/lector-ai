@@ -810,6 +810,8 @@ class PrPipelineTest {
         val requests = mutableListOf<FixRequest>()
         private val answers = ArrayDeque(answers.toList())
 
+        override fun fits(request: FixRequest) = true
+
         override fun propose(request: FixRequest): Proposal {
             requests += request
             return answers.removeFirst()(request)

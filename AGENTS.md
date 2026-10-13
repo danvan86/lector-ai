@@ -32,6 +32,7 @@ sources/       update-source adapters (renovate, dependabot, fallback)
 ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
+benchmark/     benchmark harness and report (M6); uses core and the adapters, never shipped
 action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
 docker/        Dockerfiles of the tool image and the Ollama image (not Gradle modules)
 ```
@@ -44,9 +45,12 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew build            # compile, unit + end-to-end tests, lint, coverage check
 ./gradlew test             # unit tests only (fast, no distribution)
 ./gradlew :cli:endToEndTest # end-to-end tests against the installed start script
-./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven on fixtures (needs mvn and network)
+./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven and Gradle on fixtures (needs mvn and network)
+./gradlew :ecosystems:jvm:integrationTest # opt-in: the Gradle adapter with real Gradle on fixtures (needs network)
 ./gradlew :cli:realModelTest # opt-in: heal with a real model in Ollama (needs Docker, mvn, network); -Plector.model=<name>
 ./gradlew :recipes:generateRecipeIndex # recipe index and license report, under recipes/build/generated/recipe-index/
+./gradlew :benchmark:report -Presults=benchmark/results/<date> # report.md from results.json and review.json there
+./gradlew :benchmark:run --args="matrix|run|merge|report …" # benchmark commands; the Benchmark workflow runs them
 ./gradlew ktlintFormat     # fix most ktlint violations
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
@@ -82,7 +86,9 @@ These come from the concept. Don't break them without updating the concept first
 - What the tool reads back from the Git host as its own (the report comment, later a companion PR or branch) is matched by the bot's identity, not by a marker or a name alone: anyone who can comment on a PR can write the marker.
 - A PR can carry hundreds of changes: a labelled PR lists every transitive one. Per-change work reads what the changes share once per run, and every list for a person or the model names the first few and counts the rest.
 - The repository under repair is the user's. Commit only the files a step changed: a build leaves output in the tree, and test fixtures ignore `target/`, so `git add --all` looks fine in tests and isn't. Reset the working tree on every way out of a failed step, exceptions and errors included.
-- An adapter's build files are every file the build tool reads its configuration from, not only the manifest (Maven: `.mvn/` and the wrapper, too). The build-file guardrails and the downgrade check see only what `isBuildFile` names, so a missed file is a way around them.
+- An adapter's build files are every file the build tool reads its configuration from, not only the manifest (Maven: `.mvn/` and the wrapper, too; Gradle: every included build, whatever its name). The build-file guardrails and the downgrade check see only what `isBuildFile` names, so a missed file is a way around them.
+- A blocklist rule matches every way to write the setting, not only the spelling in the spec: the setter (`setOnlyIf`), the plural (`excludes`), the closure and list forms. Test each route. One missed spelling lets the model filter a failing test out.
+- The process allowlist strips the environment. The variables a build tool reads credentials from (Maven `MAVEN_*`, Gradle `GRADLE_*` and `ORG_GRADLE_PROJECT_*`) are passed by its adapter, not added to `core`, and the setup guide names them.
 - Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
 - All library and plugin versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Base image versions live in the `FROM` lines of the Dockerfiles under `docker/`. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs. A version pinned to a release line on purpose (a JDK per image stage) gets an `ignore` for major updates in `.github/dependabot.yml`: Dependabot proposes major Docker tags by default.
 - No new dependency without a short reason in the PR description.
@@ -93,7 +99,7 @@ These come from the concept. Don't break them without updating the concept first
 `./gradlew build` fails on any finding. The gates are strict by default and relaxed only where a real case needs it.
 
 - **ktlint** owns formatting (`ktlint_official`, configured in `.editorconfig`). Run `ktlintFormat` instead of formatting by hand.
-- **detekt** owns code smells and likely bugs. Defaults plus the deviations in `config/detekt/detekt.yml`. Notable project rules: no `print`/`println`, also not via `System.out` and its `printf`, `format`, `append`, `write` (stdout is the report channel; use Clikt `echo` and SLF4J), no process exit outside `main`, no `else` on sealed types.
+- **detekt** owns code smells and likely bugs. Defaults plus the deviations in `config/detekt/detekt.yml`. Notable project rules: no `print`/`println`, also not via `System.out` and its `printf`, `format`, `append`, `write` (stdout is the report channel; use Clikt `echo` and SLF4J), no process exit outside `main`, no `else` on sealed types, no unused imports (ktlint no longer checks them).
 - **Kover** requires 100 % line and branch coverage per module. The only exclusion is the `main` entry point (`MainKt`): it exits the process, so only the end-to-end tests run it. Kover counts branches that no test can reach: `?: …` after a `let` that never returns null, a safe call on a non-null value, the exceptional copy of a `finally` block, a null check in a default argument. Write a plain `if` on a single safe call, and catch-and-rethrow instead of `finally`.
 - Fix the code first. If a rule is wrong for this project, change it in the config with a one-line reason. A single justified exception may use `@Suppress("RuleName")` with a comment that says why.
 - Never add baselines, `ignoreFailures`, or further coverage exclusions.
@@ -106,7 +112,7 @@ These come from the concept. Don't break them without updating the concept first
 - Tool output in tests (compiler messages, build logs) uses the real tool's wording, copied from a real run. An invented message hid that javac's "does not override" names no method, so a rule matching on the name never fired for Java.
 - No real LLM in unit tests: use a fake `LlmClient`. Tests against a real Ollama are tagged and opt-in.
 - Test every state that something the tool created can be in when the next run sees it: still open, merged or closed by a person, built on an older head. Companion tests that only covered an open PR let merged companions keep their branch. The same goes for each step of the documented workflow: it sees the tool's own commits and merges too (`fetch-metadata` fails on a head that isn't Dependabot's).
-- Test the failure paths, not only the happy path: invalid input, missing or malformed resources. For the CLI, assert exit code, stdout, and stderr on every path, because they are the contract with the pipeline.
+- Test the failure paths, not only the happy path: invalid input, missing or malformed resources. For the CLI, assert exit code, stdout, and stderr on every path, because they are the contract with the pipeline. A count or flag that a report shows is tested at a value its default can't produce: a fake that never cuts, rejects, or fails keeps it at 0, and a hard-coded 0 would pass.
 - A command that should run only some tests is checked once with the real build tool, not only by its command line. Lifecycles run other test tasks first (Maven's `verify` runs every surefire test before failsafe).
 - End-to-end tests run the installed start script as a separate process. They are tagged `e2e` and run in `endToEndTest`, not in `test`.
 - A change is done when `./gradlew build` passes.

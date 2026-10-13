@@ -144,6 +144,7 @@ The sources are tried in this order: Renovate, Dependabot, fallback. An optional
 - Add the bot identity to `gitIgnoredAuthors`. Otherwise Renovate stops maintaining the branch after foreign commits.
 - Read **every** row of the PR body's update table: Renovate groups monorepo packages by default, so a PR with several changes is the normal case. Rows without a version change (digest, pin, lock-file maintenance) are left out.
 - Map Renovate's datasource names to ecosystems with a lookup table (`maven` → `maven`). The body names no manager; the datasource is in the merge-confidence badges. A row without badges belongs to the repository's ecosystem.
+- Read the package from the badges too: the table shows a Gradle plugin's ID or a version catalog alias, the badge the package (`maven` datasource, plugins under their marker coordinates `<id>:<id>.gradle.plugin`). Gradle wrapper rows (`gradle-version` datasource, or the package `gradle` without badges) map to no ecosystem, so a wrapper-only PR is skipped.
 
 **Dependabot**
 - Dependabot stops rebasing after foreign commits, and `@dependabot rebase` or `recreate`, or a superseding version, overwrites them. Two strategies, configurable:
@@ -157,7 +158,7 @@ The sources are tried in this order: Renovate, Dependabot, fallback. An optional
 No LLM picks recipes. The index is derived from the recipes' own metadata, at build time of the tool:
 
 1. The build loads every recipe of the official `rewrite-recipe-bom` (version in the version catalog) and writes the index as a resource. The runtime never loads OpenRewrite and needs no network for the index. Dependabot bumps the BOM, CI rebuilds, so the index can't go stale. No user-provided recipes.
-2. It walks each recipe tree and collects the typed upgrade leaves at any depth: `UpgradeDependencyVersion` (the `maven` and `java.dependencies` variants), `UpgradeParentVersion`, `UpgradePluginVersion`. Glob artifact IDs (`*`) stay patterns. Only exact versions and X-ranges (`3.4.x`, `3.x`) are indexed, as OpenRewrite's own `Semver` reads them. Other selectors (`latest.*`, ranges) are unbounded or would need OpenRewrite's logic at run time; they are skipped and counted.
+2. It walks each recipe tree and collects the typed upgrade leaves at any depth: `UpgradeDependencyVersion` (the `maven` and `java.dependencies` variants), `UpgradeParentVersion`, `UpgradePluginVersion`, and Gradle's `UpgradePluginVersion`, whose package is the plugin's marker coordinates `<id>:<id>.gradle.plugin` in the `maven` namespace. Glob artifact IDs (`*`) stay patterns. Only exact versions and X-ranges (`3.4.x`, `3.x`) are indexed, as OpenRewrite's own `Semver` reads them. Other selectors (`latest.*`, ranges) are unbounded or would need OpenRewrite's logic at run time; they are skipped and counted.
 3. Each entry holds ecosystem, package pattern, selector, recipe, leaf depth, the recipe's artifact with version, and its license. Next to the index, the build writes a report: counts, skipped leaves by reason, and the license of every recipe artifact.
 4. Matching asks the ecosystem adapter's version scheme, so the index knows no version syntax. A recipe's target for a package is its **highest** leaf for that package, so `UpgradeSpringBoot_3_4`, which includes the 3.3 upgrade, never matches a change to 3.3. A recipe matches when its target contains the target version. Ranking: tightest selector (`3.4.x` beats `3.x`), then shallowest leaf (the recipe *about* the package beats one that includes it), then name. The alternatives are reported.
 
@@ -167,7 +168,7 @@ No LLM picks recipes. The index is derived from the recipes' own metadata, at bu
 2. With a base commit: if the base already resolves the package higher than the target, the PR is outdated and no recipe runs.
 3. If any package resolves lower after the recipe than before, the recipe's result is discarded.
 
-The versions come from the adapter's resolved versions (Maven: the effective POM). If they can't be read, nothing can be proven, so no recipe runs. Version changes beyond the PR (a framework recipe also moves its managed dependencies, or a newer patch) are kept and listed in the report.
+The versions come from the adapter's resolved versions (Maven: the effective POM; Gradle: an init-script task that resolves every configuration). If they can't be read, nothing can be proven, so no recipe runs. Version changes beyond the PR (a framework recipe also moves its managed dependencies, or a newer patch) are kept and listed in the report.
 
 **Later:** for recipes without structured upgrade leaves, embedding search over name and description. Any match is checked against the index before running. Recipe names are never generated.
 
@@ -179,10 +180,10 @@ Every adapter implements the same interface:
 
 | Responsibility | JVM (Maven/Gradle) | JS/TS | Python | .NET | Terraform/HCL | Config (YAML/XML/properties) |
 |---|---|---|---|---|---|---|
-| **Run recipe** | Maven plugin via CLI coordinates / Gradle init script (no build file edits) | OpenRewrite JS* | OpenRewrite Python* | OpenRewrite C#* | rewrite-hcl | rewrite-yaml/xml/properties |
-| **Verify** | `verify` / `check` | `tsc --noEmit` + tests | pyright/mypy (JSON) + pytest | `dotnet build` + `dotnet test` | `terraform validate -json` | Schema validation, `helm lint`, app startup |
+| **Run recipe** | Maven plugin via CLI coordinates / Gradle init script with the plugin from the tool image (no build file edits) | OpenRewrite JS* | OpenRewrite Python* | OpenRewrite C#* | rewrite-hcl | rewrite-yaml/xml/properties |
+| **Verify** | Maven `verify` / every Gradle `Test` task | `tsc --noEmit` + tests | pyright/mypy (JSON) + pytest | `dotnet build` + `dotnet test` | `terraform validate -json` | Schema validation, `helm lint`, app startup |
 | **Grounding** | `javap` / `-sources.jar` | `.d.ts` files in `node_modules` | `.pyi` stubs / `inspect` | XML docs / assembly metadata | `terraform providers schema -json` | JSON schemas, config metadata |
-| **Excluded from editing** | `target/`, `build/` (outside `src/`), `generated*` directories | `dist/`, generated clients | Generated protobuf/OpenAPI code | `obj/`, `*.g.cs` | `.terraform/` | Rendered templates |
+| **Excluded from editing** | `target/`, `build/` (outside `src/`), `generated*` directories; Gradle also `.gradle/`, the wrapper, and Groovy sources | `dist/`, generated clients | Generated protobuf/OpenAPI code | `obj/`, `*.g.cs` | `.terraform/` | Rendered templates |
 | **Language support (guardrails)** | tree-sitter Java/Kotlin | tree-sitter TypeScript/JavaScript | tree-sitter Python | tree-sitter C# | tree-sitter HCL | tree-sitter YAML/XML |
 
 \* Check maturity and licensing (see section 9).
@@ -254,6 +255,7 @@ A local model often doesn't know the new version of an API, because it was relea
 ### 6.2 Error handling
 
 - **Cluster before fixing:** errors are grouped by missing symbol or package. One root cause, such as a missing module or changed artifact coordinates, can produce hundreds of follow-on errors. Root causes are fixed first.
+- **Fit the context:** a request carries a cluster's errors and the code around each of them in full. If they don't fit into the model's context, it carries only as many errors (each with its code) as fit; the rest come back in the next round, because clusters are rebuilt after every accepted attempt. Grounding, release notes, and the recipe diff are trimmed first. A request that is cut silently would show the model part of the errors, and nobody would know which part.
 - **Build-file fixes:** many breaking changes require changes in `pom.xml`, `package.json`, or `*.csproj`, not in source code. The loop allows edits to build files.
 - **Generated code** is never edited. Fixes belong in the generator configuration or the source annotations.
 - **Only failures caused by the update** are in scope (section 5). Pre-existing and flaky test failures are never touched.
@@ -340,8 +342,8 @@ Also:
 ### 8.4 Infrastructure
 
 - **Orchestrator:** GitHub Actions (later GitLab CI). The tool runs as a Docker container action.
-- **Two images**, updated independently. The **tool image** has the tool, git, Maven, and JDKs 17, 21, and 25; the tool builds each project with the smallest JDK its release needs. The **Ollama image** has one model's weights **baked in** and runs as the job's `services:` sidecar, so nothing is downloaded per job except the project's own dependencies.
-- **Model:** a coding model that is strong across many languages (the Qwen-Coder family). The `qwen2.5-coder:7b` variant runs on standard GitHub-hosted runners, on CPU, and is the default. The `qwen3-coder:30b` variant needs a large runner, ideally with a GPU. Its weights are one file of about 19 GB, more than GHCR takes in one layer (10 GB), so its distribution is still open.
+- **Two images**, updated independently. The **tool image** has the tool, git, Maven, JDKs 17, 21, and 25, and the OpenRewrite Gradle plugin; the tool builds each Maven project with the smallest JDK its release needs, and runs Gradle on the newest JDK the project's Gradle version supports, with toolchains from the same JDKs. It has no Gradle: a project's wrapper downloads its own distribution. The **Ollama image** has one model's weights **baked in** and runs as the job's `services:` sidecar, so nothing is downloaded per job except the project's own dependencies and, for Gradle, its distribution.
+- **Model:** a coding model that is strong across many languages (the Qwen-Coder family). The `qwen2.5-coder:7b` variant runs on standard GitHub-hosted runners, on CPU, and is the default: it is the model the benchmark measures (section 11). The `qwen3-coder:30b` variant is an option for GPU runners, not measured. Its weights are one file of about 19 GB, more than GHCR takes in one layer (10 GB), so its distribution is still open.
 - **No cloud data leakage:** source code and logs stay inside your own infrastructure.
 
 ## 9. Licensing and maturity
@@ -403,6 +405,10 @@ A **benchmark per ecosystem** with real repositories (our own plus open-source p
 - Runtime and attempts per PR
 
 Results are reported **separately per ecosystem**. "Works for Java" and "works for Python" will be very different numbers. The often-quoted 90/10 split between recipe and AI is a hypothesis this benchmark has to confirm or refute.
+
+**The 90/10 split, measured:** on the runs that apply the recipe and then the fix loop and end green, the share of changed lines (added plus removed) in the recipe's commits, of all lines the run's commits changed. The hypothesis holds if the mean share over those runs is at least 90%. The split comes straight from the commits and is the same for every language. Green rates per mode are reported too, but they say which cases work, not how much of the work each part did.
+
+Each case runs in three modes: recipe only, fix loop only, and recipe + fix loop. Only the three together tell where the value comes from. The modes that use the model run three times, because its output varies. A case counts only if its head commit has a failure caused by the update.
 
 ## 12. Benefits
 

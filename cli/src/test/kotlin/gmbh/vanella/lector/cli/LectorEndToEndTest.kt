@@ -84,7 +84,7 @@ class LectorEndToEndTest {
         val run = lector("verify", repo.toString())
 
         assertEquals("", run.stdout)
-        assertEquals("Error: No supported ecosystem in $repo. Supported: Maven (pom.xml at the root).\n", run.stderr)
+        assertEquals("Error: No supported ecosystem in $repo. $SUPPORTED\n", run.stderr)
         assertEquals(2, run.exitCode)
     }
 

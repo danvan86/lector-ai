@@ -11,7 +11,8 @@ import kotlinx.serialization.json.buildJsonArray
 /**
  * The prompt for one fix request. It must fit into the model's fixed context, with room for the answer. If it doesn't,
  * the API, the release notes, and the recipe diff are trimmed, in that order of priority. The errors, the code, and the
- * earlier attempts are never trimmed: without them the model can't fix anything.
+ * earlier attempts are never trimmed: without them the model can't fix anything. If they don't fit, the fix loop sends
+ * fewer errors, each with its code.
  */
 internal object Prompt {
     const val CONTEXT_TOKENS = 16_384

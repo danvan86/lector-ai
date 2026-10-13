@@ -19,14 +19,6 @@ data class PrSettings(
     val mode: BranchPolicy? = null,
 )
 
-/** A recipe that ran once for the [changes] that map to it, and its commit if it changed anything. */
-data class RecipeApplication(
-    val recipe: Recipe,
-    val changes: List<DependencyChange>,
-    val outcome: RecipeOutcome,
-    val commit: String?,
-)
-
 /**
  * What a run did to a PR the update broke: the recipes, the changes without one and why, the fix loop, the push, the
  * [companion] PR the commits went to, or null if they went onto the PR's own branch or nowhere, and the companion PR of
@@ -188,51 +180,15 @@ class PrPipeline(
         val (pr, repo, adapter) = run
         val base = run.base
         val changes = run.changes
-        val blockers = recipeBlockers(changes, adapter.versionScheme, run.context::baseVersions)
-        val lookups = changes.zip(blockers).map { (change, blocker) -> change to lookUp(change, blocker, adapter) }
-        val withoutRecipe = lookups.mapNotNull { (change, lookup) -> (lookup as? Lookup.Stopped)?.let { change to it.outcome } }
-        val recipes =
-            lookups
-                .mapNotNull { (change, lookup) -> (lookup as? Lookup.Found)?.let { it.recipe to change } }
-                .groupBy({ it.first }, { it.second })
-                .map { (recipe, covered) -> apply(recipe, covered, adapter, repo) }
-        val commits = recipes.mapNotNull { it.commit }
+        val recipeStep = applyRecipes(changes, adapter, index, repo, run.context::baseVersions, settings.identity)
+        val withoutRecipe = recipeStep.withoutRecipe
+        val recipes = recipeStep.applications
+        val commits = recipeStep.commits
         val afterRecipes = if (commits.isEmpty()) verification else attribute(adapter, repo, base)
-        val recipeDiff = commits.joinToString("\n") { GitWorkingTree.diff(repo, it) }.ifEmpty { null }
-        val fixContext = FixContext(changes, run.releaseNotes, recipeDiff)
+        val fixContext = FixContext(changes, run.releaseNotes, recipeStep.diff(repo))
         val fixLoop = FixLoop(adapter, llm, base, settings.budgets, settings.identity).run(repo, fixContext, afterRecipes)
         val anyCommit = commits.isNotEmpty() || fixLoop.fixes.isNotEmpty()
         return delivery.deliver(pr, repo, PrReport(changes, withoutRecipe, recipes, fixLoop, pushed = anyCommit), run.policy)
-    }
-
-    /** The index, for a change that rules 1 and 2 of the recipe step didn't [block][blocker]. */
-    private fun lookUp(
-        change: DependencyChange,
-        blocker: RecipeOutcome?,
-        adapter: EcosystemAdapter,
-    ): Lookup {
-        if (blocker != null) return Lookup.Stopped(blocker)
-        val chosen = index.find(change, adapter.versionScheme).chosen
-        return if (chosen == null) Lookup.Stopped(RecipeOutcome.NoMatch) else Lookup.Found(chosen.recipe)
-    }
-
-    /** Runs [recipe] once for every change in [changes], and commits what it changed. */
-    private fun apply(
-        recipe: Recipe,
-        changes: List<DependencyChange>,
-        adapter: EcosystemAdapter,
-        repo: Path,
-    ): RecipeApplication {
-        val outcome = runRecipe(recipe, adapter, repo)
-        val changed = (outcome as? RecipeOutcome.Applied)?.changedFiles.orEmpty()
-        val commit =
-            if (changed.isEmpty()) {
-                null
-            } else {
-                val versions = changes.joinToString(", ") { "${it.`package`} ${it.fromVersion} -> ${it.toVersion}" }
-                GitWorkingTree.commit(repo, "Apply recipe ${recipe.name}\n\nFor $versions.", changed, settings.identity)
-            }
-        return RecipeApplication(recipe, changes, outcome, commit)
     }
 
     /** One run's state after the trigger checks. */
@@ -246,14 +202,4 @@ class PrPipeline(
         val releaseNotes: String?,
         val policy: BranchPolicy,
     )
-
-    private sealed interface Lookup {
-        data class Found(
-            val recipe: Recipe,
-        ) : Lookup
-
-        data class Stopped(
-            val outcome: RecipeOutcome,
-        ) : Lookup
-    }
 }

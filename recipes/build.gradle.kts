@@ -3,6 +3,8 @@
 // The index is generated at build time from the recipes of `rewrite-recipe-bom` and ships as a resource. OpenRewrite is
 // only on the classpath of the `generator` source set, which runs during the build and is not part of the distribution.
 
+import java.util.Properties
+import java.util.zip.ZipFile
 import javax.xml.parsers.DocumentBuilderFactory
 
 plugins {
@@ -84,8 +86,22 @@ sourceSets.main {
     resources.srcDir(files(indexDir).builtBy(generateRecipeIndex))
 }
 
-// The JVM adapter runs the indexed recipes with rewrite-maven-plugin, so the plugin must be built on the OpenRewrite
-// version the BOM names. Dependabot bumps the two in separate PRs; this check fails the build until both match.
+// The OpenRewrite version the BOM's recipes are built on.
+val bomRewriteVersion =
+    configurations
+        .named("generatorRuntimeClasspath")
+        .flatMap { it.incoming.artifacts.resolvedArtifacts }
+        .map { artifacts ->
+            artifacts
+                .map { it.id.componentIdentifier }
+                .filterIsInstance<ModuleComponentIdentifier>()
+                .single { it.group == "org.openrewrite" && it.module == "rewrite-core" }
+                .version
+        }
+
+// The JVM adapters run the indexed recipes with rewrite-maven-plugin and the OpenRewrite Gradle plugin, so both must be
+// built on the OpenRewrite version the BOM names. Dependabot bumps them in separate PRs; these checks fail the build
+// until all match.
 val rewritePluginPom =
     configurations.detachedConfiguration(dependencies.create("${libs.rewrite.maven.plugin.get()}@pom"))
 val checkRewritePluginVersion =
@@ -93,17 +109,7 @@ val checkRewritePluginVersion =
         description = "Checks that rewrite-maven-plugin is built on the OpenRewrite version of rewrite-recipe-bom."
         group = LifecycleBasePlugin.VERIFICATION_GROUP
         val pluginPom: FileCollection = rewritePluginPom
-        val bomVersion =
-            configurations
-                .named("generatorRuntimeClasspath")
-                .flatMap { it.incoming.artifacts.resolvedArtifacts }
-                .map { artifacts ->
-                    artifacts
-                        .map { it.id.componentIdentifier }
-                        .filterIsInstance<ModuleComponentIdentifier>()
-                        .single { it.group == "org.openrewrite" && it.module == "rewrite-core" }
-                        .version
-                }
+        val bomVersion = bomRewriteVersion
         inputs.files(pluginPom)
         doLast {
             val pom = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pluginPom.singleFile)
@@ -115,7 +121,32 @@ val checkRewritePluginVersion =
         }
     }
 
+// The Gradle plugin names its OpenRewrite version in `rewrite/versions.properties` inside its JAR.
+val rewriteGradlePluginJar =
+    configurations.detachedConfiguration(dependencies.create("${libs.rewrite.gradle.plugin.get()}@jar"))
+val checkRewriteGradlePluginVersion =
+    tasks.register("checkRewriteGradlePluginVersion") {
+        description = "Checks that the OpenRewrite Gradle plugin is built on the OpenRewrite version of rewrite-recipe-bom."
+        group = LifecycleBasePlugin.VERIFICATION_GROUP
+        val pluginJar: FileCollection = rewriteGradlePluginJar
+        val bomVersion = bomRewriteVersion
+        inputs.files(pluginJar)
+        doLast {
+            val versions = Properties()
+            ZipFile(pluginJar.singleFile).use { zip ->
+                val entry =
+                    checkNotNull(zip.getEntry("rewrite/versions.properties")) { "The plugin JAR has no rewrite/versions.properties" }
+                zip.getInputStream(entry).use { versions.load(it) }
+            }
+            val pluginVersion = versions.getProperty("org.openrewrite:rewrite-core")
+            check(pluginVersion == bomVersion.get()) {
+                "The OpenRewrite Gradle plugin is built on OpenRewrite $pluginVersion, but rewrite-recipe-bom names " +
+                    "${bomVersion.get()}. Update both in gradle/libs.versions.toml."
+            }
+        }
+    }
+
 // The convention plugin wires detekt for `main` and `test`. The generator gets the same check.
 tasks.check {
-    dependsOn("detektGenerator", checkRewritePluginVersion)
+    dependsOn("detektGenerator", checkRewritePluginVersion, checkRewriteGradlePluginVersion)
 }

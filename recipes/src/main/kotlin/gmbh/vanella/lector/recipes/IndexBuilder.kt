@@ -32,6 +32,9 @@ private val VERSION_LEAVES =
         "org.openrewrite.maven.UpgradePluginVersion",
     )
 
+// The leaf that moves a Gradle plugin, by plugin ID. Its package is the plugin's marker, `<id>:<id>.gradle.plugin`.
+private const val GRADLE_PLUGIN_LEAF = "org.openrewrite.gradle.plugins.UpgradePluginVersion"
+
 // Every leaf above is about a package in the Maven namespace, whichever JVM build tool the project uses.
 private const val ECOSYSTEM = "maven"
 private const val MISSING_OPTION = "missing option"
@@ -75,7 +78,7 @@ class IndexBuilder(
         depth: Int,
     ): List<Pair<RecipeTree, Int>> =
         trees.flatMap { tree ->
-            val self = if (tree.name in VERSION_LEAVES) listOf(tree to depth) else emptyList()
+            val self = if (tree.name in VERSION_LEAVES || tree.name == GRADLE_PLUGIN_LEAF) listOf(tree to depth) else emptyList()
             self + leaves(tree.children, depth + 1)
         }
 
@@ -85,10 +88,9 @@ class IndexBuilder(
         depth: Int,
         skipped: MutableList<String>,
     ): IndexEntry? {
-        val group = leaf.options["groupId"]
-        val artifact = leaf.options["artifactId"]
+        val pkg = packagePattern(leaf)
         val selector = leaf.options["newVersion"]
-        if (group == null || artifact == null || selector == null) {
+        if (pkg == null || selector == null) {
             skipped += MISSING_OPTION
             return null
         }
@@ -99,12 +101,20 @@ class IndexBuilder(
         }
         return IndexEntry(
             ECOSYSTEM,
-            "$group:$artifact",
+            pkg,
             selector,
             recipe.tree.name,
             depth,
             recipe.artifact.coordinates,
             recipe.artifact.license,
         )
+    }
+
+    /** `group:artifact` of a Maven leaf, the marker coordinates of a Gradle plugin leaf, or null if an option is missing. */
+    private fun packagePattern(leaf: RecipeTree): String? {
+        if (leaf.name == GRADLE_PLUGIN_LEAF) return leaf.options["pluginIdPattern"]?.let { "$it:$it.gradle.plugin" }
+        val group = leaf.options["groupId"]
+        val artifact = leaf.options["artifactId"]
+        return if (group == null || artifact == null) null else "$group:$artifact"
     }
 }

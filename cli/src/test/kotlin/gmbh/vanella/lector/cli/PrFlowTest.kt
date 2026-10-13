@@ -147,7 +147,7 @@ class PrFlowTest {
 
     private fun command() =
         PrCommand(
-            adapters = { listOf(MavenAdapter(it)) },
+            adapters = { listOf(MavenAdapter(it.mavenSettings)) },
             sources = ::sources,
             index = { RecipeIndex { _, _ -> RecipeSelection.NONE } },
             // The CLI only takes http(s) servers; the test's remote is a local directory.

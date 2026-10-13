@@ -32,6 +32,23 @@ class GeneratedIndexTest {
     }
 
     @Test
+    fun `contains the Spring Boot 3_4 upgrade for the Gradle plugin, under its marker coordinates`() {
+        val entry =
+            index.entries.single {
+                it.recipe == "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_4" &&
+                    it.packagePattern == "org.springframework.boot:org.springframework.boot.gradle.plugin" &&
+                    it.selector == "3.4.x"
+            }
+
+        assertEquals("maven", entry.ecosystem)
+    }
+
+    @Test
+    fun `every entry is in the maven namespace, Gradle plugins included`() {
+        assertEquals(setOf("maven"), index.entries.map { it.ecosystem }.toSet())
+    }
+
+    @Test
     fun `holds only exact versions and X-ranges`() {
         val unsupported = index.entries.filter { it.selector.startsWith("latest.") || it.selector.startsWith("[") }
 

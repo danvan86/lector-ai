@@ -22,15 +22,15 @@ private val JAVAP_TIMEOUT = 2.minutes
 private const val MAX_CLASSES = 300
 
 /**
- * The public API of the new version, from `javap -public` on the JARs the build already resolved into the local Maven
- * repository: every artifact of the updated package's group at the new version, so a release train (Spring Boot,
- * Jackson) is covered too. Nothing is downloaded.
+ * The public API of the new version, from `javap -public` on the JARs the build already resolved: every artifact of the
+ * updated package's group at the new version, so a release train (Spring Boot, Jackson) is covered too. [jars] finds
+ * them for a change in a repository, e.g. in the local Maven repository ([localRepositoryJars]). Nothing is downloaded.
  *
  * Shown are the classes the errors refer to: the erroring files' imports and the classes their messages name, plus
  * the classes that declare the missing symbol, in those packages or, for a class, anywhere in the JARs.
  */
 internal class JavapGrounding(
-    private val localRepository: Path,
+    private val jars: (repo: Path, change: DependencyChange) -> List<Path>,
     private val run: (command: List<String>, workDir: Path) -> ProcessResult = { command, workDir ->
         runProcess(command, workDir, JAVAP_TIMEOUT)
     },
@@ -44,7 +44,7 @@ internal class JavapGrounding(
         change: DependencyChange,
         diagnostics: List<Diagnostic>,
     ): String {
-        val jars = jars(change)
+        val jars = jars(repo, change)
         val index = jars.flatMap(::classNames).toSet()
         val references = references(repo, diagnostics)
         val direct = references.flatMap { name -> prefixes(name).filter { it in index }.take(1) }.toSet()
@@ -59,20 +59,6 @@ internal class JavapGrounding(
             }
         if (blocks.isEmpty()) return ""
         return "javap -public of ${change.`package`} ${change.toVersion}:\n\n" + blocks.joinToString("\n\n") { it.second }
-    }
-
-    /** Every JAR of the package's group at the new version, without sources, Javadoc, and test JARs. */
-    private fun jars(change: DependencyChange): List<Path> {
-        if (':' !in change.`package`) return emptyList()
-        val group = localRepository.resolve(change.`package`.substringBefore(':').replace('.', '/'))
-        if (!group.isDirectory()) return emptyList()
-        return group
-            .listDirectoryEntries()
-            .map { it.resolve(change.toVersion) }
-            .filter { it.isDirectory() }
-            .flatMap { it.listDirectoryEntries("*.jar") }
-            .filter { jar -> listOf("-sources.jar", "-javadoc.jar", "-tests.jar").none { jar.name.endsWith(it) } }
-            .sorted()
     }
 
     private fun classNames(jar: Path): List<String> =
@@ -135,3 +121,23 @@ internal class JavapGrounding(
 
     private fun simpleName(name: String) = name.substringAfterLast('.')
 }
+
+/**
+ * Every JAR of the package's group at the new version in the local Maven repository at [localRepository], without
+ * sources, Javadoc, and test JARs.
+ */
+internal fun localRepositoryJars(localRepository: Path): (Path, DependencyChange) -> List<Path> =
+    { _, change ->
+        val group = localRepository.resolve(change.`package`.substringBefore(':').replace('.', '/'))
+        if (':' !in change.`package` || !group.isDirectory()) {
+            emptyList()
+        } else {
+            group
+                .listDirectoryEntries()
+                .map { it.resolve(change.toVersion) }
+                .filter { it.isDirectory() }
+                .flatMap { it.listDirectoryEntries("*.jar") }
+                .filter { jar -> listOf("-sources.jar", "-javadoc.jar", "-tests.jar").none { jar.name.endsWith(it) } }
+                .sorted()
+        }
+    }

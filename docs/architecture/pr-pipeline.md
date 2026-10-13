@@ -24,7 +24,7 @@ flowchart LR
     action --> image["lector image<br/>lector pr"]
     image --> pipeline["PrPipeline<br/>(core)"]
     pipeline --> source["UpdateSource<br/>Renovate / Dependabot / Fallback (sources)"]
-    pipeline --> adapter["EcosystemAdapter<br/>MavenAdapter (ecosystems:jvm)"]
+    pipeline --> adapter["EcosystemAdapter<br/>MavenAdapter, GradleAdapter (ecosystems:jvm)"]
     pipeline --> loop["FixLoop + Guardrails<br/>(core)"]
     pipeline --> delivery["PrDelivery + Companions<br/>(core)"]
     loop --> llm["LlmClient<br/>OllamaClient (llm)"]
@@ -44,20 +44,21 @@ flowchart LR
 | | `RepositoryContext.kt` | The run's `SourceContext`: the head in the checkout, the base in a worktree of `BaseCommit`, read with the adapter's `resolvedVersions`. Keeps the base's versions after the first read. |
 | | `GitHost.kt` | The port `GitHost`: `pullRequest()`, `fetch`, `push` (false if rejected), `comment(pr, body, create)`, `label(number, label)`, `forcePush(repo, branch)`, `findPullRequest`, `createPullRequest`, `updatePullRequest`, `closePullRequest`, `deleteBranch`. `COMPANION_PREFIX = "heal/"`. |
 | | `PrComment.kt` | The report comment in Markdown: `render(report)`, `green(…)`, `unreadable(reason)`, `note(text)`, `companionClosed(number, reason)`, `companionDescription(report, source)`. At most 50 diagnostics per list and 10 changes without a recipe. |
-| | `RecipeStep.kt` | For the pipeline: `recipeBlockers(changes, versions, baseVersions)` (rules 1 and 2 for every change, the base read at most once), `runRecipe` (rule 3), `versionChanges`, `RecipeOutcome.reason`. A new or removed package (an empty version) is no upgrade. |
+| | `RecipeGroup.kt` | `applyRecipes(changes, adapter, index, repo, baseVersions, identity)` (M6, moved out of `PrPipeline` so the benchmark runs the same step): rules 1 and 2 for every change with the base's versions read once (`recipeBlockers`; `baseVersions(adapter, base)` for callers without a source context), each distinct recipe once in the changes' order, one commit per recipe that changed files. `RecipeGroupResult` (`withoutRecipe`, `applications`, `commits`, `diff(repo)`), `RecipeApplication`. |
+| | `RecipeStep.kt` | `recipeBlocker` and `recipeBlockers(changes, versions, baseVersions)` (rules 1 and 2), `runRecipe` (rule 3), `versionChanges`, `RecipeOutcome.reason`. A new or removed package (an empty version) is no upgrade. |
 | | `GitWorkingTree.kt` | `CommitIdentity` (`TOOL` = `lector` for the CLI), `commit(…, identity)`, `head`, `authorEmail`, `hasCommit`, `SHORT_COMMIT`. |
 | | `Processes.kt` | `runProcess` starts every process with only the allowlisted variables (`ALLOWED_VARIABLES`, prefixes `LC_` and `MAVEN_`) plus the ones the caller adds. |
-| `sources` | `RenovateSource.kt` | Author in the bot logins and the `renovate/` prefix; every row of the PR body's update table, and the release notes. In place. |
+| `sources` | `RenovateSource.kt` | Author in the bot logins and the `renovate/` prefix; every row of the PR body's update table, and the release notes; the package and datasource from the row's badge (M7), so Gradle plugin and version catalog rows work. In place. |
 | | `DependabotSource.kt` | Author in the bot logins and the `dependabot/` prefix; every entry of `fetch-metadata`'s `updated-dependencies-json` (`parseMetadata`), and the release notes and changelog sections of the PR body. Companion. |
 | | `FallbackSource.kt` | The opt-in label; every package whose resolved version differs between base and head. No release notes. Companion. |
 | `git` | `GitHubHost.kt` | The PR from the `pull_request` event file; comment, label, and PRs over REST; fetch, push, and force-push with the `git` CLI. |
 | | `GitHubApi.kt` | The JDK `HttpClient` with the token, the API version header, and the timeouts; `send` (JSON, error status → `ToolError`), `request`, `check`. |
-| `ecosystems:jvm` | `JdkSelection.kt` | Picks the smallest installed JDK that the root POM's `maven.compiler.release`, else `java.version`, needs (default 21). `MavenAdapter` sets `JAVA_HOME` per Maven run. |
+| `ecosystems:jvm` | `JdkSelection.kt` | Picks the smallest installed JDK that the root POM's `maven.compiler.release`, else `java.version`, needs (default 21). `MavenAdapter` sets `JAVA_HOME` per Maven run. Gradle picks its JDK differently (`DaemonJdk` and toolchains, M7, see [Gradle adapter](gradle-adapter.md#how-gradle-runs)). `installedJdks(environment)` reads the installed JDKs from `LECTOR_JDK_<release>` variables, for `cli` and the benchmark (M6). |
 | `cli` | `PrCommand.kt` | `lector pr`: options, the token from the environment, `SourceOptions` for the sources, the exit code, the text on stdout. |
 | | `FixLoopOptions.kt` | The options `heal` and `pr` share: `--ollama-url`, `--model` (`DEFAULT_MODEL`), the five budgets; `httpUrl()`. |
-| | `RootCommand.kt` | `sources(options)` builds the three sources in their order; `installedJdks()` reads `LECTOR_JDK_<release>` into `MavenAdapter`. |
-| — | `action/action.yml` | Docker container action on `ghcr.io/danvan86/lector:<version>`: inputs → `pr` options; token, Maven settings, and Dependabot metadata through the environment. |
-| — | `docker/lector/Dockerfile` | Tool image: `eclipse-temurin` 25 base, JDK 17 and 21 stages copied in, Maven, `git`, the installed distribution. No model, no recipe JARs. |
+| | `RootCommand.kt` | `sources(options)` builds the three sources in their order; `adapters()` builds `GradleAdapter` and `MavenAdapter` with the JDKs `installedJdks()` (`JdkSelection.kt`) reads from `LECTOR_JDK_<release>`. |
+| — | `action/action.yml` | Docker container action on `ghcr.io/danvan86/lector:<version>`: inputs → `pr` options; token, Maven settings, Gradle init script, and Dependabot metadata through the environment; `GRADLE_USER_HOME=/github/home/.gradle`, so a workflow can cache it. |
+| — | `docker/lector/Dockerfile` | Tool image: `eclipse-temurin` 25 base, JDK 17 and 21 stages copied in, Maven, `git`, the installed distribution with the OpenRewrite Gradle plugin (`LECTOR_REWRITE_GRADLE_PLUGIN`). No model, no recipe JARs, no Gradle. |
 | — | `docker/ollama/Dockerfile` | Ollama image: `ARG MODEL`, pulled at build time, `OLLAMA_KEEP_ALIVE=-1`. Its `FROM` is also the real-model test's Ollama. |
 | — | `.github/workflows/release.yml` | On a `v*` tag: `check` (tag = version, MSAL check done), then `tool-image` and the `ollama-image` matrix (7B, 30B). |
 
@@ -71,7 +72,7 @@ sequenceDiagram
     participant P as PrPipeline
     participant H as GitHubHost
     participant S as UpdateSource
-    participant E as MavenAdapter
+    participant E as EcosystemAdapter
     participant F as FixLoop
     participant D as PrDelivery
     A->>P: run(repo)
@@ -105,7 +106,7 @@ sequenceDiagram
 | Own commit | The tree must be clean and on the PR's head (else tool error); a head commit with the bot's email → `Skipped`. | `ownCommit` |
 | Changes | `source.read` with the run's `RepositoryContext`. A `ToolError` there (missing metadata, unreadable versions) writes `PrComment.unreadable` to the PR and exits `2`. Each `PackageUpdate` whose ecosystem is null or the adapter's becomes a `DependencyChange`, the update type from the adapter's `versionScheme`. None left → `Skipped`. | `read` |
 | Verify first | `attribute`. Green → `PrDelivery.green`: an open companion PR is closed, the existing comment (if any) updated. | `verifyFirst` |
-| Recipes | `recipeBlockers` (rules 1 and 2, the base's versions from the context), then the index. Changes grouped by recipe in the PR's order; each recipe runs once, its changed files one commit by the bot. | `heal`, `lookUp`, `apply` |
+| Recipes | `recipeBlockers` (rules 1 and 2, the base's versions from the context), then the index. Changes grouped by recipe in the PR's order; each recipe runs once, its changed files one commit by the bot. | `heal`, `applyRecipes` |
 | Fix loop | `FixLoop` with the bot's identity, over every change, the release notes, and the recipe diff. | [Fix loop](fix-loop.md) |
 | Deliver | Policy = `--mode`, else the source's `branchPolicy`. See below. | `PrDelivery.deliver` |
 
@@ -147,6 +148,7 @@ flowchart LR
 | Fallback label | `--fallback-label`, default `lector`, not blank. |
 | Dependabot metadata | `--dependabot-metadata` / `LECTOR_DEPENDABOT_METADATA`: the JSON itself, validated when parsed; empty means none. |
 | Maven settings | `--maven-settings` / `LECTOR_MAVEN_SETTINGS`; empty means none. |
+| Gradle init script | `--gradle-init` / `LECTOR_GRADLE_INIT`; empty means none (M7). |
 | Fix loop | `--ollama-url`, `--model`, the budgets (`FixLoopOptions`). |
 
 | Outcome | stdout | Exit |
@@ -163,7 +165,7 @@ flowchart LR
 
 | Source | Recognizes | Changes | Release notes | Policy |
 |---|---|---|---|---|
-| `RenovateSource` | author in bot logins, branch `renovate/…` | The PR body's table after `This PR contains the following updates:` (columns by header name; digest, pin, and lock-file rows left out; ecosystem from the datasource badge, `ECOSYSTEMS`) | After `### Release Notes`, up to Renovate's configuration section or footer | in place |
+| `RenovateSource` | author in bot logins, branch `renovate/…` | The PR body's table after `This PR contains the following updates:` (columns by header name; digest, pin, and lock-file rows left out; ecosystem and, since M7, package from the merge-confidence badge, `ECOSYSTEMS`; a Gradle wrapper row has no ecosystem) | After `### Release Notes`, up to Renovate's configuration section or footer | in place |
 | `DependabotSource` | author in bot logins, branch `dependabot/…` | Every entry of the metadata: `dependencyName`, `packageEcosystem` (`maven`, `gradle` → `maven`; others left out), `prevVersion`, `newVersion`. A Gradle name without `:` is a plugin → `<id>:<id>.gradle.plugin`; `gradle-wrapper` is left out. Dependabot's `updateType` is never read. No metadata → `ToolError` naming `docs/setup.md`, section 3. | Each `<details>` with summary `Release notes` or `Changelog`, headed by the `Bumps …` / ``Updates `…` `` line before it | companion |
 | `FallbackSource` | the label in `PullRequest.labels`, any author | `versionChanges(baseVersions, headVersions)`: every differing package, transitive, added (empty from), and removed (empty to) ones included. Unreadable on either side → `ToolError` that names the side. | none | companion |
 
@@ -192,7 +194,7 @@ The documented workflow ([`docs/setup.md`](../setup.md), section 3) listens to `
 
 | Artifact | Contents | Published as |
 |---|---|---|
-| Tool image | lector on JDK 25; JDKs 17, 21, 25 as `LECTOR_JDK_17/21/25`; Maven; `git` with `safe.directory '*'`; `.dockerignore` admits only `cli/build/install/lector` | `ghcr.io/<owner>/lector:<version>` |
+| Tool image | lector on JDK 25; JDKs 17, 21, 25 as `LECTOR_JDK_17/21/25`; Maven; the OpenRewrite Gradle plugin in `/opt/lector/rewrite-gradle-plugin`; `git` with `safe.directory '*'`; `.dockerignore` admits only `cli/build/install/lector` | `ghcr.io/<owner>/lector:<version>` |
 | Ollama image | `ollama/ollama` with one model pulled at build time | `ghcr.io/<owner>/lector-ollama:<model-tag>` and `:<version>-<model-tag>` (`qwen2.5-coder-7b`, `qwen3-coder-30b`) |
 
 Dependabot watches both Dockerfiles; major updates of `eclipse-temurin` are ignored so each JDK stage stays on its release.
@@ -203,7 +205,7 @@ Dependabot watches both Dockerfiles; major updates of `eclipse-temurin` are igno
 |---|---|---|---|
 | Unit, pipeline | `test` | `PrPipeline` on a real shallow clone with fake host, sources, adapter, and model: source order and override, every trigger check, the source context and its worktree, green stop, recipe grouping, push, rejected push, companion create, update, close (green, closed, merged, merged first, no commits), labels | `PrPipelineTest` |
 | Unit, comment and recipe rules | `test` | Rendered Markdown, the cut lists; `recipeBlockers` reading the base once | `PrCommentTest`, `RecipeStepTest` |
-| Unit, sources | `test` | Captured Renovate bodies (`sources/src/test/resources/renovate/`); captured Dependabot PRs with the `updated-dependencies-json` `fetch-metadata`'s parser made (`…/dependabot/`); the fallback against a fake `SourceContext` | `RenovateSourceTest`, `DependabotSourceTest`, `FallbackSourceTest` |
+| Unit, sources | `test` | Captured Renovate bodies (`sources/src/test/resources/renovate/`, with Gradle plugin, catalog alias, and wrapper PRs since M7); captured Dependabot PRs with the `updated-dependencies-json` `fetch-metadata`'s parser made (`…/dependabot/`); the fallback against a fake `SourceContext` | `RenovateSourceTest`, `DependabotSourceTest`, `FallbackSourceTest` |
 | Unit, GitHub | `test` | A local `HttpServer` as the REST API, a real bare remote for push, force-push, and fetch | `GitHubHostTest` |
 | Unit, JDK and env | `test` | JDK choice from the POM; a child process sees no token or `INPUT_*` | `JdkSelectionTest`, `ProcessesTest` |
 | Unit, CLI | `test` | Options, exit codes, stdout and stderr of `pr`; red-to-green flows through the real adapters (in place, and a labelled PR in a companion PR) with local fakes for GitHub and Ollama and a scripted `mvnw` | `PrCommandTest`, `PrFlowTest` |
@@ -223,8 +225,9 @@ The real runs on GitHub (a Renovate PR for M5; a Dependabot PR and a labelled ma
 | The fallback compares resolved versions, every difference a change | Catches properties, BOMs, parents, plugins; no "declared vs. transitive" data needed (M8 Q5, Q10). The comment and the prompt name the first ten | If the fix loop suffers from long change lists |
 | The fallback runs only on labelled PRs | No commits on feature PRs nobody asked for; only writers can label (M8 Q11) | — |
 | The companion PR is force-pushed and kept, stacked on the source branch | Review discussion stays in one place; Dependabot keeps its PR (M8 Q3, Q4) | — |
-| Ecosystem from Renovate's datasource badge, not its manager | The PR body names no manager | Self-hosted Renovate without badges |
+| Ecosystem and package from Renovate's datasource badge, not its manager | The PR body names no manager; the table names Gradle plugins by ID and catalog entries by alias | Self-hosted Renovate without badges |
 | Unsigned commits | Simplest | If users require signed commits |
+| Fetch uses the token too | A private repository's base commit needs it | — |
 | Builds run in the same container and as the same user as the tool | Builds don't see the token in their environment, but could read it from `/proc` | A separate user or container for builds |
 | The 30B Ollama image has a single ~19 GB layer, GHCR takes up to 10 GB | Built in its own matrix job with `fail-fast: false` | First release |
-| Only GitHub and Maven; Dependabot's `gradle` entries need a Gradle adapter | Scope | M7, Later |
+| Only GitHub; Maven, and Gradle since M7 | Scope | Later |

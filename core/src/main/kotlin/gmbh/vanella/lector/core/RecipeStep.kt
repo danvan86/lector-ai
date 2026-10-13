@@ -79,10 +79,7 @@ fun recipeBlocker(
     change: DependencyChange,
     adapter: EcosystemAdapter,
     base: BaseCommit?,
-): RecipeOutcome? {
-    val baseVersions = base?.let { { it.checkout(resolvedVersions(adapter)::read) } }
-    return recipeBlockers(listOf(change), adapter.versionScheme, baseVersions).single()
-}
+): RecipeOutcome? = recipeBlockers(listOf(change), adapter.versionScheme, base?.let { baseVersions(adapter, it) }).single()
 
 /**
  * Rules 1 and 2 for each of [changes]: the outcome that stops its recipe, or null. Calls [baseVersions] once, and only if
@@ -112,7 +109,7 @@ fun recipeBlockers(
 }
 
 /** The adapter's resolved versions. Fails with a [ToolError] if its ecosystem can't read them. */
-private fun resolvedVersions(adapter: EcosystemAdapter) =
+internal fun resolvedVersions(adapter: EcosystemAdapter) =
     adapter.resolvedVersions ?: throw ToolError("${adapter.ecosystem} can't read resolved versions")
 
 /** Rule 2: the outcome that stops the recipe, or null if the PR is not outdated. */

@@ -63,3 +63,15 @@ internal class JdkSelection(
         return (0 until nodes.length).map { nodes.item(it) }.filterIsInstance<Element>()
     }
 }
+
+/**
+ * The JDKs installed for the projects the tool builds, by release, from `LECTOR_JDK_<release>=<JAVA_HOME>` variables in
+ * [environment]. The container image sets them; so does the benchmark workflow, for the runner's JDKs.
+ */
+fun installedJdks(environment: Map<String, String>): Map<Int, Path> =
+    environment
+        .filterKeys { it.startsWith(JDK_VARIABLE) }
+        .mapNotNull { (name, value) -> name.removePrefix(JDK_VARIABLE).toIntOrNull()?.let { it to Path.of(value) } }
+        .toMap()
+
+private const val JDK_VARIABLE = "LECTOR_JDK_"

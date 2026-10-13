@@ -38,6 +38,35 @@ sourceSets.main {
     resources.srcDir(files(versionResources).builtBy(generateVersionResource))
 }
 
+// The OpenRewrite Gradle plugin and what it needs at run time (the Kotlin standard library), as plain JARs in the
+// distribution's `rewrite-gradle-plugin/` directory. The Gradle adapter's recipe init script puts them on its classpath,
+// so no Gradle build has to fetch the plugin (M7 Q7). The tool image points LECTOR_REWRITE_GRADLE_PLUGIN at them.
+val rewriteGradlePlugin =
+    configurations.create("rewriteGradlePlugin") {
+        isCanBeConsumed = false
+        attributes {
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category.LIBRARY))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling.EXTERNAL))
+        }
+    }
+dependencies {
+    rewriteGradlePlugin(libs.rewrite.gradle.plugin)
+}
+val rewriteGradlePluginDir = layout.buildDirectory.dir("rewrite-gradle-plugin")
+val syncRewriteGradlePlugin =
+    tasks.register<Sync>("syncRewriteGradlePlugin") {
+        description = "Copies the OpenRewrite Gradle plugin and its run-time JARs to one directory."
+        from(rewriteGradlePlugin)
+        into(rewriteGradlePluginDir)
+    }
+distributions.main {
+    contents {
+        from(syncRewriteGradlePlugin) { into("rewrite-gradle-plugin") }
+    }
+}
+
 tasks.withType<Test>().configureEach {
     jvmArgs(enableNativeAccess)
     systemProperty("lector.version", project.version.toString())
@@ -77,7 +106,7 @@ tasks.check {
 }
 
 tasks.register<Test>("integrationTest") {
-    description = "Runs verify with real Maven on a fixture repository. Needs Maven and network access."
+    description = "Runs the commands with real Maven and Gradle on fixture repositories. Needs Maven and network access."
     group = LifecycleBasePlugin.VERIFICATION_GROUP
     testClassesDirs =
         sourceSets.test
@@ -85,6 +114,10 @@ tasks.register<Test>("integrationTest") {
             .output.classesDirs
     classpath = sourceSets.test.get().runtimeClasspath
     useJUnitPlatform { includeTags("integration") }
+    // Recipes in Gradle builds need the plugin, as in the tool image.
+    dependsOn(syncRewriteGradlePlugin)
+    environment("LECTOR_REWRITE_GRADLE_PLUGIN", rewriteGradlePluginDir.get().asFile.path)
+    gradleFixtures()
 }
 
 tasks.register<Test>("realModelTest") {
