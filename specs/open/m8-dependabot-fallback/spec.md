@@ -51,7 +51,7 @@ Dependabot PRs and labelled manual dependency PRs go through the same pipeline a
   - The tool creates or updates the branch `heal/<source-branch>` from the source PR's head, with the recipe commits and the accepted fix commits on top.
   - It opens one PR from `heal/<source-branch>` into the source branch (stacked), or updates the existing one.
   - When the source PR gets a new head, the companion branch is rebuilt from that head and force-pushed. The companion PR stays the same.
-  - The companion PR is only created when there is at least one commit. A run without commits only updates the sticky comment.
+  - The companion PR is only created when there is at least one commit. A run without commits updates the sticky comment and closes the companion PR of an earlier head, if there is one: merging it would bring that head back (review F3).
 - **Force-push** only ever targets `heal/*`. Source branches are never force-pushed.
 - **Cleanup:** the tool closes the companion PR and deletes `heal/<source-branch>` when the source PR is closed or merged, and when a new run finds the source PR green.
 - `GitHost` grows by what this needs: create or update a PR, close a PR, delete a branch.

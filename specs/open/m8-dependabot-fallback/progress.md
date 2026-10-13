@@ -14,12 +14,14 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 6 | Action inputs and setup guide | ✅ |
 | 7 | Quality gates verified | ✅ |
 | 8 | Docs in sync | ✅ |
+| 9 | Review and fixes: [`review.md`](review.md) | ✅ |
 
 ## Quality gates
 
 Final check from a clean state: `ktlintCheck`, `detektMain detektTest`, `test`, `:cli:endToEndTest`, `koverVerify` each
 exit 0; `./gradlew clean build --rerun-tasks --no-build-cache` exits 0. 539 unit and integration tests, 21 end-to-end
-tests, 0 failures. Coverage 100 % lines and branches in `core`, `sources`, `git`, `cli`.
+tests, 0 failures. Coverage 100 % lines and branches in `core`, `sources`, `git`, `cli`. After the review: 544 unit and
+integration tests, 21 end-to-end tests, 0 failures, coverage 100 % in every module.
 
 Probes, each reverted afterwards (`git status` clean):
 
