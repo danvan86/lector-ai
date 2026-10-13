@@ -28,7 +28,7 @@ Gradle modules, and the files that ship them. Create new modules as needed; don'
 core/          data model, ports (interfaces), pipeline, fix loop, guardrails
 recipes/       recipe index built from OpenRewrite metadata
 llm/           Ollama client, prompts
-sources/       update-source adapters (renovate; later dependabot, fallback)
+sources/       update-source adapters (renovate, dependabot, fallback)
 ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
