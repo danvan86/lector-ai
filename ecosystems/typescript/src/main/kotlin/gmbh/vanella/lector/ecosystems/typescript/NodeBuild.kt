@@ -310,7 +310,10 @@ internal class NodeBuild(
     ): Map<String, String> =
         buildMap {
             putAll(variables)
+            // No prompts (rule 6): Corepack asks before a download, pnpm before it purges node_modules, unless CI is set.
+            // The tool always runs as CI; a CI variable of the environment stays as it is.
             put("COREPACK_ENABLE_DOWNLOAD_PROMPT", "0")
+            if ("CI" !in environment) put("CI", "true")
             val node = nodes.home(root, project.root.manifest.engines)
             if (node !=
                 null
@@ -318,10 +321,17 @@ internal class NodeBuild(
                 put("PATH", listOfNotNull(node.resolve("bin").toString(), environment["PATH"]).joinToString(File.pathSeparator))
             }
             if (npmrc != null) put("NPM_CONFIG_USERCONFIG", npmrc.toAbsolutePath().toString())
+            // pnpm puts its store on the repository's file system if HOME is on another one, as in a container: not in the
+            // user's working tree, unless the user says so.
+            val home = environment["HOME"]
+            if (project.manager == PackageManager.PNPM && home != null &&
+                variables.keys.none { it.lowercase() == "npm_config_store_dir" }
+            ) {
+                put("npm_config_store_dir", "$home/.local/share/pnpm/store")
+            }
             if (yarnrc != null && project.manager == PackageManager.YARN_BERRY) {
                 yarnrc.copyTo(temp.resolve(".yarnrc.yml"), overwrite = true)
                 put("HOME", temp.toString())
-                val home = environment["HOME"]
                 if (home != null && "YARN_GLOBAL_FOLDER" !in variables) put("YARN_GLOBAL_FOLDER", "$home/.yarn/berry")
             }
         }

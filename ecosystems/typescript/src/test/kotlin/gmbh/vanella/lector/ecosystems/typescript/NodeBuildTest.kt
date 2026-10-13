@@ -336,6 +336,7 @@ class NodeBuildTest {
                 "YARN_NPM_AUTH_TOKEN" to "registry",
                 "COREPACK_NPM_REGISTRY" to "https://npm.example.org/",
                 "COREPACK_ENABLE_DOWNLOAD_PROMPT" to "0",
+                "CI" to "true",
                 "PATH" to "${node.resolve("bin")}:/usr/bin",
                 "NPM_CONFIG_USERCONFIG" to npmrc.toString(),
             ),
@@ -392,6 +393,39 @@ class NodeBuildTest {
         runs.clear()
         build(yarnrc = yarnrc).verify(repo, 1.hours)
         assertFalse("HOME" in runs.first().environment, "only Yarn Berry reads it")
+    }
+
+    @Test
+    fun `every process runs as CI, so that nothing prompts, and a CI value of the environment stays`() {
+        fixture("yarn-classic")
+
+        build().verify(repo, 1.hours)
+        build(environment = mapOf("CI" to "1")).verify(repo, 1.hours)
+
+        assertEquals("true", runs.first().environment["CI"])
+        assertEquals(null, runs.last().environment["CI"], "the allowlist passes the environment's own")
+    }
+
+    @Test
+    fun `pnpm's store stays in its default place under HOME, unless the user set one`() {
+        fixture("pnpm-workspace")
+
+        build(environment = mapOf("HOME" to "/home/ci")).verify(repo, 1.hours)
+        assertEquals("/home/ci/.local/share/pnpm/store", runs.last().environment["npm_config_store_dir"])
+
+        runs.clear()
+        build(environment = mapOf("HOME" to "/home/ci", "NPM_CONFIG_STORE_DIR" to "/cache/pnpm")).verify(repo, 1.hours)
+        assertEquals(null, runs.last().environment["npm_config_store_dir"])
+        assertEquals("/cache/pnpm", runs.last().environment["NPM_CONFIG_STORE_DIR"])
+
+        runs.clear()
+        build().verify(repo, 1.hours)
+        assertEquals(null, runs.last().environment["npm_config_store_dir"], "without HOME, pnpm's own default")
+
+        fixture("npm-jest")
+        runs.clear()
+        build(environment = mapOf("HOME" to "/home/ci")).verify(repo, 1.hours)
+        assertEquals(null, runs.last().environment["npm_config_store_dir"], "only pnpm has a store")
     }
 
     @Test
