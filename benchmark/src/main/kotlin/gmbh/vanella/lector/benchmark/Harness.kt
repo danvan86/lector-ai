@@ -41,7 +41,8 @@ data class ToolUnderTest(
 /**
  * Runs one case in one mode with the product's own code and its default budgets, and measures it (spec sections 2 and 3).
  * Every run starts from a fresh checkout and first verifies the head commit against the base: without a failure caused
- * by the update, the case is invalid and the run stops there. A tool error ends the run as an error.
+ * by the update, the case is invalid and the run stops there. A tool error, or any other exception, ends the run as an
+ * error.
  */
 class Harness(
     private val adapters: List<EcosystemAdapter>,
@@ -51,6 +52,8 @@ class Harness(
     private val tool: ToolUnderTest,
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) {
+    // A bug of the tool ends the run with a result too. Without one, merge would count it as a job that ran out of time.
+    @Suppress("TooGenericExceptionCaught")
     fun run(
         case: Case,
         mode: Mode,
@@ -69,6 +72,9 @@ class Harness(
         } catch (e: ToolError) {
             logger.error("Run of {} in mode {} failed", case.id, mode.id, e)
             result(RunStatus.ERROR, e.message, null)
+        } catch (e: Exception) {
+            logger.error("Run of {} in mode {} failed", case.id, mode.id, e)
+            result(RunStatus.ERROR, "${e::class.simpleName}: ${e.message}", null)
         }
     }
 

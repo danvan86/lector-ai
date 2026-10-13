@@ -250,6 +250,17 @@ class HarnessTest {
     }
 
     @Test
+    fun `any other failure ends the run as an error with its type and message, so it isn't taken for a lost job`() {
+        val failing = Checkout { _, _ -> error("unexpected state") }
+
+        val result = Harness(listOf(FakeAdapter()), FakeIndex, ScriptedLlm(), failing, tool).run(case, Mode.RECIPE_ONLY, 1, work)
+
+        assertEquals(RunStatus.ERROR, result.status)
+        assertEquals("IllegalStateException: unexpected state", result.reason)
+        assertNull(result.metrics)
+    }
+
+    @Test
     fun `a repository no adapter detects is an error`() {
         val result = Harness(emptyList(), FakeIndex, ScriptedLlm(), GitCheckout, tool).run(case, Mode.RECIPE_ONLY, 1, work)
 
