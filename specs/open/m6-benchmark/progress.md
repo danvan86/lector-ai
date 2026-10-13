@@ -15,6 +15,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 7 | Default model `qwen2.5-coder:7b` (spec 7) | ✅ already in place since M5 (CLI, action, concept 8.4) |
 | 8 | Quality gates verified | ✅ |
 | 9 | Docs in sync | ✅ |
+| 10 | Review and fixes: [review.md](review.md) | ✅ |
 
 ## Acceptance criteria
 
@@ -42,7 +43,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 ## Quality gates
 
-Final check from a clean state: ktlint, detekt, 541 unit tests, 19 end-to-end tests, Kover 100% per module, and
+Final check from a clean state, after the review: ktlint, detekt, 547 unit tests, 19 end-to-end tests, Kover 100% per module, and
 `./gradlew clean build --rerun-tasks --no-build-cache` all green.
 
 Probed on the new module, each reverted after: ktlint (main, test, `benchmark/build.gradle.kts`), detekt (main incl.
