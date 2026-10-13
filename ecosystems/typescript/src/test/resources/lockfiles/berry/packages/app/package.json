@@ -1,0 +1,10 @@
+{
+  "name": "@lock/app",
+  "version": "1.0.0",
+  "dependencies": {
+    "@lock/lib": "workspace:*"
+  },
+  "devDependencies": {
+    "is-number": "7.0.0"
+  }
+}

@@ -1,0 +1,1 @@
+{"name":"lock-root","version":"1.0.0","private":true,"packageManager":"yarn@1.22.22","workspaces":["packages/*"],"dependencies":{"is-odd":"3.0.1"}}
