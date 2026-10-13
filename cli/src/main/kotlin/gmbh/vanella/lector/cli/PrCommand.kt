@@ -187,15 +187,8 @@ internal class PrCommand(
             }
 
             is PrOutcome.Closed -> {
-                val state = outcome.state.name.lowercase()
-                val companion = outcome.companion
-                if (companion ==
-                    null
-                ) {
-                    "The PR is $state. It has no companion PR."
-                } else {
-                    "The PR is $state: closed the companion PR #$companion."
-                }
+                val closed = outcome.companion?.let { ": closed the companion PR #$it." } ?: ". It has no companion PR."
+                "The PR is ${outcome.state.name.lowercase()}$closed"
             }
 
             is PrOutcome.PushRejected -> {
