@@ -1,7 +1,8 @@
 # Fixture repositories of the TypeScript adapter
 
 Real projects with lockfiles written by the real package managers. The tagged integration tests copy them into a Git
-repository of their own, install, type-check, and test them. Unit tests plan commands on them.
+repository of their own, with a `.gitignore` for what the tools write (Gradle leaves `.gitignore` files out of the test
+resources), and install, type-check, and test them. Unit tests plan commands on them.
 
 | Fixture | Package manager | Shape | Tests |
 |---|---|---|---|
