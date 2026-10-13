@@ -233,7 +233,7 @@ class NodeBuildTest {
 
         assertEquals(
             listOf(
-                "pnpm exec vitest run --reporter=default --reporter=junit --outputFile.junit=<report> src/welcome.test.ts " +
+                "pnpm exec vitest run src/welcome.test.ts --reporter=default --reporter=junit --outputFile.junit=<report> " +
                     "-t ^(?:welcome shouts \\(the greeting\\))$ in packages/app",
             ),
             commands(),
@@ -246,7 +246,7 @@ class NodeBuildTest {
         assertEquals(
             listOf(
                 "npm ci in .",
-                "npm exec --no -- jest --ci --reporters=default --reporters=/opt/jest-junit src\\/calc\\.test\\.ts src\\/b\\.test\\.ts " +
+                "npm exec --no -- jest src\\/calc\\.test\\.ts src\\/b\\.test\\.ts --ci --reporters=default --reporters=/opt/jest-junit " +
                     "-t ^(?:calc add fails|top)$ in .",
             ),
             commands(),

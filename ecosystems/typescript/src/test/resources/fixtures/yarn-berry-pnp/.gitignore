@@ -1,6 +1,0 @@
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-.pnp.*
-node_modules/

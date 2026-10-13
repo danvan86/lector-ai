@@ -290,13 +290,15 @@ internal class NodeBuild(
                             "JEST_JUNIT_ANCESTOR_SEPARATOR" to NAME_SEPARATOR,
                             "JEST_JUNIT_REPORT_TEST_SUITE_ERRORS" to "true",
                         )
-                    // Jest reads its file arguments as patterns.
-                    command.arguments + reporters + files.map(::jsRegex) + filter to environment
+                    // Jest reads its file arguments as patterns. They come first: an array option like --reporters takes the
+                    // arguments after it.
+                    files.map(::jsRegex) + command.arguments + reporters + filter to environment
                 }
 
                 Runner.VITEST -> {
-                    listOf("run") + command.arguments + listOf("--reporter=default", "--reporter=junit", "--outputFile.junit=$report") +
-                        files + filter to emptyMap()
+                    listOf("run") + files + command.arguments +
+                        listOf("--reporter=default", "--reporter=junit", "--outputFile.junit=$report") +
+                        filter to emptyMap()
                 }
             }
         }
