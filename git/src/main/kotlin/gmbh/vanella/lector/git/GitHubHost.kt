@@ -1,6 +1,8 @@
 package gmbh.vanella.lector.git
 
+import gmbh.vanella.lector.core.COMPANION_PREFIX
 import gmbh.vanella.lector.core.GitHost
+import gmbh.vanella.lector.core.PrState
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.ToolError
@@ -12,41 +14,36 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.slf4j.LoggerFactory
-import java.io.IOException
 import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
+import java.net.URLEncoder
 import java.nio.file.Path
 import java.util.Base64
 import kotlin.io.path.readText
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.toJavaDuration
 
 private val logger = LoggerFactory.getLogger(GitHubHost::class.java)
 
-private val CONNECT_TIMEOUT = 30.seconds
-private val REQUEST_TIMEOUT = 1.minutes
 private val GIT_TIMEOUT = 10.minutes
 
 // The hidden line that marks the tool's one comment on a PR.
 private const val MARKER = "<!-- lector-ai -->"
 private const val PAGE_SIZE = 100
-private const val HTTP_STATUS_CLASS = 100
-private const val HTTP_SUCCESS = 2
+
+// What GitHub answers when a branch to delete is already gone, e.g. deleted on merge.
+private const val HTTP_UNPROCESSABLE = 422
 
 /**
  * GitHub as the Git host: the PR from the `pull_request` event the workflow received, the report comment and the
- * label through the REST API, and fetch and push with the `git` CLI. [token] is the GitHub App's installation token:
+ * label, and the companion PR through the REST API, and fetch and push with the `git` CLI. [token] is the GitHub App's installation token:
  * pushes with it start the PR's checks again, unlike pushes with `GITHUB_TOKEN`. It only reaches `git` through its
  * environment, never the command line, and it never reaches a build. [botLogin] is the App's bot, `<app-slug>[bot]`:
- * only its comment is the report. Never merges, approves, or requests reviews.
+ * only its comment is the report and only its PR is a companion PR. Never merges, approves, or requests reviews.
  */
 class GitHubHost(
     private val event: Path,
@@ -62,9 +59,11 @@ class GitHubHost(
         runProcess(command, workDir, GIT_TIMEOUT, environment)
     },
 ) : GitHost {
-    private val api = apiUrl.toString().removeSuffix("/")
+    private val api = GitHubApi(apiUrl.toString().removeSuffix("/"), token)
     private val server = serverUrl.toString().removeSuffix("/")
-    private val http = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT.toJavaDuration()).build()
+
+    // The repository of the run's PR: every PR and branch the host touches is in it.
+    private val repository by lazy { pullRequest().baseRepository }
 
     override fun pullRequest(): PullRequest {
         val pr = eventJson()["pull_request"] as? JsonObject ?: throw ToolError("The event in $event is not a pull_request event")
@@ -97,8 +96,22 @@ class GitHubHost(
             baseRepository = base.field("repo").jsonObject.string("full_name"),
             baseSha = base.string("sha"),
             body = if (body is JsonNull) "" else body.jsonPrimitive.content,
+            labels =
+                pr
+                    .field("labels")
+                    .jsonArray
+                    .map { it.jsonObject.string("name") }
+                    .toSet(),
+            state = state(pr),
         )
     }
+
+    private fun state(pr: JsonObject) =
+        when {
+            pr.string("state") == "open" -> PrState.OPEN
+            pr.field("merged").jsonPrimitive.boolean -> PrState.MERGED
+            else -> PrState.CLOSED
+        }
 
     override fun fetch(
         repo: Path,
@@ -134,23 +147,77 @@ class GitHubHost(
         val marked = JsonObject(mapOf("body" to JsonPrimitive("$MARKER\n$body")))
         val existing = markedComment(pr)
         when {
-            existing != null -> send("PATCH", "/repos/${pr.baseRepository}/issues/comments/$existing", marked)
-            create -> send("POST", "/repos/${pr.baseRepository}/issues/${pr.number}/comments", marked)
+            existing != null -> api.send("PATCH", "/repos/${pr.baseRepository}/issues/comments/$existing", marked)
+            create -> api.send("POST", "/repos/${pr.baseRepository}/issues/${pr.number}/comments", marked)
             else -> logger.info("No report comment on the PR yet, and none is created")
         }
     }
 
     override fun label(
-        pr: PullRequest,
+        number: Int,
         label: String,
     ) {
-        send(
-            "POST",
-            "/repos/${pr.baseRepository}/issues/${pr.number}/labels",
-            JsonObject(
-                mapOf("labels" to JsonArray(listOf(JsonPrimitive(label)))),
-            ),
-        )
+        api.send("POST", "/repos/$repository/issues/$number/labels", JsonObject(mapOf("labels" to JsonArray(listOf(JsonPrimitive(label))))))
+    }
+
+    override fun forcePush(
+        repo: Path,
+        branch: String,
+    ) {
+        requireCompanion(branch, "pushed by force")
+        val result = git(listOf("git", "push", "--quiet", "--force", remote(repository), "HEAD:refs/heads/$branch"), repo, authentication())
+        if (result.exitCode != 0) throw ToolError("git push failed: ${result.output.trim()}")
+    }
+
+    override fun findPullRequest(
+        head: String,
+        base: String,
+    ): Int? {
+        val owner = repository.substringBefore('/')
+        val query = "state=open&head=${encode("$owner:$head")}&base=${encode(base)}&per_page=$PAGE_SIZE"
+        val pull =
+            api
+                .send("GET", "/repos/$repository/pulls?$query", null)
+                .jsonArray
+                .map { it.jsonObject }
+                .firstOrNull { it.field("user").jsonObject.string("login") == botLogin }
+        return if (pull == null) null else pull.field("number").jsonPrimitive.int
+    }
+
+    override fun createPullRequest(
+        head: String,
+        base: String,
+        title: String,
+        body: String,
+    ): Int {
+        val fields = mapOf("title" to title, "head" to head, "base" to base, "body" to body).mapValues { JsonPrimitive(it.value) }
+        return api
+            .send("POST", "/repos/$repository/pulls", JsonObject(fields))
+            .jsonObject
+            .field("number")
+            .jsonPrimitive.int
+    }
+
+    override fun updatePullRequest(
+        number: Int,
+        body: String,
+    ) {
+        api.send("PATCH", "/repos/$repository/pulls/$number", JsonObject(mapOf("body" to JsonPrimitive(body))))
+    }
+
+    override fun closePullRequest(number: Int) {
+        api.send("PATCH", "/repos/$repository/pulls/$number", JsonObject(mapOf("state" to JsonPrimitive("closed"))))
+    }
+
+    override fun deleteBranch(branch: String) {
+        requireCompanion(branch, "deleted")
+        val path = "/repos/$repository/git/refs/heads/$branch"
+        val response = api.request("DELETE", path, null)
+        if (response.statusCode() == HTTP_UNPROCESSABLE) {
+            logger.info("The branch {} is already gone: {}", branch, response.body())
+        } else {
+            api.check("DELETE", path, response)
+        }
     }
 
     /**
@@ -161,11 +228,12 @@ class GitHubHost(
         var page = 1
         while (true) {
             val comments =
-                send(
-                    "GET",
-                    "/repos/${pr.baseRepository}/issues/${pr.number}/comments?page=$page&per_page=$PAGE_SIZE",
-                    null,
-                ).jsonArray
+                api
+                    .send(
+                        "GET",
+                        "/repos/${pr.baseRepository}/issues/${pr.number}/comments?page=$page&per_page=$PAGE_SIZE",
+                        null,
+                    ).jsonArray
             val marked =
                 comments.map { it.jsonObject }.firstOrNull {
                     it.field("user").jsonObject.string("login") == botLogin && it.string("body").startsWith(MARKER)
@@ -178,34 +246,15 @@ class GitHubHost(
         }
     }
 
-    private fun send(
-        method: String,
-        path: String,
-        body: JsonObject?,
-    ): JsonElement {
-        val publisher = if (body == null) HttpRequest.BodyPublishers.noBody() else HttpRequest.BodyPublishers.ofString(body.toString())
-        val request =
-            HttpRequest
-                .newBuilder(URI.create(api + path))
-                .timeout(REQUEST_TIMEOUT.toJavaDuration())
-                .header("Authorization", "Bearer $token")
-                .header("Accept", "application/vnd.github+json")
-                .header("X-GitHub-Api-Version", "2022-11-28")
-                .header("Content-Type", "application/json")
-                .method(method, publisher)
-                .build()
-        val response =
-            try {
-                http.send(request, HttpResponse.BodyHandlers.ofString())
-            } catch (e: IOException) {
-                throw ToolError("Cannot reach GitHub at $api: $e", e)
-            }
-        val status = response.statusCode()
-        if (status / HTTP_STATUS_CLASS != HTTP_SUCCESS) {
-            throw ToolError("GitHub answered $method ${path.substringBefore('?')} with status $status: ${response.body()}")
-        }
-        return Json.parseToJsonElement(response.body())
+    /** Fails unless [branch] is a companion branch: the only branches the tool overwrites or deletes. */
+    private fun requireCompanion(
+        branch: String,
+        what: String,
+    ) {
+        if (!branch.startsWith(COMPANION_PREFIX)) throw ToolError("Only a companion branch ($COMPANION_PREFIX…) is $what, not $branch")
     }
+
+    private fun encode(value: String) = URLEncoder.encode(value, Charsets.UTF_8)
 
     private fun remote(repository: String) = "$server/$repository.git"
 

@@ -1,0 +1,1 @@
+[{"dependencyName":"org.springframework.boot","dependencyType":"direct:production","updateType":"version-update:semver-patch","directory":"/","packageEcosystem":"gradle","targetBranch":"main","prevVersion":"4.1.0","newVersion":"4.1.1","compatScore":0,"maintainerChanges":false,"dependencyGroup":"","alertState":"","ghsaId":"","cvss":0}]

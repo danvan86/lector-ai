@@ -3,6 +3,7 @@ package gmbh.vanella.lector.cli
 import com.sun.net.httpserver.HttpServer
 import gmbh.vanella.lector.core.runProcess
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -294,9 +295,73 @@ class LectorEndToEndTest {
                     ),
             )
 
-        assertEquals("Skipped: the PR's author mallory is not one of the bot logins renovate[bot]\n", run.stdout)
-        assertContains(run.stderr, "Skipping the PR: the PR's author mallory")
+        assertEquals("Skipped: no update source recognizes the PR by mallory on renovate/spring-boot\n", run.stdout)
+        assertContains(run.stderr, "Skipping the PR: no update source recognizes the PR by mallory")
         assertEquals(0, run.exitCode)
+    }
+
+    @Test
+    fun `pr with Dependabot metadata that isn't fetch-metadata's JSON exits with 2 before anything runs`(
+        @TempDir repo: Path,
+    ) {
+        val event = event(author = "dependabot[bot]", head = "1111111", base = "2222222")
+
+        val run =
+            lector(
+                "pr",
+                repo.toString(),
+                *BOT,
+                environment =
+                    mapOf(
+                        "GITHUB_EVENT_PATH" to event.toString(),
+                        "LECTOR_GITHUB_TOKEN" to "t",
+                        "LECTOR_DEPENDABOT_METADATA" to """{"dependencyName": "a:b"}""",
+                    ),
+            )
+
+        assertEquals("", run.stdout)
+        assertContains(
+            run.stderr,
+            "invalid value for --dependabot-metadata: The Dependabot metadata is not fetch-metadata's updated-dependencies-json: not a JSON array",
+        )
+        assertEquals(2, run.exitCode)
+    }
+
+    @Test
+    fun `pr of a closed PR without a companion PR looks for one on GitHub, deletes a companion branch left over, and exits with 0`(
+        @TempDir repo: Path,
+    ) {
+        val requests = mutableListOf<String>()
+        val github = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        github.createContext("/") { exchange ->
+            requests += "${exchange.requestMethod} ${exchange.requestURI.path}"
+            val answer = "[]".encodeToByteArray()
+            exchange.sendResponseHeaders(200, answer.size.toLong())
+            exchange.responseBody.use { it.write(answer) }
+        }
+        github.start()
+        val event = event(author = "dependabot[bot]", head = "1111111", base = "2222222", state = "closed")
+
+        val run =
+            try {
+                lector(
+                    "pr",
+                    repo.toString(),
+                    *BOT,
+                    environment =
+                        mapOf(
+                            "GITHUB_EVENT_PATH" to event.toString(),
+                            "GITHUB_API_URL" to "http://127.0.0.1:${github.address.port}",
+                            "LECTOR_GITHUB_TOKEN" to "t",
+                        ),
+                )
+            } finally {
+                github.stop(0)
+            }
+
+        assertEquals("The PR is closed. It has no companion PR.\n", run.stdout)
+        assertEquals(listOf("GET /repos/acme/app/pulls", "DELETE /repos/acme/app/git/refs/heads/heal/renovate/spring-boot"), requests)
+        assertEquals(0, run.exitCode, run.stderr)
     }
 
     @Test
@@ -313,7 +378,7 @@ class LectorEndToEndTest {
     }
 
     @Test
-    fun `pr of a green Renovate PR verifies it, reads the PR's comments on GitHub, changes nothing, and exits with 0`(
+    fun `pr of a green Renovate PR verifies it, looks for its companion PR and comment on GitHub, changes nothing, and exits with 0`(
         @TempDir repo: Path,
     ) {
         mavenProject(repo)
@@ -347,7 +412,14 @@ class LectorEndToEndTest {
             }
 
         assertContains(run.stdout, "Verify is green: nothing caused by the update. lector-ai changed nothing.\n")
-        assertEquals(listOf("GET /repos/acme/app/issues/7/comments?page=1&per_page=100 Bearer ghs_token"), requests)
+        assertEquals(
+            listOf(
+                "GET /repos/acme/app/pulls?state=open&head=acme%3Aheal%2Frenovate%2Fspring-boot&base=renovate%2Fspring-boot&per_page=100 " +
+                    "Bearer ghs_token",
+                "GET /repos/acme/app/issues/7/comments?page=1&per_page=100 Bearer ghs_token",
+            ),
+            requests,
+        )
         assertEquals(head, runProcess(listOf("git", "rev-parse", "HEAD"), repo, 30.seconds).output.trim())
         assertEquals(0, run.exitCode, run.stderr)
     }
@@ -357,6 +429,7 @@ class LectorEndToEndTest {
         author: String,
         head: String,
         base: String,
+        state: String = "open",
     ): Path {
         val body = "This PR contains the following updates:\n\n| Package | Change |\n|---|---|\n| $PARENT | `3.3.5` → `3.4.1` |"
         val event =
@@ -365,6 +438,9 @@ class LectorEndToEndTest {
                     "pull_request",
                     buildJsonObject {
                         put("number", 7)
+                        put("state", state)
+                        put("merged", false)
+                        put("labels", buildJsonArray {})
                         put("body", body)
                         put("user", buildJsonObject { put("login", author) })
                         put(

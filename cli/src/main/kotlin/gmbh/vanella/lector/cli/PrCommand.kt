@@ -11,8 +11,11 @@ import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
+import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.types.path
+import gmbh.vanella.lector.core.BranchPolicy
 import gmbh.vanella.lector.core.CommitIdentity
+import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.GitHost
 import gmbh.vanella.lector.core.LlmClient
@@ -21,9 +24,12 @@ import gmbh.vanella.lector.core.PrOutcome
 import gmbh.vanella.lector.core.PrPipeline
 import gmbh.vanella.lector.core.PrSettings
 import gmbh.vanella.lector.core.RecipeIndex
+import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.UpdateSource
 import gmbh.vanella.lector.git.GitHubHost
 import gmbh.vanella.lector.llm.OllamaClient
+import gmbh.vanella.lector.sources.DependabotDependency
+import gmbh.vanella.lector.sources.DependabotSource
 import java.net.URI
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
@@ -33,6 +39,17 @@ import kotlin.io.path.isRegularFile
 private const val TOKEN_VARIABLE = "LECTOR_GITHUB_TOKEN"
 private const val DEFAULT_API_URL = "https://api.github.com"
 private const val DEFAULT_SERVER_URL = "https://github.com"
+private const val DEFAULT_FALLBACK_LABEL = "lector"
+private val DEFAULT_BOT_LOGINS = listOf("renovate[bot]", "dependabot[bot]")
+private val SOURCE_NAMES = listOf("renovate", "dependabot", "fallback")
+private val MODES = mapOf("in-place" to BranchPolicy.IN_PLACE, "companion" to BranchPolicy.COMPANION)
+
+/** What the update sources are built from: the options of the run that concern them. */
+internal data class SourceOptions(
+    val botLogins: Set<String>,
+    val fallbackLabel: String,
+    val dependabotMetadata: List<DependabotDependency>?,
+)
 
 /**
  * `lector pr [<repo>]`: the pipeline step the GitHub Action runs on a dependency PR. Checks the trigger, verifies,
@@ -42,7 +59,7 @@ private const val DEFAULT_SERVER_URL = "https://github.com"
  */
 internal class PrCommand(
     private val adapters: (BuildConfig) -> List<EcosystemAdapter>,
-    private val sources: List<UpdateSource>,
+    private val sources: (SourceOptions) -> List<UpdateSource>,
     private val index: () -> RecipeIndex,
     private val llm: (url: URI, model: String) -> LlmClient = ::OllamaClient,
     private val host: (event: Path, apiUrl: URI, serverUrl: URI, token: String, botLogin: String) -> GitHost = ::GitHubHost,
@@ -72,8 +89,13 @@ internal class PrCommand(
         .check("must not be blank") { it.isNotBlank() }
     private val botLogins by option("--bot-logins", metavar = "<logins>", help = "The bots whose PRs are fixed, comma-separated")
         .convert { logins -> logins.split(",").map { it.trim() }.filter { it.isNotEmpty() } }
-        .default(listOf("renovate[bot]"), defaultForHelp = "renovate[bot]")
+        .default(DEFAULT_BOT_LOGINS, defaultForHelp = DEFAULT_BOT_LOGINS.joinToString(","))
         .check("must name at least one bot") { it.isNotEmpty() }
+    private val source by option(
+        "--source",
+        metavar = "<name>",
+        help = "The update source that must take the PR: ${SOURCE_NAMES.joinToString(", ")}. Empty for the first that recognizes it.",
+    ).check("must be one of ${SOURCE_NAMES.joinToString(", ")}") { it.isEmpty() || it in SOURCE_NAMES }
     private val mavenSettings by option(
         "--maven-settings",
         metavar = "<file>",
@@ -86,6 +108,29 @@ internal class PrCommand(
         envvar = "LECTOR_GRADLE_INIT",
         help = "Gradle init script, passed to every Gradle run, e.g. for a mirror. Empty for none.",
     ).path()
+    private val mode by option(
+        "--mode",
+        metavar = "<mode>",
+        help = "Where the fixes go: in-place onto the PR's branch, or into a companion PR. Empty for the source's default.",
+    ).check("must be in-place or companion") { it.isEmpty() || it in MODES }
+    private val fallbackLabel by option(
+        "--fallback-label",
+        metavar = "<label>",
+        help = "The label that opts any other dependency PR of the repository in",
+    ).default(DEFAULT_FALLBACK_LABEL)
+        .check("must not be blank") { it.isNotBlank() }
+    private val dependabotMetadata by option(
+        "--dependabot-metadata",
+        metavar = "<json>",
+        envvar = "LECTOR_DEPENDABOT_METADATA",
+        help = "The updated-dependencies-json output of dependabot/fetch-metadata, for a Dependabot PR. Empty for none.",
+    ).validate { json ->
+        try {
+            if (json.isNotBlank()) DependabotSource.parseMetadata(json)
+        } catch (e: ToolError) {
+            fail(e.message)
+        }
+    }
     private val fixLoop by FixLoopOptions()
 
     override fun help(context: Context) =
@@ -125,15 +170,19 @@ internal class PrCommand(
                 PrPipeline(
                     // The App's bot commits under its login, so its name is also the author of the report comment.
                     host = host(event, apiUrl, serverUrl, token, botName),
-                    sources = sources,
+                    sources = sources(SourceOptions(botLogins.toSet(), fallbackLabel, metadata())),
                     adapters = all,
                     index = index(),
                     llm = llm(fixLoop.ollamaUrl, fixLoop.model),
-                    settings = PrSettings(botLogins.toSet(), CommitIdentity(botName, botEmail), fixLoop.budgets()),
+                    settings =
+                        PrSettings(CommitIdentity(botName, botEmail), fixLoop.budgets(), source?.ifEmpty { null }, mode?.let(MODES::get)),
                 )
             pipeline.run(repo)
         }
     }
+
+    // The action passes an empty value when the workflow ran no fetch-metadata. The option was validated when parsed.
+    private fun metadata() = dependabotMetadata?.takeIf { it.isNotBlank() }?.let(DependabotSource::parseMetadata)
 
     private fun text(outcome: PrOutcome) =
         when (outcome) {
@@ -142,8 +191,14 @@ internal class PrCommand(
             }
 
             is PrOutcome.Green -> {
-                "Verify is green: nothing caused by the update. lector-ai changed nothing.\n\n" +
+                val closed = outcome.closedCompanion?.let { " Closed the companion PR #$it." }.orEmpty()
+                "Verify is green: nothing caused by the update. lector-ai changed nothing.$closed\n\n" +
                     TextReport.render(outcome.verification)
+            }
+
+            is PrOutcome.Closed -> {
+                val closed = outcome.companion?.let { ": closed the companion PR #$it." } ?: ". It has no companion PR."
+                "The PR is ${outcome.state.name.lowercase()}$closed"
             }
 
             is PrOutcome.PushRejected -> {
@@ -151,7 +206,13 @@ internal class PrCommand(
             }
 
             is PrOutcome.Reported -> {
-                PrComment.render(outcome.report)
+                PrComment.render(outcome.report) + allChanges(outcome.report.changes)
             }
         }
+
+    // The comment cuts long lists; the CI log has every change, e.g. the transitive ones of a labelled PR.
+    private fun allChanges(changes: List<DependencyChange>): String {
+        if (changes.size == 1) return ""
+        return "\n\nAll ${changes.size} changes:\n" + changes.joinToString("\n") { "- ${it.describe()}" }
+    }
 }

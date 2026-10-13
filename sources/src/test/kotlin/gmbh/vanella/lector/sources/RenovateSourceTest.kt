@@ -13,29 +13,35 @@ import kotlin.test.assertTrue
 
 /** Reads PR bodies that Renovate wrote, captured from public repositories (`src/test/resources/renovate/`). */
 class RenovateSourceTest {
-    private val source = RenovateSource()
+    private val source = RenovateSource(setOf("renovate[bot]", "dependabot[bot]"))
 
     @Test
-    fun `recognizes a PR by the renovate branch prefix`() {
+    fun `recognizes a PR by a bot login and the renovate branch prefix`() {
         assertTrue(source.recognizes(pr(branch = "renovate/spring-boot")))
         assertFalse(source.recognizes(pr(branch = "dependabot/maven/org.springframework.boot-3.4.0")))
         assertFalse(source.recognizes(pr(branch = "feature/renovate/x")))
+        assertFalse(source.recognizes(pr(branch = "renovate/spring-boot").copy(author = "mallory")))
+    }
+
+    @Test
+    fun `is called renovate and fixes in place`() {
+        assertEquals("renovate", source.name)
+        assertEquals(BranchPolicy.IN_PLACE, source.branchPolicy)
     }
 
     @Test
     fun `reads a single update with its ecosystem from the merge-confidence badges`() {
-        val update = source.read(pr(body = captured("single-update.md")))
+        val update = source.read(pr(body = captured("single-update.md")), NoContext)
 
         assertEquals(
             listOf(PackageUpdate("maven", "org.springframework.boot:spring-boot-starter-parent", "4.0.3", "4.1.1")),
             update.updates,
         )
-        assertEquals(BranchPolicy.IN_PLACE, update.branchPolicy)
     }
 
     @Test
     fun `reads every change of a monorepo group, in the order of the table`() {
-        val update = source.read(pr(body = captured("monorepo-group.md")))
+        val update = source.read(pr(body = captured("monorepo-group.md")), NoContext)
 
         assertEquals(
             listOf(
@@ -48,7 +54,7 @@ class RenovateSourceTest {
 
     @Test
     fun `reads every row of a large group`() {
-        val update = source.read(pr(body = captured("maven-group.md")))
+        val update = source.read(pr(body = captured("maven-group.md")), NoContext)
 
         assertEquals(13, update.updates.size)
         assertEquals(PackageUpdate("maven", "de.thetaphi:forbiddenapis", "3.10", "3.11"), update.updates.first())
@@ -61,7 +67,7 @@ class RenovateSourceTest {
 
     @Test
     fun `a Gradle plugin row is read as the plugin's marker coordinates from its badges`() {
-        val update = source.read(pr(body = captured("gradle-spring-boot-plugin.md")))
+        val update = source.read(pr(body = captured("gradle-spring-boot-plugin.md")), NoContext)
 
         assertEquals(
             listOf(
@@ -74,7 +80,7 @@ class RenovateSourceTest {
 
     @Test
     fun `a version catalog row is read by its package, not by the alias the table shows, and the wrapper row is left out`() {
-        val update = source.read(pr(body = captured("gradle-catalog-alias.md")))
+        val update = source.read(pr(body = captured("gradle-catalog-alias.md")), NoContext)
 
         assertEquals(
             listOf(
@@ -87,12 +93,12 @@ class RenovateSourceTest {
 
     @Test
     fun `a Gradle wrapper PR without badges has no version changes`() {
-        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured("gradle-wrapper.md"))).updates)
+        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured("gradle-wrapper.md")), NoContext).updates)
     }
 
     @Test
     fun `extracts the release notes from the body, without Renovate's configuration and footer`() {
-        val notes = assertNotNull(source.read(pr(body = captured("single-update.md"))).releaseNotes)
+        val notes = assertNotNull(source.read(pr(body = captured("single-update.md")), NoContext).releaseNotes)
 
         assertTrue(
             notes.startsWith(
@@ -108,19 +114,19 @@ class RenovateSourceTest {
 
     @Test
     fun `a body without release notes has none`() {
-        assertNull(source.read(pr(body = captured("digest.md"))).releaseNotes)
+        assertNull(source.read(pr(body = captured("digest.md")), NoContext).releaseNotes)
     }
 
     @Test
     fun `digest and pin digest rows are no version changes`() {
         listOf("digest.md", "pin-digest.md").forEach { body ->
-            assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured(body))).updates, body)
+            assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured(body)), NoContext).updates, body)
         }
     }
 
     @Test
     fun `pin rows are no version changes, the patch updates in the same PR are`() {
-        val update = source.read(pr(body = captured("pin.md")))
+        val update = source.read(pr(body = captured("pin.md")), NoContext)
 
         assertEquals(
             listOf(
@@ -146,19 +152,19 @@ class RenovateSourceTest {
             | [org.example:lib](https://example.org) | `1.0` → `abc1234` |
             """.trimIndent()
 
-        assertEquals(listOf(PackageUpdate(null, "org.example:lib", "1.0", "abc1234")), source.read(pr(body = body)).updates)
+        assertEquals(listOf(PackageUpdate(null, "org.example:lib", "1.0", "abc1234")), source.read(pr(body = body), NoContext).updates)
     }
 
     @Test
     fun `release notes run to the end of a body without Renovate's footer`() {
         val body = "This PR contains the following updates:\n\n### Release Notes\n\n<details>\nnotes\n</details>\n\n---\n"
 
-        assertEquals("<details>\nnotes\n</details>", source.read(pr(body = body)).releaseNotes)
+        assertEquals("<details>\nnotes\n</details>", source.read(pr(body = body), NoContext).releaseNotes)
     }
 
     @Test
     fun `a lock file maintenance PR has no version changes`() {
-        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured("lock-file-maintenance.md"))).updates)
+        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = captured("lock-file-maintenance.md")), NoContext).updates)
     }
 
     @Test
@@ -175,7 +181,7 @@ class RenovateSourceTest {
 
         assertEquals(
             listOf(PackageUpdate(null, "com.google.guava:guava", "32.1.3-jre", "33.0.0-jre")),
-            source.read(pr(body = body)).updates,
+            source.read(pr(body = body), NoContext).updates,
         )
     }
 
@@ -192,7 +198,7 @@ class RenovateSourceTest {
 
         assertEquals(
             listOf(PackageUpdate(null, "org.apache.commons:commons-lang3", "3.12.0", "3.14.0")),
-            source.read(pr(body = body)).updates,
+            source.read(pr(body = body), NoContext).updates,
         )
     }
 
@@ -208,13 +214,19 @@ class RenovateSourceTest {
             | [org.example:lib](https://example.org) | `1.0` → `2.0` | ![age](https://developer.mend.io/api/mc/badges/age/maven/org.example:lib/2.0?slim=true) | |
             """.trimIndent()
 
-        assertEquals(listOf(PackageUpdate("maven", "org.example:lib", "1.0", "2.0")), source.read(pr(body = body)).updates)
+        assertEquals(listOf(PackageUpdate("maven", "org.example:lib", "1.0", "2.0")), source.read(pr(body = body), NoContext).updates)
     }
 
     @Test
     fun `a body without the update table has no version changes`() {
-        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = "Bump things.\n\n| a | b |\n|---|---|\n| x | `1` → `2` |")).updates)
-        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = "This PR contains the following updates:\n\nnothing")).updates)
+        assertEquals(
+            emptyList<PackageUpdate>(),
+            source.read(pr(body = "Bump things.\n\n| a | b |\n|---|---|\n| x | `1` → `2` |"), NoContext).updates,
+        )
+        assertEquals(
+            emptyList<PackageUpdate>(),
+            source.read(pr(body = "This PR contains the following updates:\n\nnothing"), NoContext).updates,
+        )
     }
 
     @Test
@@ -229,7 +241,7 @@ class RenovateSourceTest {
             | org.example:other |
             """.trimIndent()
 
-        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = body)).updates)
+        assertEquals(emptyList<PackageUpdate>(), source.read(pr(body = body), NoContext).updates)
     }
 
     private fun captured(name: String): String {

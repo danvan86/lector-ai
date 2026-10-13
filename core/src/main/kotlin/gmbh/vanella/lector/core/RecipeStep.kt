@@ -52,7 +52,7 @@ data class RecipeResult(
  * Finds the recipe for [change] and applies it to [repo] in place, unless that could move a dependency back
  * (concept section 4):
  *
- * 1. A change that isn't an upgrade runs no recipe.
+ * 1. A change that isn't an upgrade runs no recipe. A new or a removed package isn't one.
  * 2. With a [base]: if the base already resolves the package higher than the change's target, the PR is outdated.
  * 3. If any package resolves lower after the recipe than before, the recipe's result is discarded.
  *
@@ -79,24 +79,47 @@ fun recipeBlocker(
     change: DependencyChange,
     adapter: EcosystemAdapter,
     base: BaseCommit?,
-): RecipeOutcome? {
-    if (adapter.versionScheme.compare(change.toVersion, change.fromVersion) <= 0) return RecipeOutcome.NotAnUpgrade
-    return if (base == null) null else outdated(change, adapter, base)
+): RecipeOutcome? = recipeBlockers(listOf(change), adapter.versionScheme, base?.let { baseVersions(adapter, it) }).single()
+
+/**
+ * Rules 1 and 2 for each of [changes]: the outcome that stops its recipe, or null. Calls [baseVersions] once, and only if
+ * a change is an upgrade: a PR can change hundreds of packages. It fails with a [ToolError] if the base's versions can't
+ * be read; null means there is no base.
+ */
+fun recipeBlockers(
+    changes: List<DependencyChange>,
+    versions: VersionScheme,
+    baseVersions: (() -> Map<String, String>)?,
+): List<RecipeOutcome?> {
+    val upgrades =
+        changes.map {
+            it.fromVersion.isNotEmpty() && it.toVersion.isNotEmpty() &&
+                versions.compare(it.toVersion, it.fromVersion) > 0
+        }
+    val ruleOne = upgrades.map { if (it) null else RecipeOutcome.NotAnUpgrade }
+    if (baseVersions == null || upgrades.none { it }) return ruleOne
+    val base =
+        try {
+            baseVersions()
+        } catch (e: ToolError) {
+            val unreadable = RecipeOutcome.VersionsUnreadable(e.message)
+            return ruleOne.map { it ?: unreadable }
+        }
+    return changes.zip(ruleOne).map { (change, blocker) -> blocker ?: outdated(change, versions, base) }
 }
+
+/** The adapter's resolved versions. Fails with a [ToolError] if its ecosystem can't read them. */
+internal fun resolvedVersions(adapter: EcosystemAdapter) =
+    adapter.resolvedVersions ?: throw ToolError("${adapter.ecosystem} can't read resolved versions")
 
 /** Rule 2: the outcome that stops the recipe, or null if the PR is not outdated. */
 private fun outdated(
     change: DependencyChange,
-    adapter: EcosystemAdapter,
-    base: BaseCommit,
+    versions: VersionScheme,
+    baseVersions: Map<String, String>,
 ): RecipeOutcome? {
-    val baseVersions = readVersions(adapter, base::checkout) { return it }
     val baseVersion = baseVersions[change.`package`] ?: return null
-    return if (adapter.versionScheme.compare(baseVersion, change.toVersion) > 0) {
-        RecipeOutcome.PrOutdated(baseVersion, change.toVersion)
-    } else {
-        null
-    }
+    return if (versions.compare(baseVersion, change.toVersion) > 0) RecipeOutcome.PrOutdated(baseVersion, change.toVersion) else null
 }
 
 /** Runs [recipe] on [repo] with rule 3. Every outcome but [RecipeOutcome.Applied] leaves the working tree as it was. */
@@ -106,7 +129,7 @@ fun runRecipe(
     repo: Path,
 ): RecipeOutcome {
     val runner = adapter.recipeRunner ?: return RecipeOutcome.NoRecipeRunner
-    val before = readVersions(adapter, { it(repo) }) { return it }
+    val before = readVersions(adapter, repo) { return it }
     val run =
         try {
             runner.run(repo, recipe)
@@ -131,7 +154,7 @@ private fun checkVersions(
     repo: Path,
     before: Map<String, String>,
 ): RecipeOutcome {
-    val after = readVersions(adapter, { it(repo) }) { return it }
+    val after = readVersions(adapter, repo) { return it }
     val changes = versionChanges(before, after)
     val downgrades = downgrades(changes, adapter.versionScheme)
     if (downgrades.isNotEmpty()) return RecipeOutcome.DowngradeDetected(downgrades)
@@ -139,7 +162,7 @@ private fun checkVersions(
 }
 
 /** Every package whose version differs between [before] and [after], sorted by package. */
-internal fun versionChanges(
+fun versionChanges(
     before: Map<String, String>,
     after: Map<String, String>,
 ): List<VersionChange> =
@@ -154,24 +177,17 @@ internal fun downgrades(
     versions: VersionScheme,
 ): List<VersionChange> = changes.filter { it.before != null && it.after != null && versions.compare(it.after, it.before) < 0 }
 
-/**
- * Reads the resolved versions in the directory that [where] hands out. If they can't be read, calls [unreadable], which
- * must leave the caller.
- */
+/** Reads the resolved versions of [repo]. If they can't be read, calls [unreadable], which must leave the caller. */
 private inline fun readVersions(
     adapter: EcosystemAdapter,
-    where: ((Path) -> Map<String, String>) -> Map<String, String>,
+    repo: Path,
     unreadable: (RecipeOutcome.VersionsUnreadable) -> Nothing,
-): Map<String, String> {
-    val resolved =
-        adapter.resolvedVersions
-            ?: unreadable(RecipeOutcome.VersionsUnreadable("${adapter.ecosystem} can't read resolved versions"))
-    return try {
-        where(resolved::read)
+): Map<String, String> =
+    try {
+        resolvedVersions(adapter).read(repo)
     } catch (e: ToolError) {
         unreadable(RecipeOutcome.VersionsUnreadable(e.message))
     }
-}
 
 /** Why [change] got no recipe, or why its recipe's result was discarded. Null if it was applied. */
 fun RecipeOutcome.reason(change: DependencyChange): String? =
@@ -181,7 +197,11 @@ fun RecipeOutcome.reason(change: DependencyChange): String? =
         }
 
         RecipeOutcome.NotAnUpgrade -> {
-            "${change.toVersion} is not higher than ${change.fromVersion}, so this is not an upgrade"
+            when {
+                change.fromVersion.isEmpty() -> "the package is new, so this is not an upgrade"
+                change.toVersion.isEmpty() -> "the package is gone, so this is not an upgrade"
+                else -> "${change.toVersion} is not higher than ${change.fromVersion}, so this is not an upgrade"
+            }
         }
 
         is RecipeOutcome.PrOutdated -> {

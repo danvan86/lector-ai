@@ -15,6 +15,7 @@ import gmbh.vanella.lector.core.RecipeRunner
 import gmbh.vanella.lector.core.ResolvedVersions
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.SourceFacts
+import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.ecosystems.jvm.MavenVersionScheme
 import java.nio.file.Path
 import kotlin.io.path.readText
@@ -41,11 +42,12 @@ internal class ScriptedLlm(
 }
 
 /**
- * Maven-like: the recipe moves the parent in `pom.xml` to 3.4.5, and versions are read from that file. Every line of
- * `App.java` that calls `broken()` is a compile error.
+ * Maven-like: the recipe moves the parent in `pom.xml` to 3.4.5, and versions are read from that file, unless they are
+ * not readable. Every line of `App.java` that calls `broken()` is a compile error.
  */
 internal class FakeAdapter(
     private val testsRun: (Path) -> Int? = { null },
+    versionsReadable: Boolean = true,
     recipeRun: (Path) -> RecipeRun = { dir ->
         dir.resolve("pom.xml").writeText("<parent>3.4.5</parent>\n")
         RecipeRun.Applied
@@ -80,6 +82,7 @@ internal class FakeAdapter(
 
     override val resolvedVersions =
         ResolvedVersions { dir ->
+            if (!versionsReadable) throw ToolError("mvn could not resolve the parent POM")
             mapOf(
                 PARENT to
                     dir

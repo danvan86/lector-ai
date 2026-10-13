@@ -1,32 +1,35 @@
 # Architecture – PR pipeline
 
-Milestone: [M5](../features.md#m5--renovate-in-ci-first-end-to-end-release-) · Spec: [`m5-renovate-ci/spec.md`](../../specs/done/m5-renovate-ci/spec.md) · Review: [`review.md`](../../specs/done/m5-renovate-ci/review.md)
+Milestones: [M5](../features.md#m5--renovate-in-ci-first-end-to-end-release-) · [M8](../features.md#m8--dependabot-and-fallback-) · Specs: [`m5-renovate-ci`](../../specs/done/m5-renovate-ci/spec.md), [`m8-dependabot-fallback`](../../specs/done/m8-dependabot-fallback/spec.md) · Reviews: [M5](../../specs/done/m5-renovate-ci/review.md), [M8](../../specs/done/m8-dependabot-fallback/review.md)
 
 > **Summary for agents**
 >
-> - `lector pr [<repo>]` (`PrCommand.kt`) runs `PrPipeline` in `core` on one dependency PR: trigger checks, verify first, each distinct recipe once, the [fix loop](fix-loop.md), push, report comment, `ai-assisted` label. The GitHub Action in `action/action.yml` runs it inside the tool image `docker/lector/Dockerfile`; the model runs in the Ollama image `docker/ollama/Dockerfile` as a `services:` sidecar.
-> - Two new ports in `core`: `UpdateSource` (`UpdateSource.kt`, implemented by `RenovateSource` in `sources`) and `GitHost` (`GitHost.kt`, implemented by `GitHubHost` in `git`). `core` has no Renovate or GitHub code; `cli` wires both in `rootCommand()`.
-> - Exit codes of `pr`: `0` for a skipped run, a green PR, and a rejected push; `1` only when a run that worked on the PR leaves diagnostics caused by the update; `2` for any tool error. The tool's own head commit is a skip, so after a push the PR's latest check is green and the comment shows what is left.
-> - `GitHubHost` is the only holder of the token (`LECTOR_GITHUB_TOKEN`, never on a command line). `git` gets it through `GIT_CONFIG_*` environment variables. Every other process gets the allowlisted environment of `runProcess` (`Processes.kt`): no token, no `INPUT_*`.
-> - The action's image tag must equal `version` in `gradle.properties` (`checkActionImage` in `build.gradle.kts`, part of `check`). A version tag publishes the images only after `docs/licensing.md` says `**MSAL check:** done` (`.github/workflows/release.yml`).
-> - Easiest rules to break: never push with force or touch the bot's own commit; the report comment is the marked comment *by the bot's login*, not any marked comment; a green verify changes nothing and creates no comment; the trigger checks use the PR author from the event, never `github.actor`.
+> - `lector pr [<repo>]` (`PrCommand.kt`) runs `PrPipeline` in `core` on one dependency PR: trigger checks, verify first, each distinct recipe once, the [fix loop](fix-loop.md), then `PrDelivery` pushes the commits in place or into a companion PR, writes the report comment, and labels `ai-assisted`. The GitHub Action in `action/action.yml` runs it inside the tool image `docker/lector/Dockerfile`; the model runs in the Ollama image `docker/ollama/Dockerfile` as a `services:` sidecar.
+> - Two ports in `core`: `UpdateSource` (`UpdateSource.kt`; `RenovateSource`, `DependabotSource`, `FallbackSource` in `sources`) and `GitHost` (`GitHost.kt`; `GitHubHost` in `git`). Each source owns its trigger (`recognizes`) and its default `BranchPolicy`. `core` has no Renovate, Dependabot, or GitHub code; `cli` wires them in `sources()` and `rootCommand()`, tried in the order Renovate, Dependabot, fallback.
+> - Exit codes of `pr`: `0` for a skipped run, a green PR, a closed PR, and a rejected push; `1` only when a run that worked on the PR leaves diagnostics caused by the update; `2` for any tool error, including a Dependabot PR without its metadata and a labelled PR whose resolved versions can't be read.
+> - Companion PRs: the commits go onto `heal/<source branch>` (`COMPANION_PREFIX`), rebuilt from the source head and force-pushed every run, with one PR into the source branch. `GitHubHost` refuses to force-push or delete any branch outside `heal/`. The companion PR is closed and its branch deleted when the source PR is closed or merged, found green, or gets a new head without fixes.
+> - `GitHubHost` is the only holder of the token (`LECTOR_GITHUB_TOKEN`, never on a command line). The report comment and a companion PR are the tool's only if the bot's login wrote them, not by marker or branch name alone.
+> - Easiest rules to break: never force-push or delete a branch outside `heal/`; never push to a source branch by force; a green verify creates no comment; the trigger checks use the PR author and labels from the event, never `github.actor`; a cleanup must not assume the companion PR is still open (a person may have merged it).
 
 ## Overview
 
-M5 moves the tool from a CLI into the place where dependency PRs show up. The user's workflow runs on `pull_request`, checks out the PR's head, starts the Ollama sidecar, creates an installation token for its GitHub App, and calls the action. The action runs `lector pr` in the tool image. Fixes land as commits on the Renovate branch, and one sticky comment reports what happened. The concept is in [section 8](../concept.md#8-cicd-integration-and-git-output), the user setup in [`docs/setup.md`](../setup.md).
+M5 moved the tool into the place where dependency PRs show up; M8 made it indifferent to who opened the PR. The user's workflow runs on `pull_request`, checks out the PR's head, starts the Ollama sidecar, creates an installation token for its GitHub App, runs `dependabot/fetch-metadata` on Dependabot's PRs, and calls the action. The action runs `lector pr` in the tool image. Fixes land as commits on the PR's branch (Renovate) or in a stacked companion PR (Dependabot, labelled PRs), and one sticky comment on the source PR reports what happened. The concept is in [section 3](../concept.md#3-update-source-adapters) and [section 8](../concept.md#8-cicd-integration-and-git-output), the user setup in [`docs/setup.md`](../setup.md).
 
 ```mermaid
 flowchart LR
-    wf["user's workflow<br/>on: pull_request"] --> action["action/action.yml<br/>(Docker container action)"]
+    wf["user's workflow<br/>on: pull_request"] --> meta["dependabot/fetch-metadata<br/>(Dependabot PRs only)"]
+    wf --> action["action/action.yml<br/>(Docker container action)"]
+    meta --> action
     wf --> sidecar["lector-ollama image<br/>(services: ollama)"]
     action --> image["lector image<br/>lector pr"]
     image --> pipeline["PrPipeline<br/>(core)"]
-    pipeline --> source["UpdateSource<br/>RenovateSource (sources)"]
-    pipeline --> host["GitHost<br/>GitHubHost (git)"]
+    pipeline --> source["UpdateSource<br/>Renovate / Dependabot / Fallback (sources)"]
     pipeline --> adapter["EcosystemAdapter<br/>MavenAdapter, GradleAdapter (ecosystems:jvm)"]
     pipeline --> loop["FixLoop + Guardrails<br/>(core)"]
+    pipeline --> delivery["PrDelivery + Companions<br/>(core)"]
     loop --> llm["LlmClient<br/>OllamaClient (llm)"]
     llm --> sidecar
+    delivery --> host["GitHost<br/>GitHubHost (git)"]
     host --> gh["GitHub REST API<br/>and git remote"]
 ```
 
@@ -34,26 +37,32 @@ flowchart LR
 
 | Module | File | Role |
 |---|---|---|
-| `core` | `PrPipeline.kt` | `PrPipeline.run(repo): PrOutcome` (`Skipped`, `Green`, `PushRejected`, `Reported`), `PrSettings` (bot logins, `CommitIdentity`, `Budgets`), `PrReport`, the label `AI_ASSISTED`. |
-| | `RecipeGroup.kt` | `applyRecipes(changes, adapter, index, repo, base, identity)` (M6, moved out of `PrPipeline` so the benchmark runs the same step): rules 1 and 2 per change, each distinct recipe once in the changes' order, one commit per recipe that changed files. `RecipeGroupResult` (`withoutRecipe`, `applications`, `commits`, `diff(repo)`), `RecipeApplication`. |
-| | `UpdateSource.kt` | The port `UpdateSource` (`recognizes(pr)`, `read(pr): SourceUpdate`), and `PullRequest`, `PackageUpdate`, `SourceUpdate`, `BranchPolicy` (only `IN_PLACE`). |
-| | `GitHost.kt` | The port `GitHost`: `pullRequest()`, `fetch`, `push` (false if rejected), `comment(pr, body, create)`, `label`. |
-| | `PrComment.kt` | The report comment in Markdown: `render(report)` and `green(verification, commit)`. At most 50 diagnostics per list. |
-| | `RecipeStep.kt` | Split for the pipeline: `recipeBlocker` (rules 1 and 2), `runRecipe` (rule 3), `RecipeOutcome.reason`. |
+| `core` | `PrPipeline.kt` | `PrPipeline.run(repo): PrOutcome` (`Skipped`, `Green`, `Closed`, `PushRejected`, `Reported`), `PrSettings` (`CommitIdentity`, `Budgets`, the `source` that must take the PR, the `mode`), `PrReport` (with the `companion` PR the commits went to and a `closedCompanion`), `RecipeApplication`, the label `AI_ASSISTED`. |
+| | `PrDelivery.kt` | The end of a run on the host: `deliver` (in place, companion, or only the comment), `green`, `closed`. |
+| | `Companions.kt` | `publish` (force-push `heal/<branch>`, open or update the companion PR, label it), `close` (the open companion PR and its branch), `retire` (`close`, and the branch also when its PR is gone). |
+| | `UpdateSource.kt` | The port `UpdateSource` (`name`, `branchPolicy`, `recognizes(pr)`, `read(pr, context): SourceUpdate`), `SourceContext` (the repository's ecosystem, `baseVersions()`, `headVersions()`), `PullRequest` (with `labels` and `state`), `PrState`, `BranchPolicy` (`IN_PLACE`, `COMPANION`), `PackageUpdate`, `SourceUpdate`. |
+| | `RepositoryContext.kt` | The run's `SourceContext`: the head in the checkout, the base in a worktree of `BaseCommit`, read with the adapter's `resolvedVersions`. Keeps the base's versions after the first read. |
+| | `GitHost.kt` | The port `GitHost`: `pullRequest()`, `fetch`, `push` (false if rejected), `comment(pr, body, create)`, `label(number, label)`, `forcePush(repo, branch)`, `findPullRequest`, `createPullRequest`, `updatePullRequest`, `closePullRequest`, `deleteBranch`. `COMPANION_PREFIX = "heal/"`. |
+| | `PrComment.kt` | The report comment in Markdown: `render(report)`, `green(…)`, `unreadable(reason)`, `note(text)`, `companionClosed(number, reason)`, `companionDescription(report, source)`. At most 50 diagnostics per list and 10 changes without a recipe. |
+| | `RecipeGroup.kt` | `applyRecipes(changes, adapter, index, repo, baseVersions, identity)` (M6, moved out of `PrPipeline` so the benchmark runs the same step): rules 1 and 2 for every change with the base's versions read once (`recipeBlockers`; `baseVersions(adapter, base)` for callers without a source context), each distinct recipe once in the changes' order, one commit per recipe that changed files. `RecipeGroupResult` (`withoutRecipe`, `applications`, `commits`, `diff(repo)`), `RecipeApplication`. |
+| | `RecipeStep.kt` | `recipeBlocker` and `recipeBlockers(changes, versions, baseVersions)` (rules 1 and 2), `runRecipe` (rule 3), `versionChanges`, `RecipeOutcome.reason`. A new or removed package (an empty version) is no upgrade. |
 | | `GitWorkingTree.kt` | `CommitIdentity` (`TOOL` = `lector` for the CLI), `commit(…, identity)`, `head`, `authorEmail`, `hasCommit`, `SHORT_COMMIT`. |
 | | `Processes.kt` | `runProcess` starts every process with only the allowlisted variables (`ALLOWED_VARIABLES`, prefixes `LC_` and `MAVEN_`) plus the ones the caller adds. |
-| `sources` | `RenovateSource.kt` | Recognizes the `renovate/` branch prefix; reads every row of the PR body's update table and the release notes. Since M7 the package comes from the row's badge, so Gradle plugin and version catalog rows work. |
-| `git` | `GitHubHost.kt` | The PR from the `pull_request` event file, comment and label over REST with the JDK `HttpClient`, fetch and push with the `git` CLI. |
+| `sources` | `RenovateSource.kt` | Author in the bot logins and the `renovate/` prefix; every row of the PR body's update table, and the release notes; the package and datasource from the row's badge (M7), so Gradle plugin and version catalog rows work. In place. |
+| | `DependabotSource.kt` | Author in the bot logins and the `dependabot/` prefix; every entry of `fetch-metadata`'s `updated-dependencies-json` (`parseMetadata`), and the release notes and changelog sections of the PR body. Companion. |
+| | `FallbackSource.kt` | The opt-in label; every package whose resolved version differs between base and head. No release notes. Companion. |
+| `git` | `GitHubHost.kt` | The PR from the `pull_request` event file; comment, label, and PRs over REST; fetch, push, and force-push with the `git` CLI. |
+| | `GitHubApi.kt` | The JDK `HttpClient` with the token, the API version header, and the timeouts; `send` (JSON, error status → `ToolError`), `request`, `check`. |
 | `ecosystems:jvm` | `JdkSelection.kt` | Picks the smallest installed JDK that the root POM's `maven.compiler.release`, else `java.version`, needs (default 21). `MavenAdapter` sets `JAVA_HOME` per Maven run. Gradle picks its JDK differently (`DaemonJdk` and toolchains, M7, see [Gradle adapter](gradle-adapter.md#how-gradle-runs)). `installedJdks(environment)` reads the installed JDKs from `LECTOR_JDK_<release>` variables, for `cli` and the benchmark (M6). |
-| `cli` | `PrCommand.kt` | `lector pr`: options, the token from the environment, the exit code, the comment text on stdout. |
+| `cli` | `PrCommand.kt` | `lector pr`: options, the token from the environment, `SourceOptions` for the sources, the exit code, the text on stdout. |
 | | `FixLoopOptions.kt` | The options `heal` and `pr` share: `--ollama-url`, `--model` (`DEFAULT_MODEL`), the five budgets; `httpUrl()`. |
-| | `RootCommand.kt` | Wires `RenovateSource` into `PrCommand`; `adapters()` builds `GradleAdapter` and `MavenAdapter` with the JDKs `installedJdks()` (`JdkSelection.kt`) reads from `LECTOR_JDK_<release>`. |
-| — | `action/action.yml` | Docker container action on `ghcr.io/danvan86/lector:<version>`: inputs → `pr` options; token, Maven settings, and Gradle init script through the environment; `GRADLE_USER_HOME=/github/home/.gradle`, so a workflow can cache it. |
+| | `RootCommand.kt` | `sources(options)` builds the three sources in their order; `adapters()` builds `GradleAdapter` and `MavenAdapter` with the JDKs `installedJdks()` (`JdkSelection.kt`) reads from `LECTOR_JDK_<release>`. |
+| — | `action/action.yml` | Docker container action on `ghcr.io/danvan86/lector:<version>`: inputs → `pr` options; token, Maven settings, Gradle init script, and Dependabot metadata through the environment; `GRADLE_USER_HOME=/github/home/.gradle`, so a workflow can cache it. |
 | — | `docker/lector/Dockerfile` | Tool image: `eclipse-temurin` 25 base, JDK 17 and 21 stages copied in, Maven, `git`, the installed distribution with the OpenRewrite Gradle plugin (`LECTOR_REWRITE_GRADLE_PLUGIN`). No model, no recipe JARs, no Gradle. |
 | — | `docker/ollama/Dockerfile` | Ollama image: `ARG MODEL`, pulled at build time, `OLLAMA_KEEP_ALIVE=-1`. Its `FROM` is also the real-model test's Ollama. |
 | — | `.github/workflows/release.yml` | On a `v*` tag: `check` (tag = version, MSAL check done), then `tool-image` and the `ollama-image` matrix (7B, 30B). |
 
-`sources` and `git` depend on `core` only; `cli` depends on both.
+`sources` and `git` depend on `core` only (plus `kotlinx-serialization-json` and the SLF4J API); `cli` depends on both.
 
 ## A run
 
@@ -62,43 +71,65 @@ sequenceDiagram
     participant A as action (lector pr)
     participant P as PrPipeline
     participant H as GitHubHost
-    participant S as RenovateSource
+    participant S as UpdateSource
     participant E as EcosystemAdapter
     participant F as FixLoop
+    participant D as PrDelivery
     A->>P: run(repo)
     P->>H: pullRequest()
-    P->>P: trigger checks (author, same repo, branch, own head commit)
-    P->>S: read(pr)
-    S-->>P: SourceUpdate (changes, release notes)
+    P->>P: same repository? closed or merged → D.closed
+    P->>S: recognizes(pr) (first source, or the named one)
+    P->>P: own head commit? → Skipped
     P->>H: fetch(base) if the shallow clone lacks it
+    P->>S: read(pr, RepositoryContext)
+    S-->>P: SourceUpdate (changes, release notes)
     P->>E: attribute(head vs. base)
     alt nothing caused by the update
-        P->>H: comment(green, create = false)
-        P-->>A: Green (exit 0)
+        P->>D: green (close the companion PR, update the comment)
+        D-->>A: Green (exit 0)
     else broken
-        P->>E: recipeBlocker, index.find, runRecipe (each distinct recipe once, one commit)
+        P->>E: recipeBlockers, index.find, runRecipe (each distinct recipe once, one commit)
         P->>F: run(changes, release notes, recipe diff)
         F-->>P: FixLoopResult
-        P->>H: push if any commit (never force)
-        alt rejected (branch moved)
-            P-->>A: PushRejected (exit 0)
-        else pushed or nothing to push
-            P->>H: comment(report, create = true)
-            P->>H: label ai-assisted (if anything was pushed)
-            P-->>A: Reported (exit 0 or 1)
-        end
+        P->>D: deliver(report, policy)
+        D->>H: push (in place) or forcePush heal/… + companion PR
+        D->>H: comment(report, create = true), label ai-assisted
+        D-->>A: Reported (exit 0 or 1), or PushRejected (exit 0)
     end
 ```
 
 | Step | What happens | Where |
 |---|---|---|
-| Trigger checks | The PR's author (`pull_request.user.login`) is in `--bot-logins`, head repository = base repository, a source recognizes the branch, and the head commit's author email isn't the bot's. Otherwise `Skipped`: no comment. The tree must be clean and on the PR's head, or it's a tool error. | `PrPipeline.skipReason`, `ownCommit` |
-| Changes | Each `PackageUpdate` whose ecosystem is null or the detected adapter's becomes a `DependencyChange`; the update type comes from the adapter's `versionScheme`. None left → `Skipped`. | `PrPipeline.run` |
-| Verify first | The base commit is fetched if missing, then `attribute`. Green → the existing comment (if any) is updated to say so, nothing else. | `verifyFirst` |
-| Recipes | Per change: downgrade rules, then the index. Changes are grouped by recipe in the PR's order; each recipe runs once and its changed files become one commit by the bot. | `heal`, `apply` |
-| Fix loop | `FixLoop` with the bot's identity, over every change, the release notes, and the recipe diff. Each build and test run gets the time budget left as its timeout. | [Fix loop](fix-loop.md) |
-| Push | Only if a commit was made. `git push <remote> HEAD:refs/heads/<branch>`, never `--force`. `[rejected]` → `PushRejected`, no comment, no label. | `GitHubHost.push` |
-| Report | Sticky comment (created if missing), then the `ai-assisted` label if anything was pushed. | `PrComment.render`, `GitHubHost.comment`, `label` |
+| Same repository | Head repository ≠ base repository → `Skipped`, no comment. Checked first, for every state. | `PrPipeline.run` |
+| Closed or merged | No build: the companion PR is closed and `heal/<branch>` deleted, also when the companion PR is gone already; the comment says why if a PR was closed. `Closed`, exit `0`. | `PrDelivery.closed`, `Companions.retire` |
+| Source | Without `--source`: the first source in `sources()` that recognizes the PR. With it: that source, if it recognizes the PR, else `Skipped`. Unknown name → tool error. | `PrPipeline.source` |
+| Own commit | The tree must be clean and on the PR's head (else tool error); a head commit with the bot's email → `Skipped`. | `ownCommit` |
+| Changes | `source.read` with the run's `RepositoryContext`. A `ToolError` there (missing metadata, unreadable versions) writes `PrComment.unreadable` to the PR and exits `2`. Each `PackageUpdate` whose ecosystem is null or the adapter's becomes a `DependencyChange`, the update type from the adapter's `versionScheme`. None left → `Skipped`. | `read` |
+| Verify first | `attribute`. Green → `PrDelivery.green`: an open companion PR is closed, the existing comment (if any) updated. | `verifyFirst` |
+| Recipes | `recipeBlockers` (rules 1 and 2, the base's versions from the context), then the index. Changes grouped by recipe in the PR's order; each recipe runs once, its changed files one commit by the bot. | `heal`, `applyRecipes` |
+| Fix loop | `FixLoop` with the bot's identity, over every change, the release notes, and the recipe diff. | [Fix loop](fix-loop.md) |
+| Deliver | Policy = `--mode`, else the source's `branchPolicy`. See below. | `PrDelivery.deliver` |
+
+### Delivery and companion PRs
+
+| Commits? | Policy | What happens | `ai-assisted` on |
+|---|---|---|---|
+| yes | `IN_PLACE` | `push` to the PR's branch, never by force. `[rejected]` → `PushRejected`, no comment, no label. | the source PR |
+| yes | `COMPANION` | `forcePush` to `heal/<branch>`; the bot's open PR from it into the source branch is updated, or a new one created (`lector-ai fixes for #<n>`, description `companionDescription`). The comment names the companion PR and the merge order. | the companion PR |
+| no | `COMPANION` | An open companion PR (on an earlier head) is closed and its branch deleted; the comment says so. | — |
+| no | `IN_PLACE` | Only the comment. | — |
+
+```mermaid
+flowchart LR
+    red["source PR red,<br/>run with commits"] --> publish["Companions.publish<br/>force-push heal/&lt;branch&gt;,<br/>open or update PR"]
+    publish --> open["companion PR open"]
+    open -->|"new head with commits"| publish
+    open -->|"new head without commits"| close["Companions.close<br/>close PR, delete branch"]
+    open -->|"verify green"| close
+    open -->|"source closed or merged"| retire["Companions.retire<br/>close PR if open,<br/>always delete branch"]
+    open -->|"merged by a person"| merged["companion PR merged"]
+    merged -->|"source closed or merged"| retire
+```
 
 ## Contract
 
@@ -106,12 +137,16 @@ sequenceDiagram
 
 | Input | Source |
 |---|---|
-| Repository | Argument `<repo>`, default `.` (the action's workspace). Must be the PR's head commit, clean. |
+| Repository | Argument `<repo>`, default `.` (the action's workspace). Must be the PR's head commit, clean, unless the PR is closed. |
 | Event | `--event`, default `GITHUB_EVENT_PATH`. Must exist; a non-`pull_request` event is a tool error. |
 | API and server URL | `--github-api-url` / `GITHUB_API_URL`, `--github-server-url` / `GITHUB_SERVER_URL`; http(s) with a host. |
 | Token | `LECTOR_GITHUB_TOKEN` only. Missing or blank → exit `2`. |
-| Bot identity | `--bot-name` (commit author and the login of the report comment), `--bot-email` (commit email, and the own-commit check). |
-| Bot logins | `--bot-logins`, comma-separated, trimmed, default `renovate[bot]`. |
+| Bot identity | `--bot-name` (commit author, and the login of the report comment and companion PRs), `--bot-email` (commit email, and the own-commit check). |
+| Bot logins | `--bot-logins`, comma-separated, trimmed, default `renovate[bot],dependabot[bot]`. Renovate and Dependabot sources both check them. |
+| Source | `--source`: `renovate`, `dependabot`, `fallback`, or empty for automatic. |
+| Mode | `--mode`: `in-place`, `companion`, or empty for the source's policy (Renovate in place, the others companion). |
+| Fallback label | `--fallback-label`, default `lector`, not blank. |
+| Dependabot metadata | `--dependabot-metadata` / `LECTOR_DEPENDABOT_METADATA`: the JSON itself, validated when parsed; empty means none. |
 | Maven settings | `--maven-settings` / `LECTOR_MAVEN_SETTINGS`; empty means none. |
 | Gradle init script | `--gradle-init` / `LECTOR_GRADLE_INIT`; empty means none (M7). |
 | Fix loop | `--ollama-url`, `--model`, the budgets (`FixLoopOptions`). |
@@ -119,28 +154,41 @@ sequenceDiagram
 | Outcome | stdout | Exit |
 |---|---|---|
 | `Skipped` | `Skipped: <reason>` | `0` |
-| `Green` | `Verify is green …` and the text report | `0` |
+| `Green` | `Verify is green …` (with the closed companion PR, if any) and the text report | `0` |
+| `Closed` | `The PR is <closed\|merged>: closed the companion PR #<n>.` or `… It has no companion PR.` | `0` |
 | `PushRejected` | `The push was rejected …` | `0` |
-| `Reported`, nothing caused by the update left | The comment's Markdown | `0` |
-| `Reported`, diagnostics caused by the update left | The comment's Markdown | `1` |
+| `Reported`, nothing caused by the update left | The comment's Markdown, then every change if there are several | `0` |
+| `Reported`, diagnostics caused by the update left | Same | `1` |
 | Usage error, `ToolError`, any other `Throwable` | stderr `Error: …` | `2` |
 
-### Renovate PR body
+### Update sources
 
-`RenovateSource` reads the table after `This PR contains the following updates:`. Columns are found by header name (`Package`, `Change`, optional `Update`). A row is a change when `Change` has `` `from` → `to` `` (or `->`), the update type isn't `digest`, `pinDigest`, `pin`, or `lockFileMaintenance`, and the versions aren't both commit hashes. The ecosystem comes from the datasource in the merge-confidence badge URL (`maven`, `npm`, `pypi` in `ECOSYSTEMS`), and since M7 the package too, because the table may show a Gradle plugin ID or a version catalog alias. A row without a badge is the repository's, with the table's package name; a row with an unknown datasource is left out. A Gradle wrapper row (datasource `gradle-version`, or the unbadged package `gradle`) has no ecosystem, so a wrapper-only PR is skipped. Release notes are the text after `### Release Notes`, up to Renovate's configuration section or footer.
+| Source | Recognizes | Changes | Release notes | Policy |
+|---|---|---|---|---|
+| `RenovateSource` | author in bot logins, branch `renovate/…` | The PR body's table after `This PR contains the following updates:` (columns by header name; digest, pin, and lock-file rows left out; ecosystem and, since M7, package from the merge-confidence badge, `ECOSYSTEMS`; a Gradle wrapper row has no ecosystem) | After `### Release Notes`, up to Renovate's configuration section or footer | in place |
+| `DependabotSource` | author in bot logins, branch `dependabot/…` | Every entry of the metadata: `dependencyName`, `packageEcosystem` (`maven`, `gradle` → `maven`; others left out), `prevVersion`, `newVersion`. A Gradle name without `:` is a plugin → `<id>:<id>.gradle.plugin`; `gradle-wrapper` is left out. Dependabot's `updateType` is never read. No metadata → `ToolError` naming `docs/setup.md`, section 3. | Each `<details>` with summary `Release notes` or `Changelog`, headed by the `Bumps …` / ``Updates `…` `` line before it | companion |
+| `FallbackSource` | the label in `PullRequest.labels`, any author | `versionChanges(baseVersions, headVersions)`: every differing package, transitive, added (empty from), and removed (empty to) ones included. Unreadable on either side → `ToolError` that names the side. | none | companion |
 
 ### GitHub
 
 | Call | Endpoint or command |
 |---|---|
-| Read the PR | The event file: `number`, `user.login`, `head.ref`, `head.sha`, `head.repo.full_name` (null for a deleted fork), `base.repo.full_name`, `base.sha`, `body` |
+| Read the PR | The event file: `number`, `state`, `merged`, `labels[].name`, `user.login`, `head.ref`, `head.sha`, `head.repo.full_name` (null for a deleted fork), `base.repo.full_name`, `base.sha`, `body` |
 | Find the report | `GET /repos/{repo}/issues/{n}/comments`, page by page (100), the first comment by `--bot-name` whose body starts with `<!-- lector-ai -->` |
 | Write the report | `PATCH …/issues/comments/{id}`, or `POST …/issues/{n}/comments` |
-| Label | `POST …/issues/{n}/labels` |
+| Label | `POST …/issues/{n}/labels` (the source PR or the companion PR) |
+| Find the companion PR | `GET …/pulls?state=open&head={owner}:heal/{branch}&base={branch}`, the first by `--bot-name` |
+| Create, update, close it | `POST …/pulls`; `PATCH …/pulls/{n}` with `body`, or with `state: closed` |
+| Delete the companion branch | `DELETE …/git/refs/heads/heal/{branch}`; `422` (already gone) is no error |
 | Fetch the base | `git fetch --quiet --no-tags --depth=1 <server>/<repo>.git <sha>` |
 | Push | `git push --quiet <server>/<repo>.git HEAD:refs/heads/<branch>` |
+| Force-push | `git push --quiet --force <server>/<repo>.git HEAD:refs/heads/heal/<branch>`; any other branch → `ToolError` before `git` runs |
 
 `git` authenticates with an `http.<server>/.extraheader` set through `GIT_CONFIG_COUNT`/`KEY`/`VALUE`: first empty (drops the header `actions/checkout` left), then the token. `GIT_TERMINAL_PROMPT=0`. A non-2xx answer or an unreachable API is a `ToolError`. There is no merge, approve, or review call.
+
+### Workflow
+
+The documented workflow ([`docs/setup.md`](../setup.md), section 3) listens to `opened`, `synchronize`, `reopened`, `labeled`, and `closed`. Its `heal` job runs for bot PRs and PRs with the label, from the same repository; `fetch-metadata` runs only on Dependabot's PRs, with `continue-on-error: true`, and the lector-ai step only if it didn't fail (it refuses a head commit that isn't Dependabot's). Its `cleanup` job runs `lector pr` on `closed` without the model and without a checkout. One concurrency group per PR; the bot's own events and other labels don't cancel a run.
 
 ### Images and release
 
@@ -155,26 +203,31 @@ Dependabot watches both Dockerfiles; major updates of `eclipse-temurin` are igno
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
-| Unit, pipeline | `test` | `PrPipeline` on a real shallow clone with fake host, source, adapter, and model: every trigger check, green stop, recipe grouping and order, push, rejected push, label, time budget | `PrPipelineTest` |
-| Unit, comment | `test` | Rendered Markdown for every section and the green comment | `PrCommentTest` |
-| Unit, Renovate | `test` | Captured PR bodies under `sources/src/test/resources/renovate/` (single, monorepo and Maven groups, digest, pin, lock-file maintenance, and since M7 a Gradle plugin, a version catalog alias, and a wrapper update) | `RenovateSourceTest` |
-| Unit, GitHub | `test` | A local `HttpServer` as the REST API, a real bare remote for push and fetch | `GitHubHostTest` |
+| Unit, pipeline | `test` | `PrPipeline` on a real shallow clone with fake host, sources, adapter, and model: source order and override, every trigger check, the source context and its worktree, green stop, recipe grouping, push, rejected push, companion create, update, close (green, closed, merged, merged first, no commits), labels | `PrPipelineTest` |
+| Unit, comment and recipe rules | `test` | Rendered Markdown, the cut lists; `recipeBlockers` reading the base once | `PrCommentTest`, `RecipeStepTest` |
+| Unit, sources | `test` | Captured Renovate bodies (`sources/src/test/resources/renovate/`, with Gradle plugin, catalog alias, and wrapper PRs since M7); captured Dependabot PRs with the `updated-dependencies-json` `fetch-metadata`'s parser made (`…/dependabot/`); the fallback against a fake `SourceContext` | `RenovateSourceTest`, `DependabotSourceTest`, `FallbackSourceTest` |
+| Unit, GitHub | `test` | A local `HttpServer` as the REST API, a real bare remote for push, force-push, and fetch | `GitHubHostTest` |
 | Unit, JDK and env | `test` | JDK choice from the POM; a child process sees no token or `INPUT_*` | `JdkSelectionTest`, `ProcessesTest` |
-| Unit, CLI | `test` | Options, exit codes, stdout and stderr of `pr`; a red-to-green flow through the real adapters with local fakes for GitHub and Ollama and a scripted `mvnw` | `PrCommandTest`, `PrFlowTest` |
-| End-to-end | `:cli:endToEndTest` | The installed start script: skip, missing token, a green Renovate PR with a scripted `mvnw` against a local GitHub fake | `LectorEndToEndTest` |
+| Unit, CLI | `test` | Options, exit codes, stdout and stderr of `pr`; red-to-green flows through the real adapters (in place, and a labelled PR in a companion PR) with local fakes for GitHub and Ollama and a scripted `mvnw` | `PrCommandTest`, `PrFlowTest` |
+| End-to-end | `:cli:endToEndTest` | The installed start script: skip, missing token, invalid Dependabot metadata, a closed PR, a green Renovate PR against a local GitHub fake | `LectorEndToEndTest` |
 | Gate | `check` | `checkActionImage`: the action's image tag is the tool's version | `build.gradle.kts` |
 
-The real end-to-end run (a Renovate PR in a test repository on GitHub, published images) is outside the build and still open ([`progress.md`](../../specs/done/m5-renovate-ci/progress.md)).
+The real runs on GitHub (a Renovate PR for M5; a Dependabot PR and a labelled manual PR for M8, with published images) are outside the build and still open.
 
 ## Decisions and known limits
 
 | Decision / limit | Reason | Revisit |
 |---|---|---|
-| The tool's own head commit is a skip with exit `0`, so the PR's latest check is green even when something is left | A verify-only run per push costs a full build; state in comments was decided against (review F4) | If users miss the red check |
+| The tool's own head commit is a skip with exit `0`, so the PR's latest check is green even when something is left | A verify-only run per push costs a full build; state in comments was decided against (M5 review F4) | If users miss the red check |
 | `UpdateSource` returns `PackageUpdate`s; the pipeline builds `DependencyChange`s | The update type depends on the ecosystem's version scheme, which the source doesn't know | — |
+| Sources own their trigger checks; the same-repo and own-commit checks stay in the pipeline | They hold for every source (concept 8.1, 8.2) | — |
+| Dependabot's metadata from `fetch-metadata`, passed as JSON, not a file | A Docker container action can't write a file before the CLI runs | — |
+| The fallback compares resolved versions, every difference a change | Catches properties, BOMs, parents, plugins; no "declared vs. transitive" data needed (M8 Q5, Q10). The comment and the prompt name the first ten | If the fix loop suffers from long change lists |
+| The fallback runs only on labelled PRs | No commits on feature PRs nobody asked for; only writers can label (M8 Q11) | — |
+| The companion PR is force-pushed and kept, stacked on the source branch | Review discussion stays in one place; Dependabot keeps its PR (M8 Q3, Q4) | — |
 | Ecosystem and package from Renovate's datasource badge, not its manager | The PR body names no manager; the table names Gradle plugins by ID and catalog entries by alias | Self-hosted Renovate without badges |
-| Only in-place commits, unsigned | Simplest; Renovate branches are usually unprotected | M8 (companion PRs) |
+| Unsigned commits | Simplest | If users require signed commits |
 | Fetch uses the token too | A private repository's base commit needs it | — |
 | Builds run in the same container and as the same user as the tool | Builds don't see the token in their environment, but could read it from `/proc` | A separate user or container for builds |
-| The 30B Ollama image has a single ~19 GB layer, GHCR takes up to 10 GB | Built in its own matrix job with `fail-fast: false`, so the 7B image doesn't depend on it | First release |
-| Only Renovate and GitHub; Maven, and Gradle since M7 | M5 and M7 scope | M8, Later |
+| The 30B Ollama image has a single ~19 GB layer, GHCR takes up to 10 GB | Built in its own matrix job with `fail-fast: false` | First release |
+| Only GitHub; Maven, and Gradle since M7 | Scope | Later |

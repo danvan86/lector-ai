@@ -24,4 +24,10 @@ class RecipeReasonTest {
 
         reasons.forEach { (outcome, reason) -> assertEquals(reason, outcome.reason(change), outcome.toString()) }
     }
+
+    @Test
+    fun `a new or a removed package says so`() {
+        assertEquals("the package is new, so this is not an upgrade", RecipeOutcome.NotAnUpgrade.reason(change.copy(fromVersion = "")))
+        assertEquals("the package is gone, so this is not an upgrade", RecipeOutcome.NotAnUpgrade.reason(change.copy(toVersion = "")))
+    }
 }

@@ -2,10 +2,13 @@ package gmbh.vanella.lector.cli
 
 import com.github.ajalt.clikt.core.subcommands
 import gmbh.vanella.lector.core.EcosystemAdapter
+import gmbh.vanella.lector.core.UpdateSource
 import gmbh.vanella.lector.ecosystems.jvm.GradleAdapter
 import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
 import gmbh.vanella.lector.ecosystems.jvm.installedJdks
 import gmbh.vanella.lector.recipes.BundledRecipeIndex
+import gmbh.vanella.lector.sources.DependabotSource
+import gmbh.vanella.lector.sources.FallbackSource
 import gmbh.vanella.lector.sources.RenovateSource
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -21,9 +24,17 @@ internal fun rootCommand(version: String): LectorCommand {
         VerifyCommand(adapters),
         MigrateCommand(adapters, index = { BundledRecipeIndex.load() }),
         HealCommand(adapters, index = { BundledRecipeIndex.load() }),
-        PrCommand(adapters, sources = listOf(RenovateSource()), index = { BundledRecipeIndex.load() }),
+        PrCommand(adapters, sources = ::sources, index = { BundledRecipeIndex.load() }),
     )
 }
+
+/** The update sources in the order they are tried: the bots first, by author and branch, then the opt-in label. */
+internal fun sources(options: SourceOptions): List<UpdateSource> =
+    listOf(
+        RenovateSource(options.botLogins),
+        DependabotSource(options.botLogins, options.dependabotMetadata),
+        FallbackSource(options.fallbackLabel),
+    )
 
 /**
  * The ecosystem adapters, configured from the [environment]: the installed JDKs, Gradle's own variables (the Gradle

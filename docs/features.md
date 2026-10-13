@@ -113,14 +113,17 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** the M5 flow works the same for a Gradle repo.
 
-## M8 – Dependabot and fallback ⬜
+## M8 – Dependabot and fallback 🟨
 
 **Goal:** the tool doesn't care where the PR came from.
 
-- Dependabot source adapter (`fetch-metadata`, including grouped updates)
-- Fallback adapter: compare manifests between base and head
-- Companion-PR mode (`heal/<branch>`), regenerated when the source PR changes
-- Branch policy configurable per source
+- Dependabot source adapter: every entry of `fetch-metadata`'s `updated-dependencies-json`, grouped updates included, Gradle plugins as marker coordinates, release notes from the PR body (`sources` module)
+- Fallback source: PRs with the opt-in label `lector`; the changes are every resolved-version difference between base and head
+- Source selection in the order Renovate, Dependabot, fallback, with a `source` input to override
+- Companion-PR mode (`heal/<branch>`): rebuilt and force-pushed when the source PR changes, the same companion PR kept, closed when the source PR is closed, merged, or green
+- Branch policy per source (Renovate in place, Dependabot and fallback companion), overridable with the `mode` input
+- Documentation: the [setup guide](setup.md) covers Dependabot secrets, companion PRs, and the opt-in label
+- Still open: the runs on a real Dependabot PR and a real labelled manual PR in a test repository on GitHub
 
 **Done when:** Dependabot PRs and manual dependency PRs are fixed the same way as Renovate PRs.
 

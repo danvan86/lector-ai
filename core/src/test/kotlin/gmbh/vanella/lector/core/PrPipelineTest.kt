@@ -38,33 +38,136 @@ class PrPipelineTest {
     private var headSha = ""
 
     @Test
-    fun `a PR whose author isn't a bot login is skipped without a comment`() {
+    fun `a PR no source recognizes is skipped without a comment`() {
         val host = host(pr().copy(author = "mallory"))
 
         val outcome = pipeline(host).run(repo)
 
-        assertEquals(PrOutcome.Skipped("the PR's author mallory is not one of the bot logins renovate[bot]"), outcome)
+        assertEquals(PrOutcome.Skipped("no update source recognizes the PR by mallory on bot/lib"), outcome)
         assertNothingHappened(host)
     }
 
     @Test
-    fun `a PR from a fork is skipped without a comment`() {
+    fun `a PR from a fork is skipped without a comment, also with a source named`() {
         val host = host(pr().copy(headRepository = "mallory/app"))
 
         val outcome = pipeline(host).run(repo)
+        val named = pipeline(host, source = "bot").run(repo)
 
         assertEquals(PrOutcome.Skipped("the PR comes from mallory/app, not from acme/app"), outcome)
+        assertEquals(outcome, named)
         assertNothingHappened(host)
     }
 
     @Test
-    fun `a PR on a branch the source doesn't recognize is skipped without a comment`() {
-        val host = host(pr().copy(headBranch = "feature/bump"))
+    fun `the first source that recognizes the PR takes it`() {
+        val host = host(pr().copy(labels = setOf("lector")))
+        val first = FakeSource("bot", update = SourceUpdate(listOf(lib), null))
+        val second = FakeSource("label", recognizes = { "lector" in it.labels }, update = SourceUpdate(listOf(other), null))
 
-        val outcome = pipeline(host).run(repo)
+        val outcome = pipeline(host, sources = listOf(first, second)).run(repo)
 
-        assertEquals(PrOutcome.Skipped("no update source recognizes the branch feature/bump"), outcome)
-        assertNothingHappened(host)
+        assertEquals(listOf(lib.`package`), assertIs<PrOutcome.Reported>(outcome).report.changes.map { it.`package` })
+        assertEquals(1, first.reads)
+        assertEquals(0, second.reads)
+    }
+
+    @Test
+    fun `a named source takes the PR instead of the first, if it recognizes it`() {
+        val labelled = host(pr().copy(labels = setOf("lector")))
+        val first = FakeSource("bot", update = SourceUpdate(listOf(lib), null))
+        val second = FakeSource("label", recognizes = { "lector" in it.labels }, update = SourceUpdate(listOf(other), null))
+
+        val outcome = pipeline(labelled, sources = listOf(first, second), source = "label").run(repo)
+
+        assertEquals(listOf(other.`package`), assertIs<PrOutcome.Reported>(outcome).report.changes.map { it.`package` })
+        assertEquals(0, first.reads)
+
+        val unlabelled = host(pr())
+        val skipped = pipeline(unlabelled, sources = listOf(first, second), source = "label").run(repo)
+
+        assertEquals(PrOutcome.Skipped("the label source doesn't recognize the PR by renovate[bot] on bot/lib"), skipped)
+        assertNothingHappened(unlabelled)
+    }
+
+    @Test
+    fun `a named source that doesn't exist is a tool error`() {
+        val host = host(pr())
+
+        val error = assertFailsWith<ToolError> { pipeline(host, source = "snyk").run(repo) }
+
+        assertEquals("No update source is called snyk. The sources are bot.", error.message)
+    }
+
+    @Test
+    fun `a source can read the resolved versions of the base, in a worktree that is removed afterwards, and of the head`() {
+        val host = host(pr())
+        val adapter = FakeAdapter()
+        val versions = mutableListOf<Map<String, String>>()
+        val source =
+            object : UpdateSource by FakeSource("bot", update = SourceUpdate(listOf(lib), null)) {
+                override fun read(
+                    pr: PullRequest,
+                    context: SourceContext,
+                ): SourceUpdate {
+                    versions += context.baseVersions()
+                    versions += context.headVersions()
+                    assertEquals("test", context.ecosystem)
+                    return SourceUpdate(listOf(lib), null)
+                }
+            }
+
+        pipeline(host, adapter = adapter, sources = listOf(source)).run(repo)
+
+        assertEquals(
+            listOf(mapOf(lib.`package` to "1.0", other.`package` to "3.0"), mapOf(lib.`package` to "2.0", other.`package` to "4.0")),
+            versions,
+        )
+        assertEquals(1, git("worktree", "list").lines().count { it.isNotEmpty() })
+        assertEquals(1, adapter.versionReads.count { it != repo }, "the recipe step reuses the base's versions the source read")
+    }
+
+    @Test
+    fun `resolved versions of an ecosystem that can't read them are a tool error`() {
+        val host = host(pr())
+        val source =
+            object : UpdateSource by FakeSource("bot", update = SourceUpdate(listOf(lib), null)) {
+                override fun read(
+                    pr: PullRequest,
+                    context: SourceContext,
+                ) = SourceUpdate(listOf(lib.copy(toVersion = context.headVersions().getValue(lib.`package`))), null)
+            }
+
+        val error =
+            assertFailsWith<ToolError> { pipeline(host, adapter = FakeAdapter(readsVersions = false), sources = listOf(source)).run(repo) }
+
+        assertEquals("The test ecosystem can't read resolved versions", error.message)
+    }
+
+    @Test
+    fun `a source that can't read the changes fails the run, before verify, and the comment says why`() {
+        val host = host(pr())
+        val adapter = FakeAdapter()
+        val source =
+            object : UpdateSource by FakeSource("bot", update = SourceUpdate(listOf(lib), null)) {
+                override fun read(
+                    pr: PullRequest,
+                    context: SourceContext,
+                ): SourceUpdate = throw ToolError("The resolved versions of the base commit can't be read: mvn failed")
+            }
+
+        val error = assertFailsWith<ToolError> { pipeline(host, adapter = adapter, sources = listOf(source)).run(repo) }
+
+        assertEquals("The resolved versions of the base commit can't be read: mvn failed", error.message)
+        assertEquals(0, adapter.verifies)
+        assertEquals(
+            listOf(
+                "### lector-ai\n\nlector-ai can't tell what the PR changes, so it changed nothing: " +
+                    "The resolved versions of the base commit can't be read: mvn failed" to true,
+            ),
+            host.comments,
+        )
+        assertEquals(emptyList(), host.pushes)
     }
 
     @Test
@@ -84,7 +187,8 @@ class PrPipelineTest {
         val outcome = pipeline(host, updates = emptyList()).run(repo)
 
         assertEquals(PrOutcome.Skipped("the PR changes no version of the repository's test packages"), outcome)
-        assertNothingHappened(host)
+        assertEquals(emptyList(), host.comments)
+        assertEquals(emptyList(), host.pushes)
     }
 
     @Test
@@ -252,7 +356,7 @@ class PrPipelineTest {
         assertContains(body, "UpgradeLib")
         assertContains(body, "Call fixed()")
         assertContains(body, "cannot find symbol missing")
-        assertEquals(listOf("ai-assisted"), host.labels)
+        assertEquals(listOf(7 to "ai-assisted"), host.labels)
     }
 
     @Test
@@ -317,6 +421,174 @@ class PrPipelineTest {
         assertContains(request.recipeDiff.orEmpty(), "+UpgradeLib")
     }
 
+    @Test
+    fun `with no mode set, a companion source's fixes go to heal-branch, in one PR into the source branch, labelled there`() {
+        val host = host(pr())
+
+        val outcome = pipeline(host, sources = listOf(companionSource()), recipes = mapOf(lib.`package` to recipe("UpgradeLib"))).run(repo)
+
+        val report = assertIs<PrOutcome.Reported>(outcome).report
+        assertEquals(20, report.companion)
+        assertEquals(emptyList(), host.pushes, "the source branch is never pushed to")
+        assertEquals(listOf("heal/bot/lib" to listOf("Apply recipe UpgradeLib", "Call fixed()")), host.forcePushes)
+        val pull = host.pulls.getValue(20)
+        assertEquals(Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", pull.body, open = true), pull)
+        assertContains(pull.body, "lector-ai's fixes for #7 (`bot/lib`). Merge this PR first, then #7.\n\n### lector-ai\n\n")
+        assertContains(pull.body, "lector-ai pushed 2 commits; nothing caused by the update is left.")
+        assertEquals(listOf(20 to "ai-assisted"), host.labels)
+        val (comment, create) = host.comments.single()
+        assertTrue(create)
+        assertContains(comment, "lector-ai pushed 2 commits to the companion PR #20; nothing caused by the update is left.")
+        assertContains(comment, "Merge the companion PR #20 into this PR's branch first, then this PR.")
+    }
+
+    @Test
+    fun `a set mode overrides the source's branch policy`() {
+        val inPlace = host(pr())
+        pipeline(inPlace, sources = listOf(companionSource()), mode = BranchPolicy.IN_PLACE).run(repo)
+
+        assertEquals(listOf(listOf("Call fixed()")), inPlace.pushes)
+        assertEquals(emptyList(), inPlace.forcePushes)
+        assertEquals(listOf(7 to "ai-assisted"), inPlace.labels)
+
+        val companion = host(pr())
+        pipeline(companion, mode = BranchPolicy.COMPANION).run(repo)
+
+        assertEquals(emptyList(), companion.pushes)
+        assertEquals(listOf("heal/bot/lib" to listOf("Call fixed()")), companion.forcePushes)
+    }
+
+    @Test
+    fun `a new source head rebuilds heal-branch from it by force, and keeps the same companion PR with a new description`() {
+        val host = host(pr())
+        host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "old summary", open = true)
+
+        val outcome = pipeline(host, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(20, assertIs<PrOutcome.Reported>(outcome).report.companion)
+        assertEquals(listOf("heal/bot/lib" to listOf("Call fixed()")), host.forcePushes)
+        assertEquals(setOf(20), host.pulls.keys, "no second companion PR")
+        assertContains(host.pulls.getValue(20).body, "lector-ai pushed 1 commit;")
+        assertEquals(listOf(20 to "ai-assisted"), host.labels)
+    }
+
+    @Test
+    fun `a run without a commit creates no companion PR`() {
+        val host = host(pr())
+        val llm = ScriptedLlm({ Proposal.Invalid("no idea") }, { Proposal.Invalid("still none") })
+
+        val outcome = pipeline(host, llm = llm, sources = listOf(companionSource())).run(repo)
+
+        val report = assertIs<PrOutcome.Reported>(outcome).report
+        assertEquals(null, report.companion)
+        assertEquals(null, report.closedCompanion)
+        assertEquals(emptyList(), host.forcePushes)
+        assertEquals(emptyMap(), host.pulls)
+        assertEquals(emptyList(), host.labels)
+        assertEquals(emptyList(), host.deleted)
+        assertContains(host.comments.single().first, "lector-ai pushed nothing;")
+    }
+
+    @Test
+    fun `a run without a commit closes the companion PR of an earlier head, and the comment says why`() {
+        val host = host(pr())
+        host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "old summary", open = true)
+        val llm = ScriptedLlm({ Proposal.Invalid("no idea") }, { Proposal.Invalid("still none") })
+
+        val outcome = pipeline(host, llm = llm, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(20, assertIs<PrOutcome.Reported>(outcome).report.closedCompanion)
+        assertEquals(emptyList(), host.forcePushes)
+        assertFalse(host.pulls.getValue(20).open)
+        assertEquals(listOf("heal/bot/lib"), host.deleted)
+        assertContains(
+            host.comments.single().first,
+            "lector-ai pushed nothing; **1 problem caused by the update is left to fix.**\n\n" +
+                "lector-ai closed its companion PR #20 and deleted its branch: this run has no fixes for the PR's head.",
+        )
+    }
+
+    @Test
+    fun `an in-place run without a commit doesn't touch a companion PR`() {
+        val host = host(pr())
+        host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "old summary", open = true)
+        val llm = ScriptedLlm({ Proposal.Invalid("no idea") }, { Proposal.Invalid("still none") })
+
+        pipeline(host, llm = llm).run(repo)
+
+        assertTrue(host.pulls.getValue(20).open)
+        assertEquals(emptyList(), host.deleted)
+    }
+
+    @Test
+    fun `a green run closes the companion PR, deletes its branch, and the comment says why`() {
+        val host = host(pr(), app = "class App {}\n")
+        host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "old summary", open = true)
+
+        val outcome = pipeline(host, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(PrOutcome.Green(Verification(), closedCompanion = 20), outcome)
+        assertFalse(host.pulls.getValue(20).open)
+        assertEquals(listOf("heal/bot/lib"), host.deleted)
+        assertContains(
+            host.comments.single().first,
+            "lector-ai closed its companion PR #20 and deleted its branch: verify is green without it.",
+        )
+    }
+
+    @Test
+    fun `a green run without a companion PR closes nothing`() {
+        val host = host(pr(), app = "class App {}\n")
+
+        val outcome = pipeline(host, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(PrOutcome.Green(Verification()), outcome)
+        assertEquals(emptyList(), host.deleted)
+        assertFalse("companion" in host.comments.single().first)
+    }
+
+    @Test
+    fun `a closed or merged source PR gets its companion PR closed and its branch deleted, without a build`() {
+        listOf(PrState.CLOSED to "closed", PrState.MERGED to "merged").forEach { (state, word) ->
+            val host = host(pr().copy(state = state))
+            host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "summary", open = true)
+            val adapter = FakeAdapter()
+
+            val outcome = pipeline(host, adapter = adapter, sources = listOf(companionSource())).run(repo)
+
+            assertEquals(PrOutcome.Closed(state, companion = 20), outcome)
+            assertFalse(host.pulls.getValue(20).open)
+            assertEquals(listOf("heal/bot/lib"), host.deleted)
+            assertEquals(0, adapter.verifies)
+            assertEquals(
+                listOf("### lector-ai\n\nlector-ai closed its companion PR #20 and deleted its branch: this PR was $word." to false),
+                host.comments,
+            )
+        }
+    }
+
+    @Test
+    fun `a closed source PR whose companion PR was merged first gets the companion branch deleted, without a comment`() {
+        val host = host(pr().copy(state = PrState.MERGED))
+        host.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "summary", open = false)
+
+        val outcome = pipeline(host, sources = listOf(companionSource())).run(repo)
+
+        assertEquals(PrOutcome.Closed(PrState.MERGED, companion = null), outcome)
+        assertEquals(listOf("heal/bot/lib"), host.deleted)
+        assertNothingHappened(host)
+    }
+
+    @Test
+    fun `a closed PR from a fork changes nothing`() {
+        val fork = host(pr().copy(state = PrState.CLOSED, headRepository = "mallory/app"))
+        fork.pulls[20] = Pull("heal/bot/lib", "bot/lib", "lector-ai fixes for #7", "summary", open = true)
+
+        assertIs<PrOutcome.Skipped>(pipeline(fork).run(repo))
+        assertTrue(fork.pulls.getValue(20).open)
+        assertEquals(emptyList(), fork.deleted)
+    }
+
     private fun assertNothingHappened(host: FakeHost) {
         assertEquals(emptyList(), host.comments)
         assertEquals(emptyList(), host.labels)
@@ -357,23 +629,29 @@ class PrPipelineTest {
         return FakeHost(withShas, acceptsPush)
     }
 
+    @Suppress("LongParameterList") // Every test sets only what it is about.
     private fun pipeline(
         host: FakeHost,
         adapter: FakeAdapter = FakeAdapter(),
         llm: LlmClient = ScriptedLlm(edits(fix, rationale = "Call fixed()")),
         updates: List<PackageUpdate> = listOf(lib),
         recipes: Map<String, Recipe> = emptyMap(),
+        sources: List<UpdateSource> = listOf(FakeSource("bot", update = SourceUpdate(updates, "lib 2.0 renames broken() to fixed()"))),
+        source: String? = null,
+        mode: BranchPolicy? = null,
     ) = PrPipeline(
         host = host,
-        sources = listOf(FakeSource(SourceUpdate(updates, "lib 2.0 renames broken() to fixed()", BranchPolicy.IN_PLACE))),
+        sources = sources,
         adapters = listOf(adapter),
         index = { change, _ ->
             recipes[change.`package`]?.let { RecipeSelection(RecipeMatch(it, it.name, 1), emptyList()) }
                 ?: RecipeSelection.NONE
         },
         llm = llm,
-        settings = PrSettings(botLogins = setOf("renovate[bot]"), identity = bot, budgets = budgets),
+        settings = PrSettings(identity = bot, budgets = budgets, source = source, mode = mode),
     )
+
+    private fun companionSource() = FakeSource("bot", BranchPolicy.COMPANION, update = SourceUpdate(listOf(lib), null))
 
     private fun recipe(name: String) = Recipe(name, "org.example:recipes:1.0", "Apache-2.0")
 
@@ -407,15 +685,22 @@ class PrPipelineTest {
         return result.output
     }
 
-    /** Records what the pipeline does on the host. A push records the subjects of the commits it would push. */
+    /**
+     * Records what the pipeline does on the host. A push records the subjects of the commits it would push, a force-push
+     * the branch and those subjects. PRs live in [pulls]; the source PR is number 7, a created PR gets the next number
+     * from 20 on.
+     */
     private inner class FakeHost(
         private val pr: PullRequest,
         private val acceptsPush: Boolean,
     ) : GitHost {
         val fetches = mutableListOf<String>()
         val pushes = mutableListOf<List<String>>()
+        val forcePushes = mutableListOf<Pair<String, List<String>>>()
         val comments = mutableListOf<Pair<String, Boolean>>()
-        val labels = mutableListOf<String>()
+        val labels = mutableListOf<Pair<Int, String>>()
+        val pulls = mutableMapOf<Int, Pull>()
+        val deleted = mutableListOf<String>()
 
         override fun pullRequest() = pr
 
@@ -445,20 +730,77 @@ class PrPipelineTest {
         }
 
         override fun label(
-            pr: PullRequest,
+            number: Int,
             label: String,
         ) {
-            labels += label
+            labels += number to label
+        }
+
+        override fun forcePush(
+            repo: Path,
+            branch: String,
+        ) {
+            forcePushes += branch to git(repo, "log", "--reverse", "--format=%s", "${pr.headSha}..HEAD").lines().filter { it.isNotEmpty() }
+        }
+
+        override fun findPullRequest(
+            head: String,
+            base: String,
+        ) = pulls.entries.firstOrNull { (_, pull) -> pull.head == head && pull.base == base && pull.open }?.key
+
+        override fun createPullRequest(
+            head: String,
+            base: String,
+            title: String,
+            body: String,
+        ): Int {
+            val number = 20 + pulls.size
+            pulls[number] = Pull(head, base, title, body, open = true)
+            return number
+        }
+
+        override fun updatePullRequest(
+            number: Int,
+            body: String,
+        ) {
+            pulls[number] = pulls.getValue(number).copy(body = body)
+        }
+
+        override fun closePullRequest(number: Int) {
+            pulls[number] = pulls.getValue(number).copy(open = false)
+        }
+
+        override fun deleteBranch(branch: String) {
+            deleted += branch
         }
     }
 
-    /** Recognizes `bot/` branches and reads the given update from every PR. */
+    private data class Pull(
+        val head: String,
+        val base: String,
+        val title: String,
+        val body: String,
+        val open: Boolean,
+    )
+
+    /** Recognizes Renovate's PRs on `bot/` branches, unless told otherwise, and reads the given update from every PR. */
     private class FakeSource(
+        override val name: String,
+        override val branchPolicy: BranchPolicy = BranchPolicy.IN_PLACE,
+        private val recognizes: (PullRequest) -> Boolean = { it.author == "renovate[bot]" && it.headBranch.startsWith("bot/") },
         private val update: SourceUpdate,
     ) : UpdateSource {
-        override fun recognizes(pr: PullRequest) = pr.headBranch.startsWith("bot/")
+        var reads = 0
 
-        override fun read(pr: PullRequest) = update
+        override fun recognizes(pr: PullRequest) = recognizes.invoke(pr)
+
+        override fun read(
+            pr: PullRequest,
+            context: SourceContext,
+        ): SourceUpdate {
+            reads++
+            return update
+        }
     }
 
     /** Answers with the given functions in order, and records every request. */
@@ -484,8 +826,11 @@ class PrPipelineTest {
     private class FakeAdapter(
         private val detects: Boolean = true,
         private val slowWhen: String? = null,
+        readsVersions: Boolean = true,
     ) : EcosystemAdapter {
         val recipeRuns = mutableListOf<String>()
+        var verifies = 0
+        val versionReads = mutableListOf<Path>()
 
         override val ecosystem = "test"
         override val versionScheme = DottedVersions
@@ -508,7 +853,14 @@ class PrPipelineTest {
                 }
             }
         override val resolvedVersions =
-            ResolvedVersions { dir -> dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') } }
+            if (readsVersions) {
+                ResolvedVersions { dir ->
+                    versionReads.add(dir)
+                    dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
+                }
+            } else {
+                null
+            }
         override val languageSupport = LanguageSupport { _, _ -> null }
 
         override fun detect(repo: Path) = detects
@@ -517,6 +869,7 @@ class PrPipelineTest {
             repo: Path,
             timeout: Duration,
         ): List<Diagnostic> {
+            verifies++
             val code = repo.resolve("App.java").readText()
             if (slowWhen != null && slowWhen in code) {
                 // Until the timeout has passed on the loop's clock: a sleep in whole milliseconds can end just before it.

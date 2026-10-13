@@ -28,7 +28,7 @@ Gradle modules, and the files that ship them. Create new modules as needed; don'
 core/          data model, ports (interfaces), pipeline, fix loop, guardrails
 recipes/       recipe index built from OpenRewrite metadata
 llm/           Ollama client, prompts
-sources/       update-source adapters (renovate; later dependabot, fallback)
+sources/       update-source adapters (renovate, dependabot, fallback)
 ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
@@ -84,6 +84,7 @@ These come from the concept. Don't break them without updating the concept first
 - Every external process gets a timeout, and its stdout and stderr are drained (or redirected to files). Otherwise a full pipe or a stuck process hangs the run.
 - Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors, unexpected exceptions, and `Error`s included (an uncaught `Error`, like a native library that doesn't load, ends the JVM with `1`). Otherwise the pipeline blames the update for a tool bug. Validate option values completely when parsing (a URL's scheme and host, a file's existence, not only the syntax), so a bad value fails before minutes of build.
 - What the tool reads back from the Git host as its own (the report comment, later a companion PR or branch) is matched by the bot's identity, not by a marker or a name alone: anyone who can comment on a PR can write the marker.
+- A PR can carry hundreds of changes: a labelled PR lists every transitive one. Per-change work reads what the changes share once per run, and every list for a person or the model names the first few and counts the rest.
 - The repository under repair is the user's. Commit only the files a step changed: a build leaves output in the tree, and test fixtures ignore `target/`, so `git add --all` looks fine in tests and isn't. Reset the working tree on every way out of a failed step, exceptions and errors included.
 - An adapter's build files are every file the build tool reads its configuration from, not only the manifest (Maven: `.mvn/` and the wrapper, too; Gradle: every included build, whatever its name). The build-file guardrails and the downgrade check see only what `isBuildFile` names, so a missed file is a way around them.
 - A blocklist rule matches every way to write the setting, not only the spelling in the spec: the setter (`setOnlyIf`), the plural (`excludes`), the closure and list forms. Test each route. One missed spelling lets the model filter a failing test out.
@@ -110,6 +111,7 @@ These come from the concept. Don't break them without updating the concept first
 - Unit tests for core logic. Adapters are tested against small **fixture repos** under `src/test/resources/fixtures/`.
 - Tool output in tests (compiler messages, build logs) uses the real tool's wording, copied from a real run. An invented message hid that javac's "does not override" names no method, so a rule matching on the name never fired for Java.
 - No real LLM in unit tests: use a fake `LlmClient`. Tests against a real Ollama are tagged and opt-in.
+- Test every state that something the tool created can be in when the next run sees it: still open, merged or closed by a person, built on an older head. Companion tests that only covered an open PR let merged companions keep their branch. The same goes for each step of the documented workflow: it sees the tool's own commits and merges too (`fetch-metadata` fails on a head that isn't Dependabot's).
 - Test the failure paths, not only the happy path: invalid input, missing or malformed resources. For the CLI, assert exit code, stdout, and stderr on every path, because they are the contract with the pipeline. A count or flag that a report shows is tested at a value its default can't produce: a fake that never cuts, rejects, or fails keeps it at 0, and a hard-coded 0 would pass.
 - A command that should run only some tests is checked once with the real build tool, not only by its command line. Lifecycles run other test tasks first (Maven's `verify` runs every surefire test before failsafe).
 - End-to-end tests run the installed start script as a separate process. They are tagged `e2e` and run in `endToEndTest`, not in `test`.

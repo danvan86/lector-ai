@@ -23,9 +23,9 @@ data class RecipeGroupResult(
 }
 
 /**
- * The recipe step for the [changes] of one update (concept section 4): rules 1 and 2 for each change, then each distinct
- * recipe once, in the changes' order, with rule 3. A recipe that changed anything becomes one commit by [identity]. The
- * working tree must be clean.
+ * The recipe step for the [changes] of one update (concept section 4): rules 1 and 2 for each change, with the base's
+ * versions from [baseVersions] read once, then each distinct recipe once, in the changes' order, with rule 3. A recipe
+ * that changed anything becomes one commit by [identity]. The working tree must be clean.
  */
 @Suppress("LongParameterList") // The inputs of applyRecipe, for a group of changes, and who commits.
 fun applyRecipes(
@@ -33,10 +33,11 @@ fun applyRecipes(
     adapter: EcosystemAdapter,
     index: RecipeIndex,
     repo: Path,
-    base: BaseCommit,
+    baseVersions: () -> Map<String, String>,
     identity: CommitIdentity,
 ): RecipeGroupResult {
-    val lookups = changes.map { it to lookUp(it, adapter, index, base) }
+    val blockers = recipeBlockers(changes, adapter.versionScheme, baseVersions)
+    val lookups = changes.zip(blockers).map { (change, blocker) -> change to lookUp(change, blocker, adapter, index) }
     val withoutRecipe = lookups.mapNotNull { (change, lookup) -> (lookup as? Lookup.Stopped)?.let { change to it.outcome } }
     val applications =
         lookups
@@ -46,14 +47,19 @@ fun applyRecipes(
     return RecipeGroupResult(withoutRecipe, applications)
 }
 
-/** Rules 1 and 2 of the recipe step, then the index. */
+/** Reads [base]'s resolved versions in its worktree, when called. Fails with a [ToolError] if they can't be read. */
+fun baseVersions(
+    adapter: EcosystemAdapter,
+    base: BaseCommit,
+): () -> Map<String, String> = { base.checkout(resolvedVersions(adapter)::read) }
+
+/** The index, for a change that rules 1 and 2 didn't [block][blocker]. */
 private fun lookUp(
     change: DependencyChange,
+    blocker: RecipeOutcome?,
     adapter: EcosystemAdapter,
     index: RecipeIndex,
-    base: BaseCommit,
 ): Lookup {
-    val blocker = recipeBlocker(change, adapter, base)
     if (blocker != null) return Lookup.Stopped(blocker)
     val chosen = index.find(change, adapter.versionScheme).chosen
     return if (chosen == null) Lookup.Stopped(RecipeOutcome.NoMatch) else Lookup.Found(chosen.recipe)

@@ -1,0 +1,1 @@
+[{"dependencyName":"axios","dependencyType":"direct:production","updateType":"version-update:semver-minor","directory":"/","packageEcosystem":"npm_and_yarn","targetBranch":"main","prevVersion":"1.2.0","newVersion":"1.20.0","compatScore":0,"maintainerChanges":true,"dependencyGroup":"","alertState":"","ghsaId":"","cvss":0}]

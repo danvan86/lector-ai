@@ -3,6 +3,7 @@ package gmbh.vanella.lector.sources
 import gmbh.vanella.lector.core.BranchPolicy
 import gmbh.vanella.lector.core.PackageUpdate
 import gmbh.vanella.lector.core.PullRequest
+import gmbh.vanella.lector.core.SourceContext
 import gmbh.vanella.lector.core.SourceUpdate
 import gmbh.vanella.lector.core.UpdateSource
 import org.slf4j.LoggerFactory
@@ -47,15 +48,23 @@ private val DIGEST = Regex("""[0-9a-f]{7}|[0-9a-f]{40}""")
 private const val ZERO_WIDTH_SPACE = "&#8203;"
 
 /**
- * Renovate's PRs (concept section 3): recognized by the `renovate/` branch, read from the update table and the release
- * notes in the PR body. Every row of a grouped PR is a change. A row's package and datasource come from its
- * merge-confidence badges, if it has any: the table may show a Gradle plugin ID or a version catalog alias instead.
- * Needs no configuration in Renovate.
+ * Renovate's PRs (concept section 3): recognized by an author in [botLogins] and the `renovate/` branch, read from the
+ * update table and the release notes in the PR body. Every row of a grouped PR is a change. A row's package and
+ * datasource come from its merge-confidence badges, if it has any: the table may show a Gradle plugin ID or a version
+ * catalog alias instead. Needs no configuration in Renovate. The fixes go onto Renovate's branch.
  */
-class RenovateSource : UpdateSource {
-    override fun recognizes(pr: PullRequest) = pr.headBranch.startsWith(BRANCH_PREFIX)
+class RenovateSource(
+    private val botLogins: Set<String>,
+) : UpdateSource {
+    override val name = "renovate"
+    override val branchPolicy = BranchPolicy.IN_PLACE
 
-    override fun read(pr: PullRequest) = SourceUpdate(updates(pr.body), releaseNotes(pr.body), BranchPolicy.IN_PLACE)
+    override fun recognizes(pr: PullRequest) = pr.author in botLogins && pr.headBranch.startsWith(BRANCH_PREFIX)
+
+    override fun read(
+        pr: PullRequest,
+        context: SourceContext,
+    ) = SourceUpdate(updates(pr.body), releaseNotes(pr.body))
 
     private fun updates(body: String): List<PackageUpdate> {
         val lines = body.lines()

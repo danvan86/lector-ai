@@ -60,6 +60,18 @@ class PromptTest {
     }
 
     @Test
+    fun `a request for many changes names the first ten and counts the rest, so the API still fits`() {
+        val many = (1..1000).map { DependencyChange("maven", "org.example:lib$it", "1.0", "1.1", UpdateType.MINOR) }
+
+        val prompt = Prompt.user(request.copy(changes = many))
+
+        assertContains(prompt, "The update of org.example:lib1 from 1.0 to 1.1, org.example:lib2 from 1.0 to 1.1, ")
+        assertContains(prompt, ", org.example:lib10 from 1.0 to 1.1 and 990 more broke this code.")
+        assertFalse("org.example:lib11 from" in prompt)
+        assertContains(prompt, "public final class com.google.common.base.MoreObjects {\n}")
+    }
+
+    @Test
     fun `the system prompt asks for search and replace edits in JSON, never whole files`() {
         assertContains(Prompt.SYSTEM, "\"edits\"")
         assertContains(Prompt.SYSTEM, "exactly once")

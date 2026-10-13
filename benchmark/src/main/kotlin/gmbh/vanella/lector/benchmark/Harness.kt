@@ -17,6 +17,7 @@ import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.Verification
 import gmbh.vanella.lector.core.applyRecipes
 import gmbh.vanella.lector.core.attribute
+import gmbh.vanella.lector.core.baseVersions
 import gmbh.vanella.lector.core.reason
 import org.slf4j.LoggerFactory
 import java.nio.file.Path
@@ -104,7 +105,7 @@ class Harness(
                             adapter,
                             index,
                             repo,
-                            base,
+                            baseVersions(adapter, base),
                             CommitIdentity.TOOL,
                         )
                     } else {
