@@ -1,6 +1,6 @@
 # Architecture – PR pipeline
 
-Milestones: [M5](../features.md#m5--renovate-in-ci-first-end-to-end-release-) · [M8](../features.md#m8--dependabot-and-fallback-) · Specs: [`m5-renovate-ci`](../../specs/done/m5-renovate-ci/spec.md), [`m8-dependabot-fallback`](../../specs/open/m8-dependabot-fallback/spec.md) · Reviews: [M5](../../specs/done/m5-renovate-ci/review.md), [M8](../../specs/open/m8-dependabot-fallback/review.md)
+Milestones: [M5](../features.md#m5--renovate-in-ci-first-end-to-end-release-) · [M8](../features.md#m8--dependabot-and-fallback-) · Specs: [`m5-renovate-ci`](../../specs/done/m5-renovate-ci/spec.md), [`m8-dependabot-fallback`](../../specs/done/m8-dependabot-fallback/spec.md) · Reviews: [M5](../../specs/done/m5-renovate-ci/review.md), [M8](../../specs/done/m8-dependabot-fallback/review.md)
 
 > **Summary for agents**
 >
