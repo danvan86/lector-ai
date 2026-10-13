@@ -1,7 +1,6 @@
-package gmbh.vanella.lector.ecosystems.jvm
+package gmbh.vanella.lector.ecosystems.shared
 
 import gmbh.vanella.lector.core.Fragment
-import gmbh.vanella.lector.core.LanguageSupport
 import gmbh.vanella.lector.core.LineRange
 import gmbh.vanella.lector.core.Method
 import gmbh.vanella.lector.core.SourceFacts
@@ -12,27 +11,11 @@ import org.treesitter.TSParser
 import org.treesitter.TSQuery
 import org.treesitter.TSQueryCursor
 import org.treesitter.TSQueryMatch
-import org.treesitter.TreeSitterJava
-import org.treesitter.TreeSitterKotlin
-
-/** Java and Kotlin sources, by file extension. The grammars load on first use. */
-internal object JvmLanguageSupport : LanguageSupport {
-    private val java by lazy { TreeSitterLanguage("java", TreeSitterJava()) }
-    private val kotlin by lazy { TreeSitterLanguage("kotlin", TreeSitterKotlin()) }
-
-    override fun facts(
-        file: String,
-        content: String,
-    ) = when {
-        file.endsWith(".java") -> java.facts(content)
-        file.endsWith(".kt") || file.endsWith(".kts") -> kotlin.facts(content)
-        else -> null
-    }
-}
 
 /**
- * The facts about the sources of one language, from its tree-sitter grammar and the query files in `queries/<name>/`.
- * The queries hold the language knowledge. This class only reads their captures:
+ * The facts about the sources of one language, from its tree-sitter grammar and the query files in `queries/<name>/`,
+ * a resource directory next to the class [resources]. The queries hold the language knowledge. This class only reads
+ * their captures:
  *
  * - `types.scm`: `@type` with its `@name`, the types around methods.
  * - `methods.scm`, `tests.scm`: `@method` and `@test`, each with its `@name`. A method may have a `@body`: a block in
@@ -43,11 +26,12 @@ internal object JvmLanguageSupport : LanguageSupport {
  *
  * Native memory is freed by tree-sitter-ng's cleaners when the objects are collected.
  */
-internal class TreeSitterLanguage(
+class TreeSitterLanguage(
     name: String,
     private val language: TSLanguage,
+    resources: Class<*>,
 ) {
-    private val queries = QUERIES.associateWith { TSQuery(language, queryText(name, it)) }
+    private val queries = QUERIES.associateWith { TSQuery(language, queryText(resources, name, it)) }
 
     fun facts(content: String): SourceFacts {
         val parser = TSParser()
@@ -116,11 +100,12 @@ internal class TreeSitterLanguage(
 private val QUERIES = listOf("types", "methods", "tests", "assertions", "skips", "suppressions", "stubs")
 
 private fun queryText(
+    resources: Class<*>,
     language: String,
     query: String,
 ): String {
     val path = "queries/$language/$query.scm"
-    return checkNotNull(TreeSitterLanguage::class.java.getResource(path)) { "No query file $path" }.readText()
+    return checkNotNull(resources.getResource(path)) { "No query file $path" }.readText()
 }
 
 private fun lines(node: TSNode) = LineRange(node.startPoint.row + 1, node.endPoint.row + 1)

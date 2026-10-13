@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.ecosystems.jvm
 
 import gmbh.vanella.lector.core.ToolError
+import gmbh.vanella.lector.ecosystems.shared.xmlDocumentBuilder
 import org.slf4j.LoggerFactory
 import org.w3c.dom.Element
 import org.xml.sax.SAXException

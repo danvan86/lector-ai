@@ -6,6 +6,7 @@ plugins {
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":ecosystems:shared"))
     implementation(libs.slf4j.api)
     implementation(libs.maven.artifact)
     // The model the Gradle adapter's init script writes as JSON.

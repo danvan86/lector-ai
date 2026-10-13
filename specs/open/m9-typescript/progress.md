@@ -7,7 +7,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | # | Step | Status |
 |---|---|---|
 | 1 | Core: the lockfile follows a build-file edit (`updateLockfiles`), committed with the edit, before the downgrade check | ✅ |
-| 2 | `ecosystems:shared`: JUnit XML reports, tree-sitter facts, and the XML parser move out of `ecosystems:jvm` | ⬜ |
+| 2 | `ecosystems:shared`: JUnit XML reports, tree-sitter facts, and the XML parser move out of `ecosystems:jvm` | ✅ |
 | 3 | `ecosystems:typescript` project model: detection, lockfiles and their formats, workspaces, Node selection, tool errors, semver, resolved versions | ⬜ |
 | 4 | Verify: environment, install, type check, tests, `runTests`, `tsc` and JUnit parsing, cluster keys | ⬜ |
 | 5 | Fix loop: `LanguageSupport` (TS, TSX, JS), build files, blocklist, editable scope, lockfile update, grounding from `.d.ts` (PnP included) | ⬜ |

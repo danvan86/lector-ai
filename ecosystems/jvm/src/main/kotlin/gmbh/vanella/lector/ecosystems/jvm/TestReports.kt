@@ -2,9 +2,9 @@ package gmbh.vanella.lector.ecosystems.jvm
 
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.Severity
-import org.w3c.dom.Element
-import org.xml.sax.SAXException
-import java.io.IOException
+import gmbh.vanella.lector.ecosystems.shared.TestCase
+import gmbh.vanella.lector.ecosystems.shared.UnreadableReport
+import gmbh.vanella.lector.ecosystems.shared.testCases
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.isDirectory
@@ -46,10 +46,8 @@ internal class TestReports(
     fun count(repo: Path): Int? {
         val reports = reports(repo)
         return try {
-            reports.sumOf { testcases(repo.resolve(it.value)).length }.takeIf { reports.isNotEmpty() }
-        } catch (_: SAXException) {
-            null
-        } catch (_: IOException) {
+            reports.sumOf { testCases(repo.resolve(it.value)).size }.takeIf { reports.isNotEmpty() }
+        } catch (_: UnreadableReport) {
             null
         }
     }
@@ -65,8 +63,6 @@ internal class TestReports(
                     .toList()
             }.sortedBy { it.value }
 
-    private fun testcases(report: Path) = xmlDocumentBuilder().parse(report.toFile()).getElementsByTagName("testcase")
-
     private fun parseReport(
         repo: Path,
         report: String,
@@ -74,31 +70,21 @@ internal class TestReports(
         tool: String,
     ): List<Diagnostic> =
         try {
-            val testcases = testcases(repo.resolve(report))
-            (0 until testcases.length)
-                .map { testcases.item(it) as Element }
-                .mapNotNull { failure(repo, module, tool, it) }
-        } catch (e: SAXException) {
-            listOf(unreadable(report, e))
-        } catch (e: IOException) {
-            listOf(unreadable(report, e))
+            testCases(repo.resolve(report)).mapNotNull { failure(repo, module, tool, it) }
+        } catch (e: UnreadableReport) {
+            // A report that can't be read may hold a failure, so it must not look green.
+            listOf(Diagnostic(null, null, null, null, "Can't read test report $report: ${e.message}", Severity.ERROR, buildTool))
         }
-
-    // A report that can't be read may hold a failure, so it must not look green.
-    private fun unreadable(
-        report: String,
-        e: Exception,
-    ) = Diagnostic(null, null, null, null, "Can't read test report $report: ${e.message}", Severity.ERROR, buildTool)
 
     private fun failure(
         repo: Path,
         module: Path,
         tool: String,
-        testcase: Element,
+        testcase: TestCase,
     ): Diagnostic? {
-        val problem = testcase.childElements().firstOrNull { it.tagName == "failure" || it.tagName == "error" } ?: return null
-        val className = testcase.getAttribute("classname")
-        val trace = problem.textContent.trim()
+        val problem = testcase.failure ?: return null
+        val className = testcase.classname
+        val trace = problem.text
         val location =
             trace
                 .lineSequence()
@@ -109,11 +95,11 @@ internal class TestReports(
             file = location?.first,
             line = location?.second,
             column = null,
-            code = problem.getAttribute("type").ifEmpty { null },
-            message = problem.getAttribute("message").ifEmpty { trace.lines().first() }.ifEmpty { "Test failed" },
+            code = problem.type,
+            message = problem.message ?: trace.lines().first().ifEmpty { "Test failed" },
             severity = Severity.ERROR,
             tool = tool,
-            test = "$className#${testcase.getAttribute("name")}",
+            test = "$className#${testcase.name}",
         )
     }
 
@@ -135,6 +121,4 @@ internal class TestReports(
                 .firstOrNull()
         }
     }
-
-    private fun Element.childElements() = (0 until childNodes.length).map { childNodes.item(it) }.filterIsInstance<Element>()
 }

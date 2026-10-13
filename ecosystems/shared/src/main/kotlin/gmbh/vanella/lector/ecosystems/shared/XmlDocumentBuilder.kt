@@ -1,4 +1,4 @@
-package gmbh.vanella.lector.ecosystems.jvm
+package gmbh.vanella.lector.ecosystems.shared
 
 import org.xml.sax.helpers.DefaultHandler
 import javax.xml.XMLConstants
@@ -6,10 +6,10 @@ import javax.xml.parsers.DocumentBuilder
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * A parser for the XML that Maven and its plugins write. It rejects a DOCTYPE, which rules out external entities, and
- * keeps parse errors off stderr: they only arrive as the `SAXException`.
+ * A parser for the XML that build tools and test runners write. It rejects a DOCTYPE, which rules out external
+ * entities, and keeps parse errors off stderr: they only arrive as the `SAXException`.
  */
-internal fun xmlDocumentBuilder(): DocumentBuilder =
+fun xmlDocumentBuilder(): DocumentBuilder =
     DocumentBuilderFactory
         .newInstance()
         .apply {
