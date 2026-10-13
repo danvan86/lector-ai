@@ -14,8 +14,8 @@ import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.io.path.visitFileTree
 
-private const val PACKAGE_JSON = "package.json"
-private const val TSCONFIG = "tsconfig.json"
+internal const val PACKAGE_JSON = "package.json"
+internal const val TSCONFIG = "tsconfig.json"
 
 // Directories no workspace package lives in, and that are too large to search.
 private val SKIPPED = setOf("node_modules", ".git")
@@ -34,6 +34,12 @@ internal data class NodePackage(
     val manifest: PackageJson,
     val hasTsconfig: Boolean,
 ) {
+    /** This package's directory in the repository at [root]. */
+    fun dir(root: Path): Path = if (dir.isEmpty()) root else root.resolve(dir)
+
+    /** [file] of this package, relative to the repository root. */
+    fun relative(file: String) = if (dir.isEmpty()) file else "$dir/$file"
+
     /** How messages name the package. */
     val label get() = dir.ifEmpty { "The root package" }
 
@@ -49,6 +55,8 @@ internal class NodeProject(
     val manager: PackageManager,
     val packages: List<NodePackage>,
 ) {
+    val root get() = packages.first()
+
     companion object {
         /** Whether [repo] has a `package.json` and a `tsconfig.json` at its root. */
         fun detect(repo: Path) = repo.resolve(PACKAGE_JSON).isRegularFile() && repo.resolve(TSCONFIG).isRegularFile()

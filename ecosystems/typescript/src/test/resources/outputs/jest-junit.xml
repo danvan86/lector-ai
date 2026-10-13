@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="3" failures="1" errors="1" time="2.136">
+  <testsuite name="calc" errors="0" failures="1" skipped="0" timestamp="2026-10-13T20:04:43" time="1.123" tests="3">
+    <testcase classname="calc &gt; add" name="adds two numbers" time="0.003" file="src/calc.test.ts">
+    </testcase>
+    <testcase classname="calc &gt; add" name="fails on purpose" time="0.003" file="src/calc.test.ts">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: 5
+Received: 4
+    at Object.&lt;anonymous&gt; (/work/npm-jest/src/calc.test.ts:10:25)
+    at Promise.finally.completed (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:1834:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:1774:10)
+    at _callCircusTest (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:1167:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTestInContext (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:1103:3)
+    at runTestWithContext (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:996:5)
+    at _runTestsForDescribeBlockOnce (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:1008:11)
+    at _runTestsForDescribeBlock (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at _runTestsForDescribeBlockOnce (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+    at _runTestsForDescribeBlock (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at _runTestsForDescribeBlockOnce (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:1003:11)
+    at _runTestsForDescribeBlock (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:824:5)
+    at run (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:789:3)
+    at runAndTransformResultsToJestFormat (/work/npm-jest/node_modules/jest-circus/build/jestAdapterInit.js:2300:21)
+    at jestAdapter (/work/npm-jest/node_modules/jest-circus/build/runner.js:111:19)
+    at runTestInternal (/work/npm-jest/node_modules/jest-runner/build/testWorker.js:247:16)
+    at runTest (/work/npm-jest/node_modules/jest-runner/build/testWorker.js:315:7)
+    at Object.worker (/work/npm-jest/node_modules/jest-runner/build/testWorker.js:479:12)</failure>
+    </testcase>
+    <testcase classname="" name="top level" time="0.001" file="src/calc.test.ts">
+    </testcase>
+  </testsuite>
+  <testsuite name="src/broken.test.ts" errors="1" failures="0" skipped="0" timestamp="1970-01-01T00:00:00" time="0" tests="0">
+    <testcase classname="Test suite failed to run" name="src/broken.test.ts" time="0" file="src/broken.test.ts">
+      <error>  ● Test suite failed to run
+
+    src/broken.test.ts:1:25 - error TS2307: Cannot find module &apos;./missing&apos; or its corresponding type declarations.
+
+    1 import { nothing } from &quot;./missing&quot;; test(&quot;x&quot;, () =&gt; expect(nothing).toBe(1));
+                              ~~~~~~~~~~~
+</error>
+    </testcase>
+    <testcase classname="Test suite failed to run" name="src/broken.test.ts" time="0" file="src/broken.test.ts">
+      <failure>&quot;\u001b[96msrc/broken.test.ts\u001b[0m:\u001b[93m1\u001b[0m:\u001b[93m25\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2307: \u001b[0mCannot find module &apos;./missing&apos; or its corresponding type declarations.\n\n\u001b[7m1\u001b[0m import { nothing } from \&quot;./missing\&quot;; test(\&quot;x\&quot;, () =&gt; expect(nothing).toBe(1));\n\u001b[7m \u001b[0m \u001b[91m                        ~~~~~~~~~~~\u001b[0m&quot;</failure>
+    </testcase>
+  </testsuite>
+</testsuites>
