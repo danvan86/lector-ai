@@ -381,6 +381,54 @@
       ],
       "note": "Upstream https://github.com/assertj/assertj.git (Apache-2.0), branch case/assertj-mockito-5; bump is the mockito.version property in assertj-parent/pom.xml. Test errors (behavior change in Mockito 5: inline mock maker, any() no longer matches varargs): PathsBaseTest fails to initialize (spy on a static field), 43 errors + 1 failure in assertj-core. Upstream fixed it by hand in 3232dab4. verified locally (JDK 21): base 15916 assertj-core tests green, head 44 broken. Large test suite (~7 min locally).",
       "ecosystem": "maven"
+    },
+    {
+      "id": "appinsights-detective-inquirer-12-11",
+      "origin": "https://github.com/georgeOsdDev/AppInsightsDetective/pull/137",
+      "repository": "https://github.com/georgeOsdDev/AppInsightsDetective.git",
+      "base": "50bd294dda828b4ccd80f91f1d8fd78dbed0ce00",
+      "head": "a97cbca5d2d2f72aa30124a0d2d051a7b384b10f",
+      "changes": [
+        {
+          "package": "inquirer",
+          "from": "12.9.4",
+          "to": "12.11.1"
+        }
+      ],
+      "note": "Type check: the inquirer 12.11 types leave the validate callbacks' parameter untyped, TS7006 in src/cli/commands/template.ts (lockfile-only update, npm, Jest). verified in the tool image (Node 24): base green, head 2 tsc errors. The PR is still open.",
+      "ecosystem": "npm"
+    },
+    {
+      "id": "commently-octokit-rest-22",
+      "origin": "https://github.com/intuit/commently/pull/680",
+      "repository": "https://github.com/intuit/commently.git",
+      "base": "4ce106ccac891ec6817e8127be02554716ef66e7",
+      "head": "ffcea08fabc3953a03eb4f1a9cd74846af7a947f",
+      "changes": [
+        {
+          "package": "@octokit/rest",
+          "from": "16.33.1",
+          "to": "22.0.1"
+        }
+      ],
+      "note": "Type check: the declarations of @octokit/rest 22 and its @octokit/core 7 don't parse with the project's TypeScript (TS1005 and others in node_modules), Yarn 1 workspace with Lerna. The fix is a newer typescript in package.json. verified in the tool image (Node 24): base type check and tests green, head 14 tsc errors. The PR is still open.",
+      "ecosystem": "npm"
+    },
+    {
+      "id": "zaf-toolbox-react-theming-9",
+      "origin": "https://github.com/zendesk/zaf-toolbox/pull/290",
+      "repository": "https://github.com/zendesk/zaf-toolbox.git",
+      "base": "fb9fb745e3004a3cd62e9db93393c9c52c8d0bde",
+      "head": "61e98aca7cedaa81bfce97ad42ebe8ebd7703816",
+      "changes": [
+        {
+          "package": "@zendeskgarden/react-theming",
+          "from": "8.76.9",
+          "to": "9.12.6"
+        }
+      ],
+      "note": "Build error in the install: the prepare script's tsc fails, react-theming 9 needs the styled-components 6 types (TS2307, TS2694 on RuleSet). npm, Jest. verified in the tool image (Node 24): base green, head install fails. The PR was closed unmerged.",
+      "ecosystem": "npm"
     }
   ]
 }
