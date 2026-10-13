@@ -29,12 +29,12 @@ core/          data model, ports (interfaces), pipeline, fix loop, guardrails
 recipes/       recipe index built from OpenRewrite metadata
 llm/           Ollama client, prompts
 sources/       update-source adapters (renovate, dependabot, fallback)
-ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
+ecosystems/    ecosystem adapters, one submodule each (jvm, typescript, ...), and shared (what they share outside core)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
 benchmark/     benchmark harness and report (M6); uses core and the adapters, never shipped
 action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
-docker/        Dockerfiles of the tool image and the Ollama image (not Gradle modules)
+docker/        Dockerfiles of the tool image and the Ollama image, and the image's Node toolchain versions (not Gradle modules)
 ```
 
 Adapters are compile-time plugins: modules that implement a `core` interface and are registered in `cli`. No dynamic loading. See concept section 2.
@@ -47,6 +47,7 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew :cli:endToEndTest # end-to-end tests against the installed start script
 ./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven and Gradle on fixtures (needs mvn and network)
 ./gradlew :ecosystems:jvm:integrationTest # opt-in: the Gradle adapter with real Gradle on fixtures (needs network)
+./gradlew :ecosystems:typescript:integrationTest # opt-in: the TypeScript adapter with real npm, pnpm, Yarn, tsc, Jest, Vitest (needs Node 22+ and network)
 ./gradlew :cli:realModelTest # opt-in: heal with a real model in Ollama (needs Docker, mvn, network); -Plector.model=<name>
 ./gradlew :recipes:generateRecipeIndex # recipe index and license report, under recipes/build/generated/recipe-index/
 ./gradlew :benchmark:report -Presults=benchmark/results/<date> # report.md from results.json and review.json there

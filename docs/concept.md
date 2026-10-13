@@ -143,15 +143,15 @@ The sources are tried in this order: Renovate, Dependabot, fallback. An optional
 **Renovate**
 - Add the bot identity to `gitIgnoredAuthors`. Otherwise Renovate stops maintaining the branch after foreign commits.
 - Read **every** row of the PR body's update table: Renovate groups monorepo packages by default, so a PR with several changes is the normal case. Rows without a version change (digest, pin, lock-file maintenance) are left out.
-- Map Renovate's datasource names to ecosystems with a lookup table (`maven` → `maven`). The body names no manager; the datasource is in the merge-confidence badges. A row without badges belongs to the repository's ecosystem.
-- Read the package from the badges too: the table shows a Gradle plugin's ID or a version catalog alias, the badge the package (`maven` datasource, plugins under their marker coordinates `<id>:<id>.gradle.plugin`). Gradle wrapper rows (`gradle-version` datasource, or the package `gradle` without badges) map to no ecosystem, so a wrapper-only PR is skipped.
+- Map Renovate's datasource names to ecosystems with a lookup table (`maven` → `maven`, `npm` → `npm`). The body names no manager; the datasource is in the merge-confidence badges. A row without badges belongs to the repository's ecosystem.
+- Read the package from the badges too: the table shows a Gradle plugin's ID or a version catalog alias, the badge the package (`maven` datasource, plugins under their marker coordinates `<id>:<id>.gradle.plugin`). Gradle wrapper rows (`gradle-version` datasource, or the package `gradle` without badges) map to no ecosystem, so a wrapper-only PR is skipped. So do Node version bumps (the `nvm`, `nodenv`, and engines rows: the package `node` without badges, Renovate's `node-version` datasource), and the `setup-node` and Docker rows, whose datasources map to nothing.
 
 **Dependabot**
 - Dependabot stops rebasing after foreign commits, and `@dependabot rebase` or `recreate`, or a superseding version, overwrites them. Two strategies, configurable:
   - **In-place:** accept that Dependabot no longer rebases. The pipeline is idempotent and reruns on every new head SHA.
   - **Companion PR (default):** the Dependabot branch stays untouched. The tool puts its commits onto `heal/<dependabot-branch>`, on top of the PR's head, and opens one stacked PR from it into the Dependabot branch. When Dependabot updates its PR, the companion branch is rebuilt from the new head and force-pushed; the companion PR stays, so its review discussion stays in one place. A new head without fixes closes the companion PR of the old one instead. A superseding PR has a new branch and gets its own companion. The companion PR is closed and its branch deleted when the source PR is closed or merged, or found green; the branch also when its companion PR was merged first. Only `heal/*` is ever force-pushed.
 - Workflows triggered by Dependabot get a read-only `GITHUB_TOKEN` and can only read **Dependabot secrets**. They need `permissions: contents: write` or a GitHub App token whose key is stored as a Dependabot secret.
-- Map `package-ecosystem` values (`maven`, `gradle`, `npm`, `pip`, `nuget`, `terraform`, …) to ecosystems with a lookup table (`maven` and `gradle` → `maven`). A Gradle plugin, named by its id, maps to its marker artifact `<id>:<id>.gradle.plugin`; the Gradle wrapper is no package.
+- Map `package-ecosystem` values (`maven`, `gradle`, `npm`, `pip`, `nuget`, `terraform`, …) to ecosystems with a lookup table (`maven` and `gradle` → `maven`; `npm_and_yarn`, which `fetch-metadata` reports for npm, pnpm, and Yarn, and `npm` → `npm`). A Gradle plugin, named by its id, maps to its marker artifact `<id>:<id>.gradle.plugin`; the Gradle wrapper is no package.
 
 ## 4. Recipe selection: deterministic and maintenance-free
 
@@ -180,10 +180,10 @@ Every adapter implements the same interface:
 
 | Responsibility | JVM (Maven/Gradle) | JS/TS | Python | .NET | Terraform/HCL | Config (YAML/XML/properties) |
 |---|---|---|---|---|---|---|
-| **Run recipe** | Maven plugin via CLI coordinates / Gradle init script with the plugin from the tool image (no build file edits) | OpenRewrite JS* | OpenRewrite Python* | OpenRewrite C#* | rewrite-hcl | rewrite-yaml/xml/properties |
-| **Verify** | Maven `verify` / every Gradle `Test` task | `tsc --noEmit` + tests | pyright/mypy (JSON) + pytest | `dotnet build` + `dotnet test` | `terraform validate -json` | Schema validation, `helm lint`, app startup |
-| **Grounding** | `javap` / `-sources.jar` | `.d.ts` files in `node_modules` | `.pyi` stubs / `inspect` | XML docs / assembly metadata | `terraform providers schema -json` | JSON schemas, config metadata |
-| **Excluded from editing** | `target/`, `build/` (outside `src/`), `generated*` directories; Gradle also `.gradle/`, the wrapper, and Groovy sources | `dist/`, generated clients | Generated protobuf/OpenAPI code | `obj/`, `*.g.cs` | `.terraform/` | Rendered templates |
+| **Run recipe** | Maven plugin via CLI coordinates / Gradle init script with the plugin from the tool image (no build file edits) | none: OpenRewrite JS is MSAL and Moderne CLI only (see section 9) | OpenRewrite Python* | OpenRewrite C#* | rewrite-hcl | rewrite-yaml/xml/properties |
+| **Verify** | Maven `verify` / every Gradle `Test` task | `tsc` (after building linked workspace packages) + Jest/Vitest | pyright/mypy (JSON) + pytest | `dotnet build` + `dotnet test` | `terraform validate -json` | Schema validation, `helm lint`, app startup |
+| **Grounding** | `javap` / `-sources.jar` | `.d.ts` files in `node_modules`, or Yarn's zip archives under Plug'n'Play | `.pyi` stubs / `inspect` | XML docs / assembly metadata | `terraform providers schema -json` | JSON schemas, config metadata |
+| **Excluded from editing** | `target/`, `build/` (outside `src/`), `generated*` directories; Gradle also `.gradle/`, the wrapper, and Groovy sources | `node_modules/`, `dist/`, `build/`, generated clients, lockfiles, registry config (`.npmrc`, `.yarnrc.yml`) | Generated protobuf/OpenAPI code | `obj/`, `*.g.cs` | `.terraform/` | Rendered templates |
 | **Language support (guardrails)** | tree-sitter Java/Kotlin | tree-sitter TypeScript/JavaScript | tree-sitter Python | tree-sitter C# | tree-sitter HCL | tree-sitter YAML/XML |
 
 \* Check maturity and licensing (see section 9).
@@ -198,6 +198,7 @@ EcosystemAdapter
   ground(repo, change, diagnostics)  → Context        (API surface, docs)
   clusterKey(diagnostic)             → String?        (root cause: missing symbol, package, artifact)
   isBuildFile(file)                  → bool           (pom.xml, package.json, …)
+  updateLockfiles(repo)              → Updated(files) | Failed(reason)  (after a build-file edit: the lockfile follows it)
   isEditable(file)                   → bool           (the editable scope: no build output, no generated code)
   testDisablingConfig(file, content, line) → String?  (build-file blocklist: config that disables tests)
   testsRun(repo)                     → Int?           (tests the last verify ran; reported, not enforced)
@@ -282,7 +283,7 @@ The easiest way for an LLM to make the build green is to delete code. The follow
 
 | Check | Rule |
 |---|---|
-| Scope | Edits only to files Git tracks, inside the repository, and in the adapter's editable scope (JVM: not `target/`, `build/`, `generated*` directories). The Git check catches generators the adapter doesn't know. Checked on the edits' paths before anything is written, because a reset doesn't restore ignored files |
+| Scope | Edits only to files Git tracks, inside the repository, and in the adapter's editable scope (JVM: not `target/`, `build/`, `generated*` directories; TypeScript: not `node_modules/`, `dist/`, generated code, lockfiles, or registry config). Every adapter gets the Git check from the core: it catches generators the adapter doesn't know, and generated output nobody ignored. Checked on the edits' paths before anything is written, because a reset doesn't restore ignored files |
 | Diff size | At most 50 changed lines (added plus removed) per attempt. Configurable (`--max-changed-lines`) |
 | Symbol comparison | No deleted methods (by containing type and name, overloads counted). A method may go only if a current diagnostic caused by the update points into it and its logic survives: its body was empty (a hook that overrode a removed method), or a method the same attempt added has the same body (a rename or a move). A compile error shows a method has to change, not that its logic may go |
 | Test protection | No deleted test methods, ever: a test that doesn't compile is fixed, not removed. No new skip markers (`@Disabled`, `@Ignore`, assumptions). No fewer assertions in a test method, and an existing assertion changes only if a current compile diagnostic points into it: a failing test is fixed in the code, not in what it expects. New assertions are fine |
@@ -290,16 +291,16 @@ The easiest way for an LLM to make the build green is to delete code. The follow
 | Stubbing | No new `return null`, empty bodies, or `TODO` placeholders in an added or changed line |
 | Suppression | No new suppressions such as `@SuppressWarnings`, `@Suppress`, `// @ts-ignore`, `# type: ignore`, `#pragma warning disable` in an added or changed line |
 | Parse errors | A changed file has no more parse errors than before. Facts from a file that doesn't parse can't be trusted |
-| Build-file blocklist | No test-disabling configuration in an added or changed line of a build file. Maven: `skipTests`, `skipITs`, `maven.test.skip`, `testFailureIgnore`, `<exclude>`/`<skip>` in surefire or failsafe. The blocklist lives in the adapter |
+| Build-file blocklist | No test-disabling configuration in an added or changed line of a build file. Maven: `skipTests`, `skipITs`, `maven.test.skip`, `testFailureIgnore`, `<exclude>`/`<skip>` in surefire or failsafe. TypeScript: no loosened type check in `tsconfig*.json` (`strict*` or `noImplicit*` to `false`, `skipLibCheck`, `noCheck`, `checkJs: false`, new `exclude` entries), no change to the `test` script, no options that leave tests out in `package.json` or the Jest, Vitest, and Vite config. The blocklist lives in the adapter |
 
 An edit that breaks a rule is rejected and counts as a failed attempt. The violations (rule, file, line, reason) go into the retry, so the model doesn't repeat the same cheat, and into the report, with a count per rule.
 
 **Where the language knowledge lives.** The rules are generic and live in the core. What counts as a method, a test, an assertion, a skip, a suppression, or a stub in a given language comes from the ecosystem adapter's `LanguageSupport`: a tree-sitter grammar plus query files, which report these facts with their lines. tree-sitter is a dependency of the adapter, not of the core. A new language needs a grammar and queries, not new guardrail logic.
 
 ```
-Guardrails (core, generic)                   EcosystemAdapter (jvm)
+Guardrails (core, generic)                   EcosystemAdapter (jvm, typescript)
   "no deleted methods"      ── facts ──▶      LanguageSupport
-  "no removed assertions"                       tree-sitter-java, tree-sitter-kotlin
+  "no removed assertions"                       tree-sitter-java, tree-sitter-kotlin; tree-sitter TypeScript, TSX, JavaScript
   "no new suppressions"                         queries: types, methods, tests, assertions,
   "no new skip markers"                                  skips, suppressions, stubs
                             ── asks ───▶      isEditable(file), testDisablingConfig(…)
@@ -364,7 +365,7 @@ Some recipe modules have moved from Apache 2.0 to the **Moderne Source Available
 | Apache 2.0 | `rewrite-core`, `rewrite-java`, `rewrite-maven`, `rewrite-maven-plugin`, the Gradle plugin, `rewrite-recipe-bom`, `rewrite-java-dependencies` |
 | MSAL | `rewrite-spring`, `rewrite-migrate-java`, `rewrite-testing-frameworks`, `rewrite-javascript` / `@openrewrite/rewrite` |
 
-The engine and the build plugins are Apache 2.0. Most recipes that migrate code are under MSAL. JavaScript/TypeScript recipes only run through the Moderne CLI or Platform, and the public catalog has no migration recipes. So the TypeScript adapter runs without a recipe (M9).
+The engine and the build plugins are Apache 2.0. Most recipes that migrate code are under MSAL. JavaScript/TypeScript recipes only run through the Moderne CLI or Platform, and the public catalog has no migration recipes. So the TypeScript adapter runs without a recipe (M9), and the tool ships no OpenRewrite JavaScript. What a release ships, with its licenses, is in [`docs/licensing.md`](licensing.md).
 
 **Distribution model and MSAL.** The tool is free, Apache 2.0, and self-hosted. Each organisation runs it on its own code. Moderne's licensing FAQ allows running MSAL recipes "on your own code", also for open-source projects. It prohibits commercialising them, offering them as a managed service, and "consulting/professional services where you charge people and run these recipes". This model stays compatible under these conditions:
 
