@@ -1,0 +1,151 @@
+# Runs the benchmark (M6) on demand: every case of the corpus in three modes, on standard GitHub-hosted runners with
+# the 7B model on CPU. One job per case, mode, and repetition, each well within the job time limit. Never on push, pull
+# requests, or a schedule. The artifact holds results.json and report.md. A person adds review.json, generates the report
+# again (`./gradlew :benchmark:report`), and commits the directory under benchmark/results/<date>/.
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: Only these cases, comma-separated (empty for all)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  MODEL: qwen2.5-coder:7b
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v6
+      # The input comes in through the environment, never into the script itself.
+      - id: matrix
+        run: |
+          args="matrix"
+          if [ -n "$CASES" ]; then args="$args --cases $CASES"; fi
+          echo "matrix=$(./gradlew -q :benchmark:run --args="$args")" >> "$GITHUB_OUTPUT"
+        env:
+          CASES: ${{ inputs.cases }}
+
+  # The Ollama image with the 7B model baked in (M5), as the jobs' sidecar. Releases publish it, but no release may
+  # happen before the MSAL check, so the benchmark builds its own tag.
+  ollama-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/lector-ollama:benchmark-$(echo "$MODEL" | tr ':' '-')" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: docker/ollama
+          build-args: MODEL=${{ env.MODEL }}
+          push: true
+          tags: ${{ steps.name.outputs.image }}
+
+  run:
+    needs: [plan, ollama-image]
+    runs-on: ubuntu-latest
+    # The fix loop's budget is 30 minutes, plus the builds before it and the attribution runs.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    services:
+      ollama:
+        image: ${{ needs.ollama-image.outputs.image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        ports:
+          - 11434:11434
+    steps:
+      - uses: actions/checkout@v7
+      # The JDKs the projects build with, like the tool image's. The last one runs Gradle and the harness.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+            25
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Run the case
+        run: |
+          ./gradlew -q :benchmark:run --args="run --case $CASE --mode $MODE --repetition $REPETITION \
+            --output $RUNNER_TEMP/runs/$CASE-$MODE-$REPETITION.json --tool-commit $GITHUB_SHA --model $MODEL"
+        env:
+          CASE: ${{ matrix.case }}
+          MODE: ${{ matrix.mode }}
+          REPETITION: ${{ matrix.repetition }}
+          LECTOR_JDK_17: ${{ env.JAVA_HOME_17_X64 }}
+          LECTOR_JDK_21: ${{ env.JAVA_HOME_21_X64 }}
+          LECTOR_JDK_25: ${{ env.JAVA_HOME_25_X64 }}
+          # Cluster keys and grounding read the English compiler messages, as in the tool image.
+          MAVEN_OPTS: -Duser.language=en -Duser.country=US
+      - uses: actions/upload-artifact@v7
+        with:
+          name: run-${{ matrix.case }}-${{ matrix.mode }}-${{ matrix.repetition }}
+          path: ${{ runner.temp }}/runs/
+          if-no-files-found: ignore
+
+  # Merges whatever the runs left, so a job that failed or timed out shows up as missing instead of losing the report.
+  report:
+    needs: [plan, run]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: run-*
+          path: ${{ runner.temp }}/runs
+          merge-multiple: true
+      - name: Merge the runs and generate the report
+        run: |
+          mkdir -p "$RUNNER_TEMP/runs"
+          date="$(date -u +%F)"
+          echo "DATE=$date" >> "$GITHUB_ENV"
+          # The runner type of every job: the same standard runner as this one.
+          runner="GitHub-hosted $ImageOS, $(nproc) CPUs, $(free -g | awk '/Mem:/ {print $2}') GB, CPU only"
+          cases=""
+          if [ -n "$CASES" ]; then cases="--cases $CASES"; fi
+          ./gradlew -q :benchmark:run --args="merge --runs $RUNNER_TEMP/runs --output benchmark/results/$date/results.json \
+            --runner '$runner' --date $date $cases"
+          ./gradlew -q :benchmark:report "-Presults=benchmark/results/$date"
+        env:
+          CASES: ${{ inputs.cases }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-${{ env.DATE }}
+          path: benchmark/results/${{ env.DATE }}/

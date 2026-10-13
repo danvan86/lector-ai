@@ -1,0 +1,625 @@
+{
+    "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+    "model": "qwen2.5-coder:7b",
+    "runner": "GitHub-hosted ubuntu-24.04, 4 CPUs, 16 GB",
+    "date": "2026-10-12",
+    "runs": [
+        {
+            "case": "guava-21",
+            "mode": "recipe-only",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": false,
+                "before": {
+                    "buildErrors": 0,
+                    "compileErrors": 3,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 3,
+                    "testFailures": 0
+                },
+                "recipes": [
+                    {
+                        "change": "com.google.guava:guava 18.0 -> 21.0",
+                        "recipe": null,
+                        "applied": false,
+                        "outcome": "no recipe matches"
+                    }
+                ],
+                "attempts": 0,
+                "acceptedFixes": 0,
+                "rejectionsPerRule": {},
+                "stopReason": null,
+                "runtime": {
+                    "total": 130,
+                    "verify": 120,
+                    "recipe": 10,
+                    "fixLoop": 0
+                },
+                "recipeLines": 0,
+                "fixLines": 0,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "guava-21",
+            "mode": "fix-loop-only",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": true,
+                "before": {
+                    "buildErrors": 0,
+                    "compileErrors": 3,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [],
+                "attempts": 2,
+                "acceptedFixes": 1,
+                "rejectionsPerRule": {},
+                "stopReason": "nothing_left",
+                "runtime": {
+                    "total": 600,
+                    "verify": 120,
+                    "recipe": 0,
+                    "fixLoop": 480
+                },
+                "recipeLines": 0,
+                "fixLines": 6,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "guava-21",
+            "mode": "fix-loop-only",
+            "repetition": 2,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": true,
+                "before": {
+                    "buildErrors": 0,
+                    "compileErrors": 3,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [],
+                "attempts": 3,
+                "acceptedFixes": 1,
+                "rejectionsPerRule": {
+                    "diff-size": 1
+                },
+                "stopReason": "nothing_left",
+                "runtime": {
+                    "total": 700,
+                    "verify": 120,
+                    "recipe": 0,
+                    "fixLoop": 580
+                },
+                "recipeLines": 0,
+                "fixLines": 6,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "guava-21",
+            "mode": "fix-loop-only",
+            "repetition": 3,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": false,
+                "before": {
+                    "buildErrors": 0,
+                    "compileErrors": 3,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 3,
+                    "testFailures": 0
+                },
+                "recipes": [],
+                "attempts": 2,
+                "acceptedFixes": 0,
+                "rejectionsPerRule": {
+                    "test-deletion": 1,
+                    "diff-size": 1
+                },
+                "stopReason": "no_progress",
+                "runtime": {
+                    "total": 500,
+                    "verify": 120,
+                    "recipe": 0,
+                    "fixLoop": 380
+                },
+                "recipeLines": 0,
+                "fixLines": 0,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 1
+            }
+        },
+        {
+            "case": "guava-21",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": true,
+                "before": {
+                    "buildErrors": 0,
+                    "compileErrors": 3,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [
+                    {
+                        "change": "com.google.guava:guava 18.0 -> 21.0",
+                        "recipe": null,
+                        "applied": false,
+                        "outcome": "no recipe matches"
+                    }
+                ],
+                "attempts": 1,
+                "acceptedFixes": 1,
+                "rejectionsPerRule": {},
+                "stopReason": "nothing_left",
+                "runtime": {
+                    "total": 400,
+                    "verify": 120,
+                    "recipe": 10,
+                    "fixLoop": 270
+                },
+                "recipeLines": 0,
+                "fixLines": 6,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "guava-21",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 2,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": true,
+                "before": {
+                    "buildErrors": 0,
+                    "compileErrors": 3,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [
+                    {
+                        "change": "com.google.guava:guava 18.0 -> 21.0",
+                        "recipe": null,
+                        "applied": false,
+                        "outcome": "no recipe matches"
+                    }
+                ],
+                "attempts": 1,
+                "acceptedFixes": 1,
+                "rejectionsPerRule": {},
+                "stopReason": "nothing_left",
+                "runtime": {
+                    "total": 400,
+                    "verify": 120,
+                    "recipe": 10,
+                    "fixLoop": 270
+                },
+                "recipeLines": 0,
+                "fixLines": 6,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "guava-21",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 3,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "error",
+            "reason": "Ollama is not reachable at http://localhost:11434: java.net.ConnectException",
+            "metrics": null
+        },
+        {
+            "case": "boot-3",
+            "mode": "recipe-only",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": true,
+                "before": {
+                    "buildErrors": 1,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [
+                    {
+                        "change": "org.springframework.boot:spring-boot-starter-parent 2.7.18 -> 3.0.13",
+                        "recipe": "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_0",
+                        "applied": true,
+                        "outcome": "applied"
+                    }
+                ],
+                "attempts": 0,
+                "acceptedFixes": 0,
+                "rejectionsPerRule": {},
+                "stopReason": null,
+                "runtime": {
+                    "total": 900,
+                    "verify": 300,
+                    "recipe": 600,
+                    "fixLoop": 0
+                },
+                "recipeLines": 180,
+                "fixLines": 0,
+                "preExisting": 1,
+                "flaky": 1,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "boot-3",
+            "mode": "fix-loop-only",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": false,
+                "before": {
+                    "buildErrors": 1,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 1,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [],
+                "attempts": 2,
+                "acceptedFixes": 0,
+                "rejectionsPerRule": {},
+                "stopReason": "no_progress",
+                "runtime": {
+                    "total": 1200,
+                    "verify": 300,
+                    "recipe": 0,
+                    "fixLoop": 900
+                },
+                "recipeLines": 0,
+                "fixLines": 0,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "boot-3",
+            "mode": "fix-loop-only",
+            "repetition": 2,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": false,
+                "before": {
+                    "buildErrors": 1,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 12,
+                    "testFailures": 0
+                },
+                "recipes": [],
+                "attempts": 4,
+                "acceptedFixes": 1,
+                "rejectionsPerRule": {},
+                "stopReason": "no_progress",
+                "runtime": {
+                    "total": 1300,
+                    "verify": 300,
+                    "recipe": 0,
+                    "fixLoop": 1000
+                },
+                "recipeLines": 0,
+                "fixLines": 2,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "boot-3",
+            "mode": "fix-loop-only",
+            "repetition": 3,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": false,
+                "before": {
+                    "buildErrors": 1,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 1,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [],
+                "attempts": 2,
+                "acceptedFixes": 0,
+                "rejectionsPerRule": {},
+                "stopReason": "no_progress",
+                "runtime": {
+                    "total": 1200,
+                    "verify": 300,
+                    "recipe": 0,
+                    "fixLoop": 900
+                },
+                "recipeLines": 0,
+                "fixLines": 0,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "boot-3",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": true,
+                "before": {
+                    "buildErrors": 1,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [
+                    {
+                        "change": "org.springframework.boot:spring-boot-starter-parent 2.7.18 -> 3.0.13",
+                        "recipe": "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_0",
+                        "applied": true,
+                        "outcome": "applied"
+                    }
+                ],
+                "attempts": 0,
+                "acceptedFixes": 0,
+                "rejectionsPerRule": {},
+                "stopReason": "nothing_left",
+                "runtime": {
+                    "total": 900,
+                    "verify": 300,
+                    "recipe": 600,
+                    "fixLoop": 0
+                },
+                "recipeLines": 180,
+                "fixLines": 0,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "boot-3",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 2,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "valid",
+            "reason": null,
+            "metrics": {
+                "green": true,
+                "before": {
+                    "buildErrors": 1,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "after": {
+                    "buildErrors": 0,
+                    "compileErrors": 0,
+                    "testFailures": 0
+                },
+                "recipes": [
+                    {
+                        "change": "org.springframework.boot:spring-boot-starter-parent 2.7.18 -> 3.0.13",
+                        "recipe": "org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_0",
+                        "applied": true,
+                        "outcome": "applied"
+                    }
+                ],
+                "attempts": 1,
+                "acceptedFixes": 1,
+                "rejectionsPerRule": {},
+                "stopReason": "nothing_left",
+                "runtime": {
+                    "total": 1000,
+                    "verify": 300,
+                    "recipe": 600,
+                    "fixLoop": 100
+                },
+                "recipeLines": 180,
+                "fixLines": 20,
+                "preExisting": 0,
+                "flaky": 0,
+                "unattributed": 0,
+                "testsRun": 42,
+                "requestsWithDiagnosticsLeftOut": 0
+            }
+        },
+        {
+            "case": "boot-3",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 3,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "missing",
+            "reason": "no result",
+            "metrics": null
+        },
+        {
+            "case": "jackson-3",
+            "mode": "recipe-only",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "invalid",
+            "reason": "the head commit has no failure caused by the update",
+            "metrics": null
+        },
+        {
+            "case": "jackson-3",
+            "mode": "fix-loop-only",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "invalid",
+            "reason": "the head commit has no failure caused by the update",
+            "metrics": null
+        },
+        {
+            "case": "jackson-3",
+            "mode": "fix-loop-only",
+            "repetition": 2,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "invalid",
+            "reason": "the head commit has no failure caused by the update",
+            "metrics": null
+        },
+        {
+            "case": "jackson-3",
+            "mode": "fix-loop-only",
+            "repetition": 3,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "invalid",
+            "reason": "the head commit has no failure caused by the update",
+            "metrics": null
+        },
+        {
+            "case": "jackson-3",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 1,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "invalid",
+            "reason": "the head commit has no failure caused by the update",
+            "metrics": null
+        },
+        {
+            "case": "jackson-3",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 2,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "invalid",
+            "reason": "the head commit has no failure caused by the update",
+            "metrics": null
+        },
+        {
+            "case": "jackson-3",
+            "mode": "recipe-and-fix-loop",
+            "repetition": 3,
+            "toolCommit": "0123456789abcdef0123456789abcdef01234567",
+            "model": "qwen2.5-coder:7b",
+            "status": "invalid",
+            "reason": "the head commit has no failure caused by the update",
+            "metrics": null
+        }
+    ]
+}

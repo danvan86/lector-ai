@@ -254,6 +254,7 @@ A local model often doesn't know the new version of an API, because it was relea
 ### 6.2 Error handling
 
 - **Cluster before fixing:** errors are grouped by missing symbol or package. One root cause, such as a missing module or changed artifact coordinates, can produce hundreds of follow-on errors. Root causes are fixed first.
+- **Fit the context:** a request carries a cluster's errors and the code around each of them in full. If they don't fit into the model's context, it carries only as many errors (each with its code) as fit; the rest come back in the next round, because clusters are rebuilt after every accepted attempt. Grounding, release notes, and the recipe diff are trimmed first. A request that is cut silently would show the model part of the errors, and nobody would know which part.
 - **Build-file fixes:** many breaking changes require changes in `pom.xml`, `package.json`, or `*.csproj`, not in source code. The loop allows edits to build files.
 - **Generated code** is never edited. Fixes belong in the generator configuration or the source annotations.
 - **Only failures caused by the update** are in scope (section 5). Pre-existing and flaky test failures are never touched.
@@ -341,7 +342,7 @@ Also:
 
 - **Orchestrator:** GitHub Actions (later GitLab CI). The tool runs as a Docker container action.
 - **Two images**, updated independently. The **tool image** has the tool, git, Maven, JDKs 17, 21, and 25, and the OpenRewrite Gradle plugin; the tool builds each Maven project with the smallest JDK its release needs, and runs Gradle on the newest JDK the project's Gradle version supports, with toolchains from the same JDKs. It has no Gradle: a project's wrapper downloads its own distribution. The **Ollama image** has one model's weights **baked in** and runs as the job's `services:` sidecar, so nothing is downloaded per job except the project's own dependencies and, for Gradle, its distribution.
-- **Model:** a coding model that is strong across many languages (the Qwen-Coder family). The `qwen2.5-coder:7b` variant runs on standard GitHub-hosted runners, on CPU, and is the default. The `qwen3-coder:30b` variant needs a large runner, ideally with a GPU. Its weights are one file of about 19 GB, more than GHCR takes in one layer (10 GB), so its distribution is still open.
+- **Model:** a coding model that is strong across many languages (the Qwen-Coder family). The `qwen2.5-coder:7b` variant runs on standard GitHub-hosted runners, on CPU, and is the default: it is the model the benchmark measures (section 11). The `qwen3-coder:30b` variant is an option for GPU runners, not measured. Its weights are one file of about 19 GB, more than GHCR takes in one layer (10 GB), so its distribution is still open.
 - **No cloud data leakage:** source code and logs stay inside your own infrastructure.
 
 ## 9. Licensing and maturity
@@ -403,6 +404,10 @@ A **benchmark per ecosystem** with real repositories (our own plus open-source p
 - Runtime and attempts per PR
 
 Results are reported **separately per ecosystem**. "Works for Java" and "works for Python" will be very different numbers. The often-quoted 90/10 split between recipe and AI is a hypothesis this benchmark has to confirm or refute.
+
+**The 90/10 split, measured:** on the runs that apply the recipe and then the fix loop and end green, the share of changed lines (added plus removed) in the recipe's commits, of all lines the run's commits changed. The hypothesis holds if the mean share over those runs is at least 90%. The split comes straight from the commits and is the same for every language. Green rates per mode are reported too, but they say which cases work, not how much of the work each part did.
+
+Each case runs in three modes: recipe only, fix loop only, and recipe + fix loop. Only the three together tell where the value comes from. The modes that use the model run three times, because its output varies. A case counts only if its head commit has a failure caused by the update.
 
 ## 12. Benefits
 

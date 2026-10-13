@@ -86,13 +86,16 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** a real Renovate PR in a test repo gets a fix commit and a report, with no manual steps.
 
-## M6 – Benchmark ⬜
+## M6 – Benchmark 🟨
 
 **Goal:** measure instead of guessing.
 
-- Collection of real repos with known upgrades
-- Metrics: green rate after recipe vs. after fix loop, remaining failures caused by the update, guardrail rejections, runtime
-- Runs on demand; results go into a short report
+- `benchmark` module (not shipped): 22 Maven cases, 16 historical bot PRs that failed CI and 6 synthetic bumps, each run in three modes (recipe only, fix loop only, recipe + fix loop), the model modes three times; a case whose head has no failure caused by the update is invalid
+- Metrics per run: green, failures per stage before and after, recipes, attempts, accepted fixes, guardrail rejections per rule, stop reason, runtime per stage, changed lines of recipe and fix commits, pre-existing and flaky failures, cut requests
+- `report.md` from `results.json` and a manual review: green rates with spread, the 90/10 verdict (the recipe's mean share of changed lines on green recipe + fix-loop runs, holds at 90%), rejections, runtime
+- `Benchmark` workflow: `workflow_dispatch` on standard runners with `qwen2.5-coder:7b`, one job per case, mode, and repetition
+- Fix requests carry only the diagnostics that fit into the context, each with its code; the rest come in the next round
+- Still open: the first run, its review, and the results under `benchmark/results/<date>/`
 
 **Done when:** we have first numbers for JVM/Maven and know whether the 90/10 assumption holds.
 

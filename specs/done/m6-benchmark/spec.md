@@ -30,6 +30,7 @@ An on-demand benchmark runs the tool on 20–25 real and synthetic JVM/Maven dep
   - **recipe + fix loop:** the full `heal` flow.
 - Three repetitions per case and mode for the two modes that use the LLM. Recipe only is deterministic and runs once.
 - Every run uses a fresh checkout of the case's head commit, the product's default budgets, and records the tool commit and the model.
+- Fix requests carry no release notes, and the report says so: the product reads none from Dependabot PRs before M8, and 12 of the 16 historical PRs are Dependabot PRs ([review](review.md) F4).
 - Model: `qwen2.5-coder:7b` only.
 
 **Why:** three modes are the only way to tell where the value comes from (Q3). Three repetitions separate signal from noise in LLM output (Q4). The harness shares the product's code and data model, but nothing benchmark-specific ships to users (Q6). On CPU-only runners, larger models would mostly measure the time budget running out (Q10, Q12).

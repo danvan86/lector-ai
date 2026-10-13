@@ -32,6 +32,7 @@ sources/       update-source adapters (renovate; later dependabot, fallback)
 ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
+benchmark/     benchmark harness and report (M6); uses core and the adapters, never shipped
 action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
 docker/        Dockerfiles of the tool image and the Ollama image (not Gradle modules)
 ```
@@ -48,6 +49,8 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew :ecosystems:jvm:integrationTest # opt-in: the Gradle adapter with real Gradle on fixtures (needs network)
 ./gradlew :cli:realModelTest # opt-in: heal with a real model in Ollama (needs Docker, mvn, network); -Plector.model=<name>
 ./gradlew :recipes:generateRecipeIndex # recipe index and license report, under recipes/build/generated/recipe-index/
+./gradlew :benchmark:report -Presults=benchmark/results/<date> # report.md from results.json and review.json there
+./gradlew :benchmark:run --args="matrix|run|merge|report …" # benchmark commands; the Benchmark workflow runs them
 ./gradlew ktlintFormat     # fix most ktlint violations
 ./gradlew koverHtmlReport  # coverage report under */build/reports/kover/
 ./gradlew :cli:run --args="..."
@@ -107,7 +110,7 @@ These come from the concept. Don't break them without updating the concept first
 - Unit tests for core logic. Adapters are tested against small **fixture repos** under `src/test/resources/fixtures/`.
 - Tool output in tests (compiler messages, build logs) uses the real tool's wording, copied from a real run. An invented message hid that javac's "does not override" names no method, so a rule matching on the name never fired for Java.
 - No real LLM in unit tests: use a fake `LlmClient`. Tests against a real Ollama are tagged and opt-in.
-- Test the failure paths, not only the happy path: invalid input, missing or malformed resources. For the CLI, assert exit code, stdout, and stderr on every path, because they are the contract with the pipeline.
+- Test the failure paths, not only the happy path: invalid input, missing or malformed resources. For the CLI, assert exit code, stdout, and stderr on every path, because they are the contract with the pipeline. A count or flag that a report shows is tested at a value its default can't produce: a fake that never cuts, rejects, or fails keeps it at 0, and a hard-coded 0 would pass.
 - A command that should run only some tests is checked once with the real build tool, not only by its command line. Lifecycles run other test tasks first (Maven's `verify` runs every surefire test before failsafe).
 - End-to-end tests run the installed start script as a separate process. They are tagged `e2e` and run in `endToEndTest`, not in `test`.
 - A change is done when `./gradlew build` passes.

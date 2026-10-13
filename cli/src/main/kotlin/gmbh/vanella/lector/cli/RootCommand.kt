@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.subcommands
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.ecosystems.jvm.GradleAdapter
 import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
+import gmbh.vanella.lector.ecosystems.jvm.installedJdks
 import gmbh.vanella.lector.recipes.BundledRecipeIndex
 import gmbh.vanella.lector.sources.RenovateSource
 import org.slf4j.LoggerFactory
@@ -40,12 +41,3 @@ internal fun adapters(
         MavenAdapter(config.mavenSettings, jdks = jdks),
     )
 }
-
-/** The JDKs the container image installs for the projects it builds, by release: `LECTOR_JDK_<release>=<JAVA_HOME>`. */
-internal fun installedJdks(environment: Map<String, String>): Map<Int, Path> =
-    environment
-        .filterKeys { it.startsWith(JDK_VARIABLE) }
-        .mapNotNull { (name, value) -> name.removePrefix(JDK_VARIABLE).toIntOrNull()?.let { it to Path.of(value) } }
-        .toMap()
-
-private const val JDK_VARIABLE = "LECTOR_JDK_"

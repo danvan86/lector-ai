@@ -45,7 +45,7 @@ flowchart LR
 | `cli` | `VerifyCommand.kt` | The `verify` subcommand: attribution and report. |
 | | `RepositoryCommand.kt` | Shared with `migrate` and `heal`: `<repo>`, `--base`, `--format`, `--maven-settings`, `--gradle-init` (M7), validation, adapter detection, exit code. `ensure()` and `toolError()` are also used by `pr`, and so is `List<EcosystemAdapter>.use`, which closes the `AutoCloseable` adapters (the Gradle daemons) after every run. |
 | | `Reports.kt` | `TextReport` and `JsonReport`. |
-| | `RootCommand.kt` | Wires `VerifyCommand` (and the other subcommands) with `adapters()`: `GradleAdapter`, then `MavenAdapter`, both with the JDKs from `installedJdks()`, every `LECTOR_JDK_<release>` environment variable. |
+| | `RootCommand.kt` | Wires `VerifyCommand` (and the other subcommands) with `adapters()`: `GradleAdapter`, then `MavenAdapter`, both with the JDKs from `installedJdks()` (`JdkSelection.kt` in `ecosystems:jvm`), every `LECTOR_JDK_<release>` environment variable. |
 
 ```mermaid
 flowchart TB

@@ -32,6 +32,8 @@ internal class ScriptedLlm(
     val requests = mutableListOf<FixRequest>()
     private val edits = ArrayDeque(edits.toList())
 
+    override fun fits(request: FixRequest) = true
+
     override fun propose(request: FixRequest): Proposal {
         requests += request
         return Proposal.Edits(listOf(edits.removeFirst()), "Call fixed() instead of broken()")

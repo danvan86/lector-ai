@@ -34,7 +34,8 @@ flowchart LR
 
 | Module | File | Role |
 |---|---|---|
-| `core` | `PrPipeline.kt` | `PrPipeline.run(repo): PrOutcome` (`Skipped`, `Green`, `PushRejected`, `Reported`), `PrSettings` (bot logins, `CommitIdentity`, `Budgets`), `PrReport`, `RecipeApplication`, the label `AI_ASSISTED`. |
+| `core` | `PrPipeline.kt` | `PrPipeline.run(repo): PrOutcome` (`Skipped`, `Green`, `PushRejected`, `Reported`), `PrSettings` (bot logins, `CommitIdentity`, `Budgets`), `PrReport`, the label `AI_ASSISTED`. |
+| | `RecipeGroup.kt` | `applyRecipes(changes, adapter, index, repo, base, identity)` (M6, moved out of `PrPipeline` so the benchmark runs the same step): rules 1 and 2 per change, each distinct recipe once in the changes' order, one commit per recipe that changed files. `RecipeGroupResult` (`withoutRecipe`, `applications`, `commits`, `diff(repo)`), `RecipeApplication`. |
 | | `UpdateSource.kt` | The port `UpdateSource` (`recognizes(pr)`, `read(pr): SourceUpdate`), and `PullRequest`, `PackageUpdate`, `SourceUpdate`, `BranchPolicy` (only `IN_PLACE`). |
 | | `GitHost.kt` | The port `GitHost`: `pullRequest()`, `fetch`, `push` (false if rejected), `comment(pr, body, create)`, `label`. |
 | | `PrComment.kt` | The report comment in Markdown: `render(report)` and `green(verification, commit)`. At most 50 diagnostics per list. |
@@ -43,10 +44,10 @@ flowchart LR
 | | `Processes.kt` | `runProcess` starts every process with only the allowlisted variables (`ALLOWED_VARIABLES`, prefixes `LC_` and `MAVEN_`) plus the ones the caller adds. |
 | `sources` | `RenovateSource.kt` | Recognizes the `renovate/` branch prefix; reads every row of the PR body's update table and the release notes. Since M7 the package comes from the row's badge, so Gradle plugin and version catalog rows work. |
 | `git` | `GitHubHost.kt` | The PR from the `pull_request` event file, comment and label over REST with the JDK `HttpClient`, fetch and push with the `git` CLI. |
-| `ecosystems:jvm` | `JdkSelection.kt` | Picks the smallest installed JDK that the root POM's `maven.compiler.release`, else `java.version`, needs (default 21). `MavenAdapter` sets `JAVA_HOME` per Maven run. Gradle picks its JDK differently (`DaemonJdk` and toolchains, M7, see [Gradle adapter](gradle-adapter.md#how-gradle-runs)). |
+| `ecosystems:jvm` | `JdkSelection.kt` | Picks the smallest installed JDK that the root POM's `maven.compiler.release`, else `java.version`, needs (default 21). `MavenAdapter` sets `JAVA_HOME` per Maven run. Gradle picks its JDK differently (`DaemonJdk` and toolchains, M7, see [Gradle adapter](gradle-adapter.md#how-gradle-runs)). `installedJdks(environment)` reads the installed JDKs from `LECTOR_JDK_<release>` variables, for `cli` and the benchmark (M6). |
 | `cli` | `PrCommand.kt` | `lector pr`: options, the token from the environment, the exit code, the comment text on stdout. |
 | | `FixLoopOptions.kt` | The options `heal` and `pr` share: `--ollama-url`, `--model` (`DEFAULT_MODEL`), the five budgets; `httpUrl()`. |
-| | `RootCommand.kt` | Wires `RenovateSource` into `PrCommand`; `adapters()` builds `GradleAdapter` and `MavenAdapter` with the JDKs `installedJdks()` reads from `LECTOR_JDK_<release>`. |
+| | `RootCommand.kt` | Wires `RenovateSource` into `PrCommand`; `adapters()` builds `GradleAdapter` and `MavenAdapter` with the JDKs `installedJdks()` (`JdkSelection.kt`) reads from `LECTOR_JDK_<release>`. |
 | — | `action/action.yml` | Docker container action on `ghcr.io/danvan86/lector:<version>`: inputs → `pr` options; token, Maven settings, and Gradle init script through the environment; `GRADLE_USER_HOME=/github/home/.gradle`, so a workflow can cache it. |
 | — | `docker/lector/Dockerfile` | Tool image: `eclipse-temurin` 25 base, JDK 17 and 21 stages copied in, Maven, `git`, the installed distribution with the OpenRewrite Gradle plugin (`LECTOR_REWRITE_GRADLE_PLUGIN`). No model, no recipe JARs, no Gradle. |
 | — | `docker/ollama/Dockerfile` | Ollama image: `ARG MODEL`, pulled at build time, `OLLAMA_KEEP_ALIVE=-1`. Its `FROM` is also the real-model test's Ollama. |

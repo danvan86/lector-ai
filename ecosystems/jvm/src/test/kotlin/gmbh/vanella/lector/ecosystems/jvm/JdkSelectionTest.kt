@@ -94,4 +94,18 @@ class JdkSelectionTest {
 
     private fun properties(vararg properties: Pair<String, String>) =
         "<project><properties>" + properties.joinToString("") { (name, value) -> "<$name>$value</$name>" } + "</properties></project>"
+
+    @Test
+    fun `the installed JDKs come from LECTOR_JDK_ variables, by release`() {
+        val environment =
+            mapOf(
+                "LECTOR_JDK_17" to "/opt/java/17",
+                "LECTOR_JDK_25" to "/opt/java/openjdk",
+                "LECTOR_JDK_LATEST" to "/opt/java/latest",
+                "JAVA_HOME" to "/opt/java/openjdk",
+                "21" to "/opt/java/21",
+            )
+
+        assertEquals(mapOf(17 to Path.of("/opt/java/17"), 25 to Path.of("/opt/java/openjdk")), installedJdks(environment))
+    }
 }

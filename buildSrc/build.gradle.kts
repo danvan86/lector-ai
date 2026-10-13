@@ -7,4 +7,5 @@ dependencies {
     implementation(libs.ktlint.gradle.plugin)
     implementation(libs.detekt.gradle.plugin)
     implementation(libs.kover.gradle.plugin)
+    implementation(libs.kotlin.serialization.plugin)
 }
