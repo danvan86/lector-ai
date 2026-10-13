@@ -6,7 +6,7 @@ Milestone: [M4](../features.md#m4--guardrails-) · Spec: [`m4-guardrails/spec.md
 >
 > - Every attempt of the fix loop passes `Guardrails` (`core/…/Guardrails.kt`) before the downgrade check and the verify. A violation rejects the attempt: the tree is reset, the attempt counts against the budgets, and each `Violation(rule, file, line, reason)` goes into the retry request and the `heal` report (with a count per rule); the `pr` comment has the count per rule. Recipe output is never checked.
 > - The rules are generic and live in `core`: `Scope`, `DiffSize`, `BuildFileBlocklist` in `FileRules.kt`, the rules on source facts in `SourceRules.kt`. They see only `FileChange`s (before = last commit, after = working tree), `SourceFacts`, and the diagnostics caused by the update. No tree-sitter, no Java, no Maven in `core`.
-> - The language knowledge comes from the adapter: `EcosystemAdapter.languageSupport` (`LanguageSupport.facts(file, content): SourceFacts?`), `isEditable`, `isBuildFile`, `testDisablingConfig`. For the JVM: `JvmLanguageSupport` and `TreeSitterLanguage` with the query files under `ecosystems/jvm/src/main/resources/…/queries/{java,kotlin}/`, plus `JvmScope` and `MavenTestSkipping` in `MavenGuardrails.kt`.
+> - The language knowledge comes from the adapter: `EcosystemAdapter.languageSupport` (`LanguageSupport.facts(file, content): SourceFacts?`), `isEditable`, `isBuildFile`, `testDisablingConfig`. For the JVM: `JvmLanguageSupport` and `TreeSitterLanguage` with the query files under `ecosystems/jvm/src/main/resources/…/queries/{java,kotlin}/`, plus `JvmScope` and `MavenTestSkipping` in `MavenGuardrails.kt`, and `GradleScope` and `GradleTestSkipping` in `GradleGuardrails.kt` (M7).
 > - A new language is a grammar and seven query files in its adapter, not a new rule. A new rule is one more `Guardrail` in the list in `Guardrails`, with a rejecting and a passing test in `core` (on hand-made facts) and in the adapter (on real source).
 > - Easiest rules to break: the scope check runs on the edits' paths *before* anything is written (a reset doesn't restore ignored files); stubs and suppressions count only if they are new in touched lines; every file the build tool reads its configuration from must be an `isBuildFile`, or the blocklist and the downgrade check don't see it.
 
@@ -24,6 +24,7 @@ flowchart LR
     jvm["JvmLanguageSupport<br/>TreeSitterLanguage + queries/*.scm<br/>(ecosystems:jvm)"] -. implements .-> port
     file --> adapter["EcosystemAdapter<br/>isEditable, isBuildFile, testDisablingConfig"]
     maven["MavenAdapter<br/>JvmScope, MavenTestSkipping"] -. implements .-> adapter
+    gradle["GradleAdapter<br/>GradleScope, GradleTestSkipping"] -. implements .-> adapter
 ```
 
 ## Modules and files
@@ -41,7 +42,8 @@ flowchart LR
 | `ecosystems:jvm` | `TreeSitterLanguage.kt` | `JvmLanguageSupport` (by extension: `.java`, `.kt`, `.kts`; grammars load lazily) and `TreeSitterLanguage`, which runs the seven queries of a language and turns their captures into `SourceFacts`. |
 | | `queries/java/*.scm`, `queries/kotlin/*.scm` | `types`, `methods`, `tests`, `assertions`, `skips`, `suppressions`, `stubs`. All language knowledge is here. |
 | | `MavenGuardrails.kt` | `JvmScope` (the editable scope) and `MavenTestSkipping` (the build-file blocklist). |
-| | `MavenAdapter.kt` | Wires both, `languageSupport = JvmLanguageSupport`, `isBuildFile` (now also the wrapper and `.mvn/`), and `testsRun` via `TestReports.count()`. |
+| | `MavenAdapter.kt` | Wires both, `languageSupport = JvmLanguageSupport`, `isBuildFile` (now also the wrapper and `.mvn/`), and `testsRun` via `MAVEN_REPORTS.count()`. |
+| | `GradleGuardrails.kt` | `GradleScope` and `GradleTestSkipping`, wired by `GradleAdapter` (M7), see [Gradle adapter](gradle-adapter.md#guardrails). |
 | `cli` | `FixLoopOptions.kt` | `--max-changed-lines`, for `heal` and `pr`. |
 | | `FixLoopReport.kt` | Violations per attempt, rejections per rule, tests run, in text and JSON. |
 | | `RepositoryCommand.kt` | Catches any `Throwable`, so a native library that doesn't load exits `2`, not `1`. `PrCommand` does the same through the shared `toolError()`. |
@@ -107,6 +109,8 @@ A method's type is the chain of types around it (`Outer.Inner`). An assertion's 
 
 ## Maven scope and blocklist
 
+Gradle's scope, build files, and blocklist are in [Gradle adapter](gradle-adapter.md#guardrails).
+
 | Capability | Implementation | Rule |
 |---|---|---|
 | `isEditable` | `JvmScope` | Not editable: a file under any directory named `generated…`, or under `target/` or `build/` outside `src/`. |
@@ -131,7 +135,7 @@ Text report, fix-loop section (after M3's attempts and fixes):
   Tests run in the final verify: 12
 ```
 
-The count per rule is the number of attempts a rule rejected, rules sorted by name. `Tests run` comes from `Verification.testsRun` (JVM: the test cases in the surefire and failsafe reports), `unknown` if no report was left.
+The count per rule is the number of attempts a rule rejected, rules sorted by name. `Tests run` comes from `Verification.testsRun` (JVM: the test cases in the surefire and failsafe reports, or in Gradle's `build/test-results/`), `unknown` if no report was left.
 
 JSON: each attempt gains `violations` (`rule`, `file`, `line`, `reason`, empty unless the guardrails rejected it); `fixLoop` gains `rejectionsPerGuardrail` (rule → count) and `testsRun` (number or `null`).
 
@@ -140,7 +144,7 @@ JSON: each attempt gains `violations` (`rule`, `file`, `line`, `reason`, empty u
 | Level | Task | What runs | Examples |
 |---|---|---|---|
 | Unit, `core` | `test` | Each rule on hand-made `FileChange`s and facts (`EditableEverywhere` and fake `LanguageSupport`s): rejecting and passing cases. The line diff and `touches`/`replaced`. The fix loop with a fake `LlmClient`: a violating attempt is reset, never verified, counted, and its violations are in the retry; a real `.gitignore`d file is a scope violation; a parser that throws an `Error` leaves a clean tree; recipe output with a deleted method is kept. | `FileRulesTest`, `SourceRulesTest`, `FileChangeTest`, `SourceFactsTest`, `FixLoopTest`, `RecipeStepTest` |
-| Unit, `ecosystems:jvm` | `test` | Every rule through `MavenAdapter` on real Java and Kotlin edits, rejecting and passing cases, with diagnostics pointing into the edited lines. The queries on `fixtures/language-facts/OrderTest.java` and `.kt`. The blocklist on POM, `.mvn/maven.config`, and plugin shapes. `TestReports.count`. | `JvmGuardrailsTest`, `JvmLanguageSupportTest`, `MavenGuardrailsTest`, `TestReportsTest` |
+| Unit, `ecosystems:jvm` | `test` | Every rule through `MavenAdapter` on real Java and Kotlin edits, rejecting and passing cases, with diagnostics pointing into the edited lines. The queries on `fixtures/language-facts/OrderTest.java` and `.kt`. The blocklist on POM, `.mvn/maven.config`, and plugin shapes, and on every Gradle spelling (M7). `TestReports.count`. | `JvmGuardrailsTest`, `JvmLanguageSupportTest`, `MavenGuardrailsTest`, `GradleGuardrailsTest`, `TestReportsTest` |
 | Unit, `cli` | `test` | Report text and JSON with violations, counts, and tests run; `--max-changed-lines` and its validation; an `Error` (`UnsatisfiedLinkError`) in a command exits `2`. | `FixLoopReportTest`, `HealCommandTest`, `VerifyCommandTest` |
 | End-to-end | `endToEndTest` | `heal` through the start script against a fake Ollama that proposes `return null`: the bundled grammar parses the Java file, the report lists the `stubbing` violation, stderr has no JNI warning, exit `1`. | `LectorEndToEndTest` |
 

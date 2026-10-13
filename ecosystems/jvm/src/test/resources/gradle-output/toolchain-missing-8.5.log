@@ -1,0 +1,16 @@
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not determine the dependencies of task ':compileJava'.
+> Failed to calculate the value of task ':compileJava' property 'javaCompiler'.
+   > No matching toolchains found for requested specification: {languageVersion=11, vendor=any, implementation=vendor-specific} for MAC_OS on aarch64.
+      > No locally installed toolchains match and toolchain auto-provisioning is not enabled.
+
+* Try:
+> Learn more about toolchain auto-detection at https://docs.gradle.org/8.5/userguide/toolchains.html#sec:auto_detection.
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 11s

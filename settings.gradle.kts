@@ -9,6 +9,11 @@ rootProject.name = "lector-ai"
 dependencyResolutionManagement {
     repositories {
         mavenCentral()
+        // The OpenRewrite Gradle plugin is published only to the Gradle Plugin Portal. Nothing else comes from there.
+        exclusiveContent {
+            forRepository { gradlePluginPortal() }
+            filter { includeModule("org.openrewrite", "plugin") }
+        }
     }
 }
 

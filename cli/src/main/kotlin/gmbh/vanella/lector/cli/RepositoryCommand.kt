@@ -17,6 +17,12 @@ import java.nio.file.Path
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
+/** What the build tools read besides the repository: the user's Maven settings file and Gradle init script. */
+internal data class BuildConfig(
+    val mavenSettings: Path? = null,
+    val gradleInit: Path? = null,
+)
+
 /** What a command prints, in both formats, and the verification its exit code follows. */
 internal class Report(
     val text: String,
@@ -31,7 +37,7 @@ internal class Report(
  */
 internal abstract class RepositoryCommand(
     name: String,
-    private val adapters: (mavenSettings: Path?) -> List<EcosystemAdapter>,
+    private val adapters: (BuildConfig) -> List<EcosystemAdapter>,
     private val baseCommit: (repo: Path, ref: String) -> BaseCommit,
 ) : CliktCommand(name = name) {
     protected val repo by argument(help = "The repository").path()
@@ -42,6 +48,11 @@ internal abstract class RepositoryCommand(
     )
     private val format by option("--format", help = "Report format").choice("text", "json").default("text")
     private val mavenSettings by option("--maven-settings", metavar = "<file>", help = "Maven settings file, passed to Maven").path()
+    private val gradleInit by option(
+        "--gradle-init",
+        metavar = "<file>",
+        help = "Gradle init script, passed to every Gradle run, e.g. for a mirror",
+    ).path()
 
     /** Runs the stage on [repo]. Any exception is a tool error. */
     protected abstract fun execute(
@@ -66,14 +77,38 @@ internal abstract class RepositoryCommand(
     private fun report(): Report {
         ensure(repo.isDirectory()) { "$repo is not a directory" }
         ensure(mavenSettings?.isRegularFile() != false) { "Maven settings $mavenSettings is not a file" }
-        val adapter =
-            adapters(mavenSettings).firstOrNull { it.detect(repo) }
-                ?: throw ToolError("No supported ecosystem in $repo. Supported: Maven (pom.xml at the root).")
-        // Resolve the base before the build, so a wrong ref fails in seconds, not after a full build.
-        val base = base?.let { baseCommit(repo, it) }
-        return execute(adapter, base)
+        ensure(gradleInit?.isRegularFile() != false) { "Gradle init script $gradleInit is not a file" }
+        return adapters(BuildConfig(mavenSettings, gradleInit)).use { all ->
+            val adapter = all.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in $repo. $SUPPORTED")
+            // Resolve the base before the build, so a wrong ref fails in seconds, not after a full build.
+            val base = base?.let { baseCommit(repo, it) }
+            execute(adapter, base)
+        }
     }
 }
+
+/** The build tools lector-ai detects, for the error when it finds none. */
+internal const val SUPPORTED =
+    "Supported: Maven (pom.xml at the root) and Gradle (settings.gradle(.kts) or build.gradle(.kts) at the root)."
+
+/**
+ * Runs [block] with these adapters, then closes the ones that hold resources, like the Gradle daemons, also when
+ * [block] fails: every failure, errors included, closes them before it goes on.
+ */
+@Suppress("TooGenericExceptionCaught")
+internal fun <T> List<EcosystemAdapter>.use(block: (List<EcosystemAdapter>) -> T): T {
+    val result =
+        try {
+            block(this)
+        } catch (e: Throwable) {
+            closeAll()
+            throw e
+        }
+    closeAll()
+    return result
+}
+
+private fun List<EcosystemAdapter>.closeAll() = filterIsInstance<AutoCloseable>().forEach { it.close() }
 
 /** Fails with a [ToolError] and [message] unless [valid]. */
 internal fun ensure(

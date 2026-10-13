@@ -1,0 +1,10 @@
+[versions]
+kotlin = "2.2.0"
+commons-lang3 = "3.18.0"
+
+[libraries]
+commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "commons-lang3" }
+junit-bom = { module = "org.junit:junit-bom", version = "5.11.4" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

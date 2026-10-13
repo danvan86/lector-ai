@@ -1,0 +1,17 @@
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Build file '/work/repo/build.gradle' line: 10
+
+* What went wrong:
+A problem occurred evaluating root project 'gradle-groovy'.
+> Could not set unknown property 'undefinedSetting' for task ':test' of type org.gradle.api.tasks.testing.Test.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 485ms
