@@ -35,6 +35,7 @@ class PrCommandTest {
     private val settings = mutableListOf<Path?>()
     private val sourceOptions = mutableListOf<SourceOptions>()
     private val inits = mutableListOf<Path?>()
+    private val registries = mutableListOf<Pair<Path?, Path?>>()
     private val host = FakeHost()
     private val token = mapOf("LECTOR_GITHUB_TOKEN" to "ghs_token")
     private val bot = "--bot-name lector-ai[bot] --bot-email 1+lector-ai[bot]@users.noreply.github.com"
@@ -101,6 +102,22 @@ class PrCommandTest {
         assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
         assertEquals(0, result.statusCode)
         assertEquals(emptyList<String>(), host.comments)
+    }
+
+    @Test
+    fun `a PR that only updates Node, in nvm or the setup-node action, is skipped with exit 0`() {
+        host.pr =
+            host.pr.copy(
+                body =
+                    "This PR contains the following updates:\n\n| Package | Type | Update | Change |\n|---|---|---|---|\n" +
+                        "| [node](https://redirect.github.com/actions/node-versions) | uses-with | major | `22` → `24` |\n" +
+                        "| [node](https://nodejs.org) ([source](https://redirect.github.com/nodejs/node)) |  | major | `22` → `24` |\n",
+            )
+
+        val result = command().test("$repo --event $event $bot", envvars = token)
+
+        assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
+        assertEquals(0, result.statusCode)
     }
 
     @Test
@@ -373,6 +390,36 @@ class PrCommandTest {
     }
 
     @Test
+    fun `an empty npmrc or yarnrc means none, and a file is passed on`() {
+        host.pr = host.pr.copy(author = "mallory")
+        val npmrc = dir.resolve("ci.npmrc").also { it.writeText("") }
+        val yarnrc = dir.resolve("ci.yarnrc.yml").also { it.writeText("") }
+
+        command().test(
+            listOf(repo.toString(), "--event", event.toString()) + bot.split(" ") + listOf("--npmrc", "", "--yarnrc", ""),
+            envvars = token,
+        )
+        command().test("$repo --event $event $bot --npmrc $npmrc --yarnrc $yarnrc", envvars = token)
+        command().test(
+            "$repo --event $event $bot",
+            envvars =
+                token + mapOf("LECTOR_NPMRC" to npmrc.toString(), "LECTOR_YARNRC" to yarnrc.toString()),
+        )
+
+        assertEquals(listOf(null to null, npmrc to yarnrc, npmrc to yarnrc), registries)
+    }
+
+    @Test
+    fun `an npmrc or yarnrc that doesn't exist is a tool error with exit 2`() {
+        for ((option, name) in listOf("--npmrc" to "npmrc", "--yarnrc" to "yarnrc")) {
+            val result = command().test("$repo --event $event $bot $option ${dir.resolve("none")}", envvars = token)
+
+            assertContains(result.stderr, "Error: The $name ${dir.resolve("none")} is not a file")
+            assertEquals(2, result.statusCode)
+        }
+    }
+
+    @Test
     fun `a Gradle init script that doesn't exist is a tool error with exit 2`() {
         val result = command().test("$repo --event $event $bot --gradle-init ${dir.resolve("none.gradle")}", envvars = token)
 
@@ -467,6 +514,7 @@ class PrCommandTest {
         adapters = { config ->
             settings += config.mavenSettings
             inits += config.gradleInit
+            registries += config.npmrc to config.yarnrc
             listOf(adapter)
         },
         sources = { options ->

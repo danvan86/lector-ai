@@ -108,6 +108,18 @@ internal class PrCommand(
         envvar = "LECTOR_GRADLE_INIT",
         help = "Gradle init script, passed to every Gradle run, e.g. for a mirror. Empty for none.",
     ).path()
+    private val npmrc by option(
+        "--npmrc",
+        metavar = "<file>",
+        envvar = "LECTOR_NPMRC",
+        help = "User-level .npmrc for npm, pnpm, and Yarn classic, e.g. for a registry. Empty for none.",
+    ).path()
+    private val yarnrc by option(
+        "--yarnrc",
+        metavar = "<file>",
+        envvar = "LECTOR_YARNRC",
+        help = "User-level .yarnrc.yml for Yarn Berry, e.g. for a registry. Empty for none.",
+    ).path()
     private val mode by option(
         "--mode",
         metavar = "<mode>",
@@ -165,7 +177,11 @@ internal class PrCommand(
         ensure(settings?.isRegularFile() != false) { "Maven settings $settings is not a file" }
         val init = gradleInit?.takeIf { it.toString().isNotEmpty() }
         ensure(init?.isRegularFile() != false) { "Gradle init script $init is not a file" }
-        return adapters(BuildConfig(settings, init)).use { all ->
+        val npm = npmrc?.takeIf { it.toString().isNotEmpty() }
+        ensure(npm?.isRegularFile() != false) { "The npmrc $npm is not a file" }
+        val yarn = yarnrc?.takeIf { it.toString().isNotEmpty() }
+        ensure(yarn?.isRegularFile() != false) { "The yarnrc $yarn is not a file" }
+        return adapters(BuildConfig(settings, init, npm, yarn)).use { all ->
             val pipeline =
                 PrPipeline(
                     // The App's bot commits under its login, so its name is also the author of the report comment.

@@ -103,6 +103,28 @@ class VerifyCommandTest {
     }
 
     @Test
+    fun `--npmrc and --yarnrc are handed to the adapters`() {
+        val npmrc = repo.resolve("ci.npmrc").createFile()
+        val yarnrc = repo.resolve("ci.yarnrc.yml").createFile()
+
+        command(FakeAdapter()).test("$repo --npmrc $npmrc --yarnrc $yarnrc")
+
+        assertEquals(listOf(BuildConfig(npmrc = npmrc, yarnrc = yarnrc)), configsPassed)
+    }
+
+    @Test
+    fun `an npmrc or yarnrc that doesn't exist is a tool error with exit 2`() {
+        for ((option, name) in listOf("--npmrc" to "npmrc", "--yarnrc" to "yarnrc")) {
+            val result = command(FakeAdapter()).test("$repo $option ${repo.resolve("missing")}")
+
+            assertEquals("", result.stdout)
+            assertEquals("Error: The $name ${repo.resolve("missing")} is not a file\n", result.stderr)
+            assertEquals(2, result.statusCode)
+        }
+        assertEquals(emptyList(), configsPassed, "nothing is built")
+    }
+
+    @Test
     fun `a Gradle init script that doesn't exist is a tool error with exit 2`() {
         val result = command(FakeAdapter()).test("$repo --gradle-init ${repo.resolve("missing.gradle")}")
 
@@ -131,8 +153,8 @@ class VerifyCommandTest {
 
         assertEquals("", result.stdout)
         assertEquals(
-            "Error: No supported ecosystem in $repo. Supported: Maven (pom.xml at the root) and Gradle (settings.gradle(.kts) or " +
-                "build.gradle(.kts) at the root).\n",
+            "Error: No supported ecosystem in $repo. Supported: Maven (pom.xml at the root), Gradle (settings.gradle(.kts) or " +
+                "build.gradle(.kts) at the root), and TypeScript (package.json and tsconfig.json at the root).\n",
             result.stderr,
         )
         assertEquals(2, result.statusCode)
