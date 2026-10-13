@@ -130,9 +130,10 @@ class PrPipeline(
         val adapter = adapters.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in $repo")
         if (!GitWorkingTree.hasCommit(repo, pr.baseSha)) host.fetch(repo, pr, pr.baseSha)
         val base = GitBaseCommit.resolve(repo, pr.baseSha)
+        val context = RepositoryContext(repo, base, adapter)
         val update =
             try {
-                source.read(pr, RepositoryContext(repo, base, adapter))
+                source.read(pr, context)
             } catch (e: ToolError) {
                 host.comment(pr, PrComment.unreadable(e.message), create = true)
                 throw e
@@ -151,7 +152,7 @@ class PrPipeline(
                 }
         if (changes.isEmpty()) return skipped("the PR changes no version of the repository's ${adapter.ecosystem} packages")
         val policy = settings.mode ?: source.branchPolicy
-        return verifyFirst(PrRun(pr, repo, adapter, base, changes, update.releaseNotes, policy))
+        return verifyFirst(PrRun(pr, repo, adapter, base, context, changes, update.releaseNotes, policy))
     }
 
     /** The last trigger check, on the working tree, which must be the PR's head: whether that commit is the tool's own. */
@@ -187,11 +188,8 @@ class PrPipeline(
         val (pr, repo, adapter) = run
         val base = run.base
         val changes = run.changes
-        val lookups =
-            changes.zip(recipeBlockers(changes, adapter, base)).map { (change, blocker) ->
-                change to
-                    lookUp(change, blocker, adapter)
-            }
+        val blockers = recipeBlockers(changes, adapter.versionScheme, run.context::baseVersions)
+        val lookups = changes.zip(blockers).map { (change, blocker) -> change to lookUp(change, blocker, adapter) }
         val withoutRecipe = lookups.mapNotNull { (change, lookup) -> (lookup as? Lookup.Stopped)?.let { change to it.outcome } }
         val recipes =
             lookups
@@ -201,8 +199,8 @@ class PrPipeline(
         val commits = recipes.mapNotNull { it.commit }
         val afterRecipes = if (commits.isEmpty()) verification else attribute(adapter, repo, base)
         val recipeDiff = commits.joinToString("\n") { GitWorkingTree.diff(repo, it) }.ifEmpty { null }
-        val context = FixContext(changes, run.releaseNotes, recipeDiff)
-        val fixLoop = FixLoop(adapter, llm, base, settings.budgets, settings.identity).run(repo, context, afterRecipes)
+        val fixContext = FixContext(changes, run.releaseNotes, recipeDiff)
+        val fixLoop = FixLoop(adapter, llm, base, settings.budgets, settings.identity).run(repo, fixContext, afterRecipes)
         val anyCommit = commits.isNotEmpty() || fixLoop.fixes.isNotEmpty()
         return delivery.deliver(pr, repo, PrReport(changes, withoutRecipe, recipes, fixLoop, pushed = anyCommit), run.policy)
     }
@@ -243,6 +241,7 @@ class PrPipeline(
         val repo: Path,
         val adapter: EcosystemAdapter,
         val base: BaseCommit,
+        val context: SourceContext,
         val changes: List<DependencyChange>,
         val releaseNotes: String?,
         val policy: BranchPolicy,

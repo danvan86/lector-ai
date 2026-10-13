@@ -79,28 +79,41 @@ fun recipeBlocker(
     change: DependencyChange,
     adapter: EcosystemAdapter,
     base: BaseCommit?,
-): RecipeOutcome? = recipeBlockers(listOf(change), adapter, base).single()
+): RecipeOutcome? {
+    val baseVersions = base?.let { { it.checkout(resolvedVersions(adapter)::read) } }
+    return recipeBlockers(listOf(change), adapter.versionScheme, baseVersions).single()
+}
 
 /**
- * Rules 1 and 2 for each of [changes]: the outcome that stops its recipe, or null. Reads the base's versions once, and
- * only if a change is an upgrade: a PR can change hundreds of packages.
+ * Rules 1 and 2 for each of [changes]: the outcome that stops its recipe, or null. Calls [baseVersions] once, and only if
+ * a change is an upgrade: a PR can change hundreds of packages. It fails with a [ToolError] if the base's versions can't
+ * be read; null means there is no base.
  */
 fun recipeBlockers(
     changes: List<DependencyChange>,
-    adapter: EcosystemAdapter,
-    base: BaseCommit?,
+    versions: VersionScheme,
+    baseVersions: (() -> Map<String, String>)?,
 ): List<RecipeOutcome?> {
-    val upgrades = changes.map { isUpgrade(it, adapter.versionScheme) }
+    val upgrades =
+        changes.map {
+            it.fromVersion.isNotEmpty() && it.toVersion.isNotEmpty() &&
+                versions.compare(it.toVersion, it.fromVersion) > 0
+        }
     val ruleOne = upgrades.map { if (it) null else RecipeOutcome.NotAnUpgrade }
-    if (base == null || upgrades.none { it }) return ruleOne
-    val baseVersions = readVersions(adapter, base::checkout) { unreadable -> return ruleOne.map { it ?: unreadable } }
-    return changes.zip(ruleOne).map { (change, blocker) -> blocker ?: outdated(change, adapter.versionScheme, baseVersions) }
+    if (baseVersions == null || upgrades.none { it }) return ruleOne
+    val base =
+        try {
+            baseVersions()
+        } catch (e: ToolError) {
+            val unreadable = RecipeOutcome.VersionsUnreadable(e.message)
+            return ruleOne.map { it ?: unreadable }
+        }
+    return changes.zip(ruleOne).map { (change, blocker) -> blocker ?: outdated(change, versions, base) }
 }
 
-private fun isUpgrade(
-    change: DependencyChange,
-    versions: VersionScheme,
-) = change.fromVersion.isNotEmpty() && change.toVersion.isNotEmpty() && versions.compare(change.toVersion, change.fromVersion) > 0
+/** The adapter's resolved versions. Fails with a [ToolError] if its ecosystem can't read them. */
+private fun resolvedVersions(adapter: EcosystemAdapter) =
+    adapter.resolvedVersions ?: throw ToolError("${adapter.ecosystem} can't read resolved versions")
 
 /** Rule 2: the outcome that stops the recipe, or null if the PR is not outdated. */
 private fun outdated(
@@ -119,7 +132,7 @@ fun runRecipe(
     repo: Path,
 ): RecipeOutcome {
     val runner = adapter.recipeRunner ?: return RecipeOutcome.NoRecipeRunner
-    val before = readVersions(adapter, { it(repo) }) { return it }
+    val before = readVersions(adapter, repo) { return it }
     val run =
         try {
             runner.run(repo, recipe)
@@ -144,7 +157,7 @@ private fun checkVersions(
     repo: Path,
     before: Map<String, String>,
 ): RecipeOutcome {
-    val after = readVersions(adapter, { it(repo) }) { return it }
+    val after = readVersions(adapter, repo) { return it }
     val changes = versionChanges(before, after)
     val downgrades = downgrades(changes, adapter.versionScheme)
     if (downgrades.isNotEmpty()) return RecipeOutcome.DowngradeDetected(downgrades)
@@ -167,24 +180,17 @@ internal fun downgrades(
     versions: VersionScheme,
 ): List<VersionChange> = changes.filter { it.before != null && it.after != null && versions.compare(it.after, it.before) < 0 }
 
-/**
- * Reads the resolved versions in the directory that [where] hands out. If they can't be read, calls [unreadable], which
- * must leave the caller.
- */
+/** Reads the resolved versions of [repo]. If they can't be read, calls [unreadable], which must leave the caller. */
 private inline fun readVersions(
     adapter: EcosystemAdapter,
-    where: ((Path) -> Map<String, String>) -> Map<String, String>,
+    repo: Path,
     unreadable: (RecipeOutcome.VersionsUnreadable) -> Nothing,
-): Map<String, String> {
-    val resolved =
-        adapter.resolvedVersions
-            ?: unreadable(RecipeOutcome.VersionsUnreadable("${adapter.ecosystem} can't read resolved versions"))
-    return try {
-        where(resolved::read)
+): Map<String, String> =
+    try {
+        resolvedVersions(adapter).read(repo)
     } catch (e: ToolError) {
         unreadable(RecipeOutcome.VersionsUnreadable(e.message))
     }
-}
 
 /** Why [change] got no recipe, or why its recipe's result was discarded. Null if it was applied. */
 fun RecipeOutcome.reason(change: DependencyChange): String? =

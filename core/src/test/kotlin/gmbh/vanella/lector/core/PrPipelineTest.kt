@@ -102,6 +102,7 @@ class PrPipelineTest {
     @Test
     fun `a source can read the resolved versions of the base, in a worktree that is removed afterwards, and of the head`() {
         val host = host(pr())
+        val adapter = FakeAdapter()
         val versions = mutableListOf<Map<String, String>>()
         val source =
             object : UpdateSource by FakeSource("bot", update = SourceUpdate(listOf(lib), null)) {
@@ -116,13 +117,14 @@ class PrPipelineTest {
                 }
             }
 
-        pipeline(host, sources = listOf(source)).run(repo)
+        pipeline(host, adapter = adapter, sources = listOf(source)).run(repo)
 
         assertEquals(
             listOf(mapOf(lib.`package` to "1.0", other.`package` to "3.0"), mapOf(lib.`package` to "2.0", other.`package` to "4.0")),
             versions,
         )
         assertEquals(1, git("worktree", "list").lines().count { it.isNotEmpty() })
+        assertEquals(1, adapter.versionReads.count { it != repo }, "the recipe step reuses the base's versions the source read")
     }
 
     @Test
@@ -826,6 +828,7 @@ class PrPipelineTest {
     ) : EcosystemAdapter {
         val recipeRuns = mutableListOf<String>()
         var verifies = 0
+        val versionReads = mutableListOf<Path>()
 
         override val ecosystem = "test"
         override val versionScheme = DottedVersions
@@ -850,6 +853,7 @@ class PrPipelineTest {
         override val resolvedVersions =
             if (readsVersions) {
                 ResolvedVersions { dir ->
+                    versionReads.add(dir)
                     dir.resolve("pom.xml").readLines().associate { it.substringBefore(' ') to it.substringAfter(' ') }
                 }
             } else {
