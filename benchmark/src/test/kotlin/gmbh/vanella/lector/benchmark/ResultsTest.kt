@@ -82,7 +82,7 @@ class ResultsTest {
         assertEquals("A. Reviewer", review.reviewer)
         val first = review.runs.first()
         assertEquals(RunKey("guava-21", Mode.FIX_LOOP_ONLY, 1), first.key)
-        assertEquals(true, first.acceptedUnchanged)
+        assertTrue(first.acceptedUnchanged)
         assertEquals("Uses MoreObjects.firstNonNull, as the release notes say", first.reason)
     }
 

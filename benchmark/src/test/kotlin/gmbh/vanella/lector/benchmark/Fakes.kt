@@ -103,14 +103,15 @@ internal class FakeAdapter(
     }
 }
 
-/** Answers with the given functions in order, and records every request. */
+/** Answers with the given functions in order, and records every request. A request [fits] if the function says so. */
 internal class ScriptedLlm(
     vararg answers: (FixRequest) -> Proposal,
+    private val fits: (FixRequest) -> Boolean = { true },
 ) : LlmClient {
     val requests = mutableListOf<FixRequest>()
     private val answers = ArrayDeque(answers.toList())
 
-    override fun fits(request: FixRequest) = true
+    override fun fits(request: FixRequest) = fits.invoke(request)
 
     override fun propose(request: FixRequest): Proposal {
         requests += request

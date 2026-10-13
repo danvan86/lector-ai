@@ -13,7 +13,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class BenchmarkCommandTest {
     @TempDir
@@ -163,7 +162,8 @@ class BenchmarkCommandTest {
 
     @Test
     fun `the real harness loads the recipe index and the Maven adapter`() {
-        assertTrue(realHarness(URI("http://localhost:11434"), "m", "abc", null) is Harness)
+        // Fails if the bundled recipe index or the Maven adapter can't be loaded.
+        realHarness(URI("http://localhost:11434"), "m", "abc", null)
     }
 
     @Test

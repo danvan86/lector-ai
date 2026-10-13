@@ -14,7 +14,9 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
 
@@ -61,7 +63,7 @@ class HarnessTest {
 
         assertEquals(RunStatus.VALID, result.status)
         val metrics = metrics(result)
-        assertEquals(false, metrics.green)
+        assertFalse(metrics.green)
         assertEquals(Stages(0, 2, 0), metrics.before)
         assertEquals(Stages(0, 1, 0), metrics.after)
         assertEquals(listOf(RecipeRecord("$LIB 1.0 -> 2.0", UPGRADE.name, true, "applied")), metrics.recipes)
@@ -78,7 +80,7 @@ class HarnessTest {
 
         val metrics = metrics(harness(adapter).run(case, Mode.RECIPE_ONLY, 1, work))
 
-        assertEquals(true, metrics.green)
+        assertTrue(metrics.green)
         assertEquals(Stages(0, 0, 0), metrics.after)
         assertEquals(4, metrics.recipeLines)
     }
@@ -89,7 +91,7 @@ class HarnessTest {
 
         val metrics = metrics(harness(llm = llm).run(case, Mode.FIX_LOOP_ONLY, 2, work))
 
-        assertEquals(true, metrics.green)
+        assertTrue(metrics.green)
         assertEquals(emptyList(), metrics.recipes)
         assertEquals(0, metrics.recipeLines)
         assertEquals(4, metrics.fixLines)
@@ -107,7 +109,7 @@ class HarnessTest {
 
         assertEquals(RunKey("lib-2", Mode.RECIPE_AND_FIX_LOOP, 3), result.key)
         val metrics = metrics(result)
-        assertEquals(true, metrics.green)
+        assertTrue(metrics.green)
         assertEquals(Stages(0, 2, 0), metrics.before)
         assertEquals(Stages(0, 0, 0), metrics.after)
         assertEquals(2, metrics.recipeLines)
@@ -126,11 +128,11 @@ class HarnessTest {
 
         assertEquals(2, metrics.attempts, "two attempts in a row without progress stop the loop")
         assertEquals("no_progress", metrics.stopReason)
-        assertEquals(false, metrics.green)
+        assertFalse(metrics.green)
     }
 
     @Test
-    fun `a rejection is counted by guardrail rule, and a cut request is counted`() {
+    fun `a rejection is counted by guardrail rule`() {
         val tooLarge = Edit("App.java", "old(1);\n        old(2);", "\n".repeat(60))
         val llm = ScriptedLlm(edits(tooLarge), edits(tooLarge))
 
@@ -138,6 +140,22 @@ class HarnessTest {
 
         assertEquals(mapOf("diff-size" to 2), metrics.rejectionsPerRule)
         assertEquals(0, metrics.requestsWithDiagnosticsLeftOut)
+    }
+
+    @Test
+    fun `a request that leaves diagnostics out because they don't fit is counted`() {
+        val llm =
+            ScriptedLlm(
+                edits(Edit("App.java", "old(1);", "fixed(1);")),
+                edits(Edit("App.java", "old(2);", "fixed(2);")),
+                fits = { it.diagnostics.size <= 1 },
+            )
+
+        val metrics = metrics(harness(llm = llm).run(case, Mode.FIX_LOOP_ONLY, 1, work))
+
+        assertEquals(1, metrics.requestsWithDiagnosticsLeftOut)
+        assertEquals(2, metrics.acceptedFixes)
+        assertTrue(metrics.green)
     }
 
     @Test
@@ -168,7 +186,7 @@ class HarnessTest {
     fun `without tests run, no failure left is not green`() {
         val adapter = FakeAdapter(rewrite = { it.replace("old(", "fixed(") }, testsRun = null)
 
-        assertEquals(false, metrics(harness(adapter).run(case, Mode.RECIPE_ONLY, 1, work)).green)
+        assertFalse(metrics(harness(adapter).run(case, Mode.RECIPE_ONLY, 1, work)).green)
     }
 
     @Test
@@ -179,7 +197,7 @@ class HarnessTest {
 
         val metrics = metrics(harness(adapter).run(case, Mode.RECIPE_ONLY, 1, work))
 
-        assertEquals(true, metrics.green)
+        assertTrue(metrics.green)
         assertEquals(1, metrics.preExisting)
         assertEquals(1, metrics.flaky)
         assertEquals(0, metrics.unattributed)
