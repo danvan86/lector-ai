@@ -5,10 +5,10 @@ Milestone: [M3](../features.md#m3--fix-loop-cli-only-no-ci-yet-) · Spec: [`m3-f
 > **Summary for agents**
 >
 > - `lector heal <repo> --package … --from … --to …` runs M2's recipe step, commits the recipe's result, then runs `FixLoop` in `core`: one cluster of diagnostics caused by the update per attempt, a grounded `FixRequest` to the `LlmClient` port, search/replace `Edit`s back, applied, verified, and either committed or reset. The exit code follows the final verification, like `verify`. Since M5, `lector pr` runs the same `FixLoop` for every change of a PR ([PR pipeline](pr-pipeline.md)).
-> - Ports: `LlmClient.propose(FixRequest): Proposal` (`LlmClient.kt`), and on `EcosystemAdapter` `ground`, `clusterKey`, `isBuildFile`. The only implementations are `OllamaClient` in the new module `llm` and `MavenAdapter` (`ClusterKeys`, `JavapGrounding`). `core` knows no LLM vendor and no language.
+> - Ports: `LlmClient.propose(FixRequest): Proposal` and, since M6, `LlmClient.fits(FixRequest)` (`LlmClient.kt`), and on `EcosystemAdapter` `ground`, `clusterKey`, `isBuildFile`. The only implementations are `OllamaClient` in the new module `llm` and `MavenAdapter` (`ClusterKeys`, `JavapGrounding`). `core` knows no LLM vendor and no language.
 > - An attempt is accepted only if `Progress` (build errors without a location, compile errors, test failures, compared in that order) gets lower. Accepted: one local commit, as the `CommitIdentity` the loop gets (`lector` for `heal`, the GitHub App's bot for `pr`), with the edited, tracked files only. Anything else: `GitWorkingTree.reset()`, also on any exception or error inside the attempt. Since M4, every attempt passes the [guardrails](guardrails.md) before it is verified.
 > - The prompt's limits live in `Prompt` (`CONTEXT_TOKENS`, `ANSWER_TOKENS`, `MAX_CHARS`), the answer's structure in `FixSchema`, the budget defaults in `Budgets`, the options and the default model `DEFAULT_MODEL` in `FixLoopOptions.kt` (shared by `heal` and `pr`), and the Ollama image for the real-model test in the `FROM` line of `docker/ollama/Dockerfile`.
-> - Easiest rules to break: never send diagnostics that aren't `causedByUpdate` to the model; never trim the errors or the code in a request; never repair an edit that doesn't apply (rule 4); never stage more than the edited files in a fix commit (`git add --all` would take build output).
+> - Easiest rules to break: never send diagnostics that aren't `causedByUpdate` to the model; never cut a diagnostic or its code: a request carries whole diagnostics, as many as fit (M6); never repair an edit that doesn't apply (rule 4); never stage more than the edited files in a fix commit (`git add --all` would take build output).
 
 ## Overview
 
@@ -33,14 +33,14 @@ flowchart LR
 | Module | File | Role |
 |---|---|---|
 | `core` | `Edit.kt` | `Edit(file, search, replace)` and `applyEdits(repo, edits)`: returns the rejection reason, or null when every edit applied. `repoFile()` keeps edits inside the repository and out of `.git`. |
-| | `LlmClient.kt` | The port `LlmClient.propose(FixRequest): Proposal`; `FixRequest` (with `changes`, one or a group, since M5), `PreviousAttempt`, `Proposal.Edits(edits, rationale)` and `Proposal.Invalid(reason)`. |
+| | `LlmClient.kt` | The port: `propose(FixRequest): Proposal`, and `fits(FixRequest)` (M6), whether the parts that are never trimmed fit into the context; `FixRequest` (with `changes`, one or a group, since M5), `PreviousAttempt`, `Proposal.Edits(edits, rationale)` and `Proposal.Invalid(reason)`. |
 | | `EcosystemAdapter.kt` | Grew by `ground(repo, change, diagnostics)`, `clusterKey(diagnostic)`, and `isBuildFile(file)`. |
 | | `Cluster.kt` | `Cluster(key, diagnostics)`, `clusters(diagnostics, adapter)` in fix order, and `Progress`, the stage tuple. |
 | | `Snippet.kt` | `Snippet(file, firstLine, lastLine, text)` and `codeSnippets(repo, diagnostics, buildFiles, anchors)`: ±40 lines per error, merged per file. |
-| | `FixLoop.kt` | `FixLoop(adapter, llm, base, budgets, identity).run(repo, context, initial)`, `Budgets`, `FixContext(changes, releaseNotes, recipeDiff)`, `Attempt`, `AttemptOutcome` (`Accepted`, `Rejected`), `StopReason` (with its `description`), `FixLoopResult` (with `fixes` and `rejectionsPerRule()`). |
+| | `FixLoop.kt` | `FixLoop(adapter, llm, base, budgets, identity).run(repo, context, initial)`, `Budgets`, `FixContext(changes, releaseNotes, recipeDiff)`, `Attempt` (with `diagnosticsLeftOut`, M6), `AttemptOutcome` (`Accepted`, `Rejected`), `StopReason` (with its `description`), `FixLoopResult` (with `fixes`, `rejectionsPerRule()`, and `requestsWithDiagnosticsLeftOut`). |
 | | `GitWorkingTree.kt` | Grew by `trackedFiles`, `commit(repo, message, files, identity)`, and `diff(repo, commit)`. `CommitIdentity.TOOL` (`lector`, `lector@localhost`) is the default identity; `SHORT_COMMIT` (7) is the hash length in reports. |
 | | `RecipeStep.kt` | `versionChanges()` and `downgrades()` are shared with the loop's downgrade check. |
-| `llm` | `OllamaClient.kt` | The `LlmClient`: one `POST /api/chat` per attempt with the JDK `HttpClient`. Connect timeout 30 s, answer timeout 15 min. |
+| `llm` | `OllamaClient.kt` | The `LlmClient`: one `POST /api/chat` per attempt with the JDK `HttpClient`. Connect timeout 30 s, answer timeout 15 min. `fits()` builds the prompt and checks it against `Prompt.fits`, without a request. |
 | | `Prompt.kt` | The system prompt, the user prompt with trimming, and the context limits. |
 | | `FixSchema.kt` | The answer's JSON schema (`analysis`, `rationale`, `edits`) and `parse()`, which strips code fences and turns every mismatch into `Proposal.Invalid`. |
 | `ecosystems:jvm` | `ClusterKeys.kt` | Cluster keys from javac, kotlinc, and Maven messages; `missingSymbol()` for grounding. |
@@ -105,7 +105,7 @@ The recipe commit's subject is `Apply recipe <recipe name>`, its body `For <pack
 
 ```mermaid
 flowchart TB
-    req["FixRequest<br/>(temperature 0, or 0.3 on a retry)"] --> propose["llm.propose()"]
+    req["FixRequest: the cluster's diagnostics that fit<br/>(temperature 0, or 0.3 on a retry)"] --> propose["llm.propose()"]
     propose --> invalid{"Proposal.Invalid<br/>or no edits?"}
     invalid -- yes --> rej["Rejected<br/>GitWorkingTree.reset()"]
     invalid -- no --> scope{"scope guardrail<br/>(M4)"}
@@ -132,7 +132,7 @@ flowchart TB
 | Downgrades | Only if an edit touched a build file. `downgrades(versionChanges(before, after))`, the PR's own package included. Removing a package is not a downgrade (review D2). | `the edits move packages to lower versions: …` |
 | Verify | M1's `attribute()` with the base commit: compile stage first, tests only once compile is clean. | — |
 | Progress | `Progress.of(after) < Progress.of(before)`, stage by stage. 1/0/0 → 0/50/0 is progress; 0/0/3 → 0/1/0 is not. | `no progress: <before> -> <after>` plus the first ten errors after the edits, with their whole message |
-| Commit | Subject: the rationale's first non-blank line, else `Fix <cluster>`. Body: `Addresses:` and the cluster's diagnostics. Staged: the edited files that Git tracks (an edit to an ignored file is applied but not committed). | — |
+| Commit | Subject: the rationale's first non-blank line, else `Fix <cluster>`. Body: `Addresses:` and the diagnostics the request carried. Staged: the edited files that Git tracks (an edit to an ignored file is applied but not committed). | — |
 
 Any `Throwable` inside `judge` (Maven's own one-hour timeout, a failing `git`, a parser that doesn't load) resets the tree and is rethrown: `heal` exits `2`, and the commits made so far stay. The one exception is a `ProcessTimedOut` when the time budget is used up: the attempt is rejected (`the builds ran past the time budget: …`), the tree reset, and the loop stops with `TIME_BUDGET`. A `ToolError` from `propose` (Ollama unreachable) happens before any edit.
 
@@ -152,11 +152,13 @@ The time budget is also the deadline of an attempt's builds and test runs (M5): 
 
 ## The fix request
 
-`FixRequest` carries the changes (one for `heal`, every change of the PR for `pr`), the cluster's diagnostics, `grounding` (the adapter's grounding for each change, joined), `snippets`, `releaseNotes` (`--release-notes <file>`, or the release notes in the PR body), `recipeDiff` (the diff of the recipe commits), `previousAttempts` (the rejected attempts on this cluster with their reason), and the temperature: `0.0` on a cluster's first attempt, `0.3` on a retry, because the same prompt at temperature 0 gives the same answer.
+`FixRequest` carries the changes (one for `heal`, every change of the PR for `pr`), the cluster's diagnostics that fit (below), `grounding` (the adapter's grounding for each change, joined), `snippets`, `releaseNotes` (`--release-notes <file>`, or the release notes in the PR body), `recipeDiff` (the diff of the recipe commits), `previousAttempts` (the rejected attempts on this cluster with their reason), and the temperature: `0.0` on a cluster's first attempt, `0.3` on a retry, because the same prompt at temperature 0 gives the same answer.
 
 **Snippets** (`codeSnippets`): ±40 lines around each error, overlapping windows in a file merged; an error without a line gets the first 81 lines. A build error without a location gets, from every tracked build file, the window around the first line that contains one of the new versions. The enclosing method is not detected (that needs tree-sitter, M4).
 
-**Prompt** (`Prompt.user`): intro (`The update of <package> from <from> to <to> broke this code.`, every change named), `## Errors`, `## Code`, then the optional parts `## API of the new version`, `## Release notes`, `## Changes the recipe already made` (a `diff` block), and last `## Earlier attempts that failed` with each attempt's edits as JSON. The budget is `MAX_CHARS = (CONTEXT_TOKENS − ANSWER_TOKENS) × 3` characters, minus the system prompt. The optional parts are trimmed in that order of priority and marked `[trimmed to fit the context]`; a part with less than 200 characters of room is left out. Errors, code, and earlier attempts are never trimmed. If they alone don't fit, `OllamaClient` logs a warning and sends the request anyway; Ollama then cuts it (review D3).
+**Prompt** (`Prompt.user`): intro (`The update of <package> from <from> to <to> broke this code.`, every change named), `## Errors`, `## Code`, then the optional parts `## API of the new version`, `## Release notes`, `## Changes the recipe already made` (a `diff` block), and last `## Earlier attempts that failed` with each attempt's edits as JSON. The budget is `MAX_CHARS = (CONTEXT_TOKENS − ANSWER_TOKENS) × 3` characters, minus the system prompt. The optional parts are trimmed in that order of priority and marked `[trimmed to fit the context]`; a part with less than 200 characters of room is left out. Errors, code, and earlier attempts are never trimmed.
+
+**Diagnostics that fit** (M6, M3 review D3): before each attempt, `FixLoop` asks `llm.fits()` for the whole cluster, and if that doesn't fit, for its first 2, 3, … diagnostics (`firstThatFit`), each with its snippets and the earlier attempts, but without grounding, which the client trims anyway and which can take a process per change to build. The request carries the longest start that fits, at least the first diagnostic. The rest come back in a later round, because clusters are rebuilt after every accepted attempt. `Attempt.diagnosticsLeftOut` counts what was left out; the benchmark reports `requestsWithDiagnosticsLeftOut`, the `heal` and `pr` reports don't show it. If a single diagnostic with its code doesn't fit, `OllamaClient` logs a warning and sends it anyway; Ollama then cuts it.
 
 **Ollama request** (`OllamaClient`): `POST <url>/api/chat` with `model`, `stream: false`, `format` = `FixSchema.SCHEMA`, `options` `num_ctx` 16384, `num_predict` 3072, and the temperature, and two messages: `Prompt.SYSTEM` and the user prompt. A status other than 200, a timeout, or a connection error is a `ToolError`. A body without `message.content`, or content that doesn't match the schema, is `Proposal.Invalid`. The schema puts `analysis` first, so the model reasons before it writes edits; the loop ignores it.
 
@@ -216,8 +218,8 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
-| Unit, `core` | `test` | The loop with a fake `LlmClient` and a fake adapter on a temporary Git repository: accept and commit, reject and reset, downgrades, progress tuple, cluster order, every budget, a build stopped by the time budget, several changes and the commit identity, temperatures, retry feedback, build output kept out of commits, reset on a `ToolError`. Edit application and snippets on temp files. | `FixLoopTest`, `ClusterTest`, `EditTest`, `SnippetTest`, `GitWorkingTreeTest` |
-| Unit, `llm` | `test` | The client against a JDK `HttpServer`: endpoint, `format`, `num_ctx`, temperature, fences, invalid answers, status and connection errors. Prompt layout and trimming. | `OllamaClientTest`, `PromptTest` |
+| Unit, `core` | `test` | The loop with a fake `LlmClient` and a fake adapter on a temporary Git repository: accept and commit, reject and reset, downgrades, progress tuple, cluster order, every budget, a build stopped by the time budget, a cluster that doesn't fit, several changes and the commit identity, temperatures, retry feedback, build output kept out of commits, reset on a `ToolError`. Edit application and snippets on temp files. | `FixLoopTest`, `ClusterTest`, `EditTest`, `SnippetTest`, `GitWorkingTreeTest` |
+| Unit, `llm` | `test` | The client against a JDK `HttpServer`: endpoint, `format`, `num_ctx`, temperature, fences, invalid answers, status and connection errors; `fits` without a request. Prompt layout and trimming. | `OllamaClientTest`, `PromptTest` |
 | Unit, `ecosystems:jvm` | `test` | Cluster keys on captured javac, kotlinc 2 and 1.9, and Maven output (`maven-output/*.log`); grounding with the real `javap` on JARs compiled in the test (`TestJars`). | `ClusterKeysTest`, `JavapGroundingTest` |
 | Unit, `cli` | `test` | `heal` through Clikt's `test()` with a fake `LlmClient` factory: commit order, text and JSON reports, exit codes, options and their validation. | `HealCommandTest`, `FixLoopReportTest` |
 | End-to-end | `endToEndTest` | The start script: `--help` lists `verify`, `migrate`, `heal`, and `pr`; `heal` without `--package` exits `2`; a green project prints one JSON object without asking the model; an unreachable Ollama exits `2`. | `LectorEndToEndTest` |
@@ -238,5 +240,5 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
 | Snippets are ±40 lines, not the enclosing method | Needs a parser; M4's `LanguageSupport` reports methods, but snippets don't use it yet. | Open |
 | The time budget bounds builds and test runs, not the model's answer | An Ollama request has its own 15-minute timeout; the budget is checked again before the next one. | — |
 | Removing the PR's own package is not a downgrade | Open decision (review D2); M4 left the rule as it is. | Open |
-| Errors and code that don't fit are sent in full, with a warning | Open decision: send only as many diagnostics as fit (review D3). | M6 |
+| A request carries as many whole diagnostics as fit, not every diagnostic cut short | A request Ollama cuts silently shows the model part of the errors, and nobody knows which part (M3 review D3, decided in M6). Linear search: it stops at the first diagnostic that doesn't fit. | — |
 | `heal` commits stay local, identity `lector` | `heal` is the CLI's step; pushing is `lector pr`'s, as the GitHub App's bot ([PR pipeline](pr-pipeline.md)). | — |

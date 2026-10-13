@@ -4,7 +4,7 @@ Milestone: [M0](../features.md#m0--project-skeleton-) · Spec: [`m0-project-skel
 
 > **Summary for agents**
 >
-> - Seven modules: `core` (data model, ports, and pipeline, depends on nothing), `recipes` (recipe index), `llm` (Ollama client), `sources` (Renovate adapter), `git` (GitHub adapter), `ecosystems:jvm` (Maven adapter), each depending on `core` only, and `cli` (the `lector` command, depends on all six). Every module applies the convention plugin `lector.kotlin-conventions` from `buildSrc`. Library and plugin versions are in `gradle/libs.versions.toml`, the base images' in the Dockerfiles under `docker/`.
+> - Eight modules: `core` (data model, ports, and pipeline, depends on nothing), `recipes` (recipe index), `llm` (Ollama client), `sources` (Renovate adapter), `git` (GitHub adapter), `ecosystems:jvm` (Maven adapter), each depending on `core` only, `cli` (the `lector` command, depends on all six), and `benchmark` (M6, never shipped; see [Benchmark](benchmark.md)). Every module applies the convention plugin `lector.kotlin-conventions` from `buildSrc`. Library and plugin versions are in `gradle/libs.versions.toml`, the base images' in the Dockerfiles under `docker/`.
 > - `./gradlew build` is the single gate: compile, unit tests, end-to-end tests, ktlint, detekt, Kover. It fails on any finding.
 > - The CLI contract: stdout carries only command output, logs go to stderr through SLF4J, and `LectorCommand.execute()` sets the exit code (`0` for success, help, and version; `2` for invalid usage, because `1` means "caused by the update").
 > - The version is defined once, in `gradle.properties`. The build writes it into a resource, and `AppVersion` reads it at runtime.
@@ -42,10 +42,11 @@ flowchart LR
 | `ecosystems:jvm` | The Maven adapter (M1, recipe runner and resolved versions since M2, cluster keys and `javap` grounding since M3, tree-sitter language support, scope, and build-file blocklist since M4). | `core`, `maven-artifact`, `tree-sitter` with the Java and Kotlin grammars (JNI). |
 | `sources` | Update-source adapters (M5): `RenovateSource` reads the changes and release notes from a Renovate PR's body. | `core`, SLF4J API. |
 | `git` | Git host adapters (M5): `GitHubHost` reads the event, comments, labels, fetches, and pushes. | `core`, kotlinx-serialization-json, SLF4J API. No GitHub client: the JDK `HttpClient` and `git`. |
+| `benchmark` | The benchmark harness, corpus, and report (M6). Not shipped: no module depends on it. See [Benchmark](benchmark.md). | `core`, `recipes`, `llm`, `ecosystems:jvm`, Clikt, kotlinx-serialization-json with its compiler plugin, SLF4J API (`slf4j-simple` at runtime). |
 | `cli` | `lector` command, version lookup, logging setup. The composition root. | `core`, `recipes`, `llm`, `sources`, `git`, `ecosystems:jvm`, Clikt, kotlinx-serialization-json, SLF4J API (`slf4j-simple` at runtime). |
-| `buildSrc` | The convention plugin. Not a product module. | Kotlin, ktlint, detekt, and Kover Gradle plugins. |
+| `buildSrc` | The convention plugin. Not a product module. | Kotlin, ktlint, detekt, and Kover Gradle plugins; the Kotlin serialization plugin on its classpath, for `benchmark`. |
 
-The dependency direction from the [concept](../concept.md#21-ports-and-adapters) holds: `cli → ecosystems:jvm → core`, `cli → recipes → core`, `cli → llm → core`, `cli → sources → core`, `cli → git → core`, and `cli → core`, never the other way. New adapter modules join the same way. `action/` and `docker/` are not Gradle modules: they ship the start script as a container image and a GitHub Action ([PR pipeline](pr-pipeline.md)).
+The dependency direction from the [concept](../concept.md#21-ports-and-adapters) holds: `cli → ecosystems:jvm → core`, `cli → recipes → core`, `cli → llm → core`, `cli → sources → core`, `cli → git → core`, and `cli → core`, never the other way. New adapter modules join the same way. `benchmark` sits beside `cli`: it uses `core` and the adapters, and nothing uses it. `action/` and `docker/` are not Gradle modules: they ship the start script as a container image and a GitHub Action ([PR pipeline](pr-pipeline.md)).
 
 ```mermaid
 flowchart TB
@@ -62,6 +63,10 @@ flowchart TB
     cli --> git
     later["later: more ecosystems,<br/>sources, and hosts"] -.-> core
     cli -.-> later
+    bench["benchmark<br/>(not shipped)"] --> core
+    bench --> jvm
+    bench --> recipes
+    bench --> llm
 ```
 
 ## Build conventions
@@ -110,7 +115,7 @@ flowchart LR
 |---|---|---|---|
 | ktlint | `ktlint*SourceSetCheck`, `ktlintKotlinScriptCheck` | `*.kt` in every source set, `*.kts` in every module, the root, and `buildSrc` | `ktlint_official` from `.editorconfig`. Fix with `./gradlew ktlintFormat`. |
 | detekt 2.x | `detektMain`, `detektTest` (type resolution), plus `detektGenerator` in `recipes` | Kotlin sources | `warningsAsErrors`. Forbidden: `print`/`println` (also `System.out`, including `printf`, `format`, `append`, `write`), process exit outside `main`, `else` on sealed types. The plain `detekt` task is disabled because it only repeats the findings. |
-| Kover | `koverVerify` | In-process tests per module | 100 % lines and branches. `MainKt` is excluded because `main` exits the process; the end-to-end tests run it. |
+| Kover | `koverVerify` | In-process tests per module | 100 % lines and branches. `*.MainKt` is excluded because `main` exits the process; the end-to-end tests run the CLI's, the benchmark workflow the benchmark's. |
 | Tests | `test`, `endToEndTest` | Unit and end-to-end. The opt-in `:cli:integrationTest` and `:cli:realModelTest` are not part of `check`. | Every test must pass. |
 | Matching versions | `:recipes:checkRewritePluginVersion`, `checkActionImage` | The rewrite plugin and the recipe BOM; the action's image tag and `version` | See [Build conventions](#build-conventions). |
 
@@ -209,6 +214,7 @@ flowchart LR
 |---|---|---|
 | Build workflow | `.github/workflows/build.yml` | On every pull request and on pushes to `main`: JDK 25 via `actions/setup-java`, Gradle via `gradle/actions/setup-gradle`, then `./gradlew build`. This builds our own tool; it is not the product pipeline. |
 | Real-model workflow | `.github/workflows/real-model.yml` | Manual (`workflow_dispatch`, optional `model`) and nightly: `./gradlew :cli:realModelTest`. Never on push or pull requests. |
+| Benchmark workflow | `.github/workflows/benchmark.yml` | Manual only (`workflow_dispatch`, optional `cases`): one job per case, mode, and repetition with the 7B Ollama image as a service, then a merged `results.json` and `report.md` as an artifact. See [Benchmark](benchmark.md). |
 | Release workflow | `.github/workflows/release.yml` | On a version tag `v*`: checks that the tag is `v<version>` and that the MSAL check in `docs/licensing.md` is done, then publishes the tool image and the Ollama images to GHCR. See [PR pipeline](pr-pipeline.md). |
 | Dependabot | `.github/dependabot.yml` | Weekly updates for the `gradle`, `github-actions`, and `docker` ecosystems. Gradle updates come through the version catalog, Docker updates through the Dockerfiles in `docker/`. Major updates of `eclipse-temurin` are ignored: the tool image has one stage per JDK release. |
 | License | `LICENSE` | Apache 2.0. |
