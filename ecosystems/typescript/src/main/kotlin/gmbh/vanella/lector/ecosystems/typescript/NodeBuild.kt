@@ -4,6 +4,10 @@ import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.Severity
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -17,9 +21,19 @@ import kotlin.io.path.readBytes
 import kotlin.io.path.readText
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TimeSource
 
+private val logger = LoggerFactory.getLogger(NodeBuild::class.java)
+
 private val NODE_TIMEOUT = 1.hours
+private val PNP_TIMEOUT = 2.minutes
+
+// Prints where Plug'n'Play keeps each named package for an importer: `{"dequal": "/…/cache/dequal-npm-….zip/node_modules/dequal/"}`.
+private const val PNP_SCRIPT =
+    "const pnp = require('pnpapi'); const [issuer, ...names] = process.argv.slice(1); const found = {}; " +
+        "for (const name of names) { try { found[name] = pnp.resolveToUnqualified(name, issuer); } catch {} } " +
+        "console.log(JSON.stringify(found));"
 private const val OUTPUT_TAIL_LINES = 20
 
 // The variables of Node's package managers: registries, credentials, proxies, and Corepack's own (spec section 2).
@@ -111,6 +125,30 @@ internal class NodeBuild(
         val failure = session.install(frozen = false)
         if (failure != null) return LockfileUpdate.Failed(failure.message)
         return LockfileUpdate.Updated(if (lockfile.readText() == before) emptyList() else listOf(session.project.manager.lockfile))
+    }
+
+    /**
+     * Where Yarn's Plug'n'Play keeps the packages [names] for an importer in the directory [issuer] (spec section 5): one
+     * `yarn node` call to the PnP API, the only Node call outside install, build, and tests. A location may be inside a
+     * zip archive. Packages the importer can't reach are left out; so is everything if the call fails.
+     */
+    fun pnpLocations(
+        repo: Path,
+        issuer: Path,
+        names: List<String>,
+    ): Map<String, String> {
+        val session = Session(repo.toRealPath(), PNP_TIMEOUT)
+        val result = session.run(listOf("yarn", "node", "-e", PNP_SCRIPT, "$issuer/") + names, session.root)
+        val json = result.output.lines().lastOrNull { it.startsWith("{") }
+        // A line that starts with `{` and parses is an object.
+        val locations =
+            try {
+                Json.parseToJsonElement(json.orEmpty()).jsonObject
+            } catch (_: SerializationException) {
+                null
+            }
+        if (result.exitCode != 0 || locations == null) logger.warn("Can't locate {} through Plug'n'Play: {}", names, result.output.trim())
+        return locations.orEmpty().mapNotNull { (name, location) -> location.text()?.let { name to it } }.toMap()
     }
 
     @OptIn(ExperimentalPathApi::class)
@@ -248,7 +286,7 @@ internal class NodeBuild(
         /** The package [path] (relative to the root) is in: the one with the longest directory that contains it. */
         fun owner(path: String) = project.packages.filter { it.dir.isEmpty() || path.startsWith("${it.dir}/") }.maxBy { it.dir.length }
 
-        private fun run(
+        fun run(
             command: List<String>,
             dir: Path,
             extra: Map<String, String> = emptyMap(),

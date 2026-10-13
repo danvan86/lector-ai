@@ -18,6 +18,8 @@ class SemverTest {
     @Test
     fun `build metadata, a leading v, and missing numbers don't change the order`() {
         assertEquals(0, SemverScheme.compare("1.0.0+build.5", "1.0.0"))
+        assertTrue(SemverScheme.compare("1.0.0", "1.0.0-rc.1") > 0)
+        assertTrue(SemverScheme.compare("1.0.0-rc.1", "1.0.0") < 0)
         assertEquals(0, SemverScheme.compare("v2.1.0", "2.1.0"))
         assertEquals(0, SemverScheme.compare("2", "2.0.0"))
         assertEquals(0, SemverScheme.compare("^2.1", "2.1.0"), "a range is read as its version")
