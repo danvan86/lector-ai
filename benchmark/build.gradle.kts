@@ -16,12 +16,16 @@ dependencies {
     runtimeOnly(libs.slf4j.simple)
 }
 
+// Clikt's terminal detection loads JNA. Without this flag, JDK 25 warns about it on every run (as in `cli`).
+val enableNativeAccess = "--enable-native-access=ALL-UNNAMED"
+
 // `./gradlew :benchmark:run --args="<command> …"`, from the repository root. The workflow runs it; `./gradlew build` never does.
 tasks.register<JavaExec>("run") {
     description = "Runs a benchmark command: matrix, run, merge, or report."
     group = "benchmark"
     mainClass = "gmbh.vanella.lector.benchmark.MainKt"
     classpath = sourceSets.main.get().runtimeClasspath
+    jvmArgs(enableNativeAccess)
     workingDir = rootDir
 }
 
@@ -32,6 +36,7 @@ tasks.register<JavaExec>("report") {
     group = "benchmark"
     mainClass = "gmbh.vanella.lector.benchmark.MainKt"
     classpath = sourceSets.main.get().runtimeClasspath
+    jvmArgs(enableNativeAccess)
     workingDir = rootDir
     val results = providers.gradleProperty("results")
     argumentProviders.add(CommandLineArgumentProvider { listOf("report", results.get()) })

@@ -184,6 +184,8 @@ private class MergeCommand(
                 .sorted()
                 .map { file -> Results.decodeRun(file.readText()) }
                 .toList()
+        // All jobs can fail before they write a result, e.g. if the Ollama image wasn't built.
+        require(results.isNotEmpty()) { "No run results under $runs" }
         val merged = Results.merge(plan(corpus(), cases), results, runner, date)
         output.toAbsolutePath().parent.createDirectories()
         output.writeText(merged.encode())

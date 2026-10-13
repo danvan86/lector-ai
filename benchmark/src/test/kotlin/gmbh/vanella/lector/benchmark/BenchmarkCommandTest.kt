@@ -129,6 +129,17 @@ class BenchmarkCommandTest {
     }
 
     @Test
+    fun `merge without any run result says so, with the directory`() {
+        val runs = dir.resolve("runs").createDirectories()
+
+        val result = command().test("merge --runs $runs --output ${dir.resolve("r.json")} --runner r --date 2026-10-12")
+
+        assertEquals(2, result.statusCode)
+        assertEquals("", result.stdout)
+        assertEquals("Error: No run results under $runs\n", result.stderr)
+    }
+
+    @Test
     fun `merge rejects a date that isn't one`() {
         val result = command().test("merge --runs $dir --output ${dir.resolve("r.json")} --runner r --date 12.10.2026")
 
