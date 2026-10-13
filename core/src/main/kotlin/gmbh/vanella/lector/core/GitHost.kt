@@ -2,7 +2,7 @@ package gmbh.vanella.lector.core
 
 import java.nio.file.Path
 
-/** The prefix of every companion branch: `heal/<source branch>`. The only branches the tool ever pushes by force. */
+/** The prefix of every companion branch: `heal/<source branch>`. The only branches the tool pushes by force or deletes. */
 const val COMPANION_PREFIX = "heal/"
 
 /**
@@ -75,6 +75,9 @@ interface GitHost {
     /** Closes PR [number] without merging it. */
     fun closePullRequest(number: Int)
 
-    /** Deletes [branch]. A branch that is already gone is no error. */
+    /**
+     * Deletes [branch]. A branch that is already gone is no error. Only for a companion branch: fails with a [ToolError]
+     * for any branch outside [COMPANION_PREFIX].
+     */
     fun deleteBranch(branch: String)
 }

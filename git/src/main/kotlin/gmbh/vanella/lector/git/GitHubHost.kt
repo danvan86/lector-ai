@@ -167,12 +167,7 @@ class GitHubHost(
         repo: Path,
         branch: String,
     ) {
-        if (!branch.startsWith(
-                COMPANION_PREFIX,
-            )
-        ) {
-            throw ToolError("Only a companion branch ($COMPANION_PREFIX…) is pushed by force, not $branch")
-        }
+        requireCompanion(branch, "pushed by force")
         val result = git(listOf("git", "push", "--quiet", "--force", remote(repository), "HEAD:refs/heads/$branch"), repo, authentication())
         if (result.exitCode != 0) throw ToolError("git push failed: ${result.output.trim()}")
     }
@@ -218,6 +213,7 @@ class GitHubHost(
     }
 
     override fun deleteBranch(branch: String) {
+        requireCompanion(branch, "deleted")
         val path = "/repos/$repository/git/refs/heads/$branch"
         val response = api.request("DELETE", path, null)
         if (response.statusCode() == HTTP_UNPROCESSABLE) {
@@ -251,6 +247,14 @@ class GitHubHost(
             if (comments.size < PAGE_SIZE) return null
             page++
         }
+    }
+
+    /** Fails unless [branch] is a companion branch: the only branches the tool overwrites or deletes. */
+    private fun requireCompanion(
+        branch: String,
+        what: String,
+    ) {
+        if (!branch.startsWith(COMPANION_PREFIX)) throw ToolError("Only a companion branch ($COMPANION_PREFIX…) is $what, not $branch")
     }
 
     private fun encode(value: String) = URLEncoder.encode(value, Charsets.UTF_8)

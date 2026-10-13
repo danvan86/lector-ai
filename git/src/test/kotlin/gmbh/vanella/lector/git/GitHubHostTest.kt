@@ -2,6 +2,7 @@ package gmbh.vanella.lector.git
 
 import com.sun.net.httpserver.HttpServer
 import gmbh.vanella.lector.core.PrState
+import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.runProcess
@@ -373,6 +374,14 @@ class GitHubHostTest {
     }
 
     @Test
+    fun `deletes only a companion branch, never any other`() {
+        val error = assertFailsWith<ToolError> { host().deleteBranch("dependabot/maven/guava") }
+
+        assertEquals("Only a companion branch (heal/…) is deleted, not dependabot/maven/guava", error.message)
+        assertEquals(emptyList(), requests)
+    }
+
+    @Test
     fun `a branch that can't be deleted for another reason is a tool error`() {
         failWith = 403
 
@@ -390,8 +399,7 @@ class GitHubHostTest {
         val host =
             GitHubHost(event(), apiUrl(), URI("https://github.example.com/"), token, BOT) { command, _, _ ->
                 runs += command
-                gmbh.vanella.lector.core
-                    .ProcessResult(0, "")
+                ProcessResult(0, "")
             }
 
         host.forcePush(dir, "heal/renovate/guava")
@@ -438,8 +446,7 @@ class GitHubHostTest {
         val host =
             GitHubHost(event(), apiUrl(), URI("https://github.example.com/"), token, BOT) { command, _, environment ->
                 runs += command to environment
-                gmbh.vanella.lector.core
-                    .ProcessResult(0, "")
+                ProcessResult(0, "")
             }
 
         host.fetch(dir, pr, "2222222")
