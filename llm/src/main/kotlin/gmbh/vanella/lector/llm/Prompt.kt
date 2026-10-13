@@ -21,6 +21,9 @@ internal object Prompt {
     private const val CHARS_PER_TOKEN = 3
     const val MAX_CHARS = (CONTEXT_TOKENS - ANSWER_TOKENS) * CHARS_PER_TOKEN
 
+    // A labelled PR can change hundreds of transitive packages. Naming them all would crowd out the API and the notes.
+    private const val MAX_NAMED_CHANGES = 10
+
     // An optional part shorter than this says too little to be worth its heading.
     private const val MIN_PART_CHARS = 200
     private const val SEPARATOR = "\n\n"
@@ -46,7 +49,10 @@ internal object Prompt {
         """.trimIndent()
 
     fun user(request: FixRequest): String {
-        val changes = request.changes.map { "${it.`package`} from ${it.fromVersion} to ${it.toVersion}" }
+        val more = request.changes.size - MAX_NAMED_CHANGES
+        val changes =
+            request.changes.take(MAX_NAMED_CHANGES).map { "${it.`package`} from ${it.fromVersion} to ${it.toVersion}" } +
+                if (more > 0) listOf("$more more") else emptyList()
         val updates = if (changes.size == 1) changes.single() else changes.dropLast(1).joinToString(", ") + " and " + changes.last()
         val intro = "The update of $updates broke this code. Fix these errors."
         val errors = "## Errors\n\n" + request.diagnostics.joinToString("\n", transform = ::error)
