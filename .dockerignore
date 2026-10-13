@@ -1,3 +1,5 @@
-# The tool image needs only the installed distribution (./gradlew :cli:installDist).
+# The tool image needs only the installed distribution (./gradlew :cli:installDist) and the Node toolchain's versions.
 *
 !cli/build/install/lector
+!docker/lector/node/package.json
+!docker/lector/node/package-lock.json
