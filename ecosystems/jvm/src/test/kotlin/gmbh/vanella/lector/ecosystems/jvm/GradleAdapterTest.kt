@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.ecosystems.jvm
 
 import gmbh.vanella.lector.core.Diagnostic
+import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.ProcessTimedOut
 import gmbh.vanella.lector.core.Severity
@@ -24,6 +25,12 @@ import kotlin.time.Duration.Companion.minutes
 
 /** Detection, command lines, JDKs, verify, test runs, and the daemon. */
 class GradleAdapterTest : FakeGradleTest() {
+    @Test
+    fun `no lockfile follows a build-file edit, Gradle dependency locking is not supported`() {
+        assertEquals(LockfileUpdate.Updated(emptyList()), adapter().updateLockfiles(repo, 1.minutes))
+        assertEquals(emptyList(), runs)
+    }
+
     @Test
     fun `speaks for the maven ecosystem, with Maven's version order`() {
         val adapter = adapter()

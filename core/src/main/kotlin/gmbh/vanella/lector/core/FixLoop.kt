@@ -133,6 +133,9 @@ class FixLoop(
         private var withoutProgress = 0
         private var versionsBefore: Map<String, String>? = null
 
+        // The lockfiles the adapter updated after the current attempt's build-file edits. They go into its commit.
+        private var lockfiles = emptyList<String>()
+
         fun run(): FixLoopResult {
             while (true) {
                 stopReason()?.let { return FixLoopResult(attempts.toList(), it, verification) }
@@ -166,6 +169,7 @@ class FixLoop(
             // checks leave it out: it can take a process per change to read.
             val sent = firstThatFit(cluster.diagnostics) { llm.fits(request(cluster.key, it, grounded = false)) }
             val proposal = llm.propose(request(cluster.key, sent))
+            lockfiles = emptyList()
             val outcome =
                 try {
                     judge(cluster.key, sent, proposal)
@@ -244,7 +248,7 @@ class FixLoop(
             if (outOfScope.isNotEmpty()) return violated(outOfScope)
             val touchesBuildFile = edited(repo, edits).any(adapter::isBuildFile)
             val before = if (touchesBuildFile) versionsBefore().getOrElse { return rejected(unreadable(it)) } else null
-            return write(edits) ?: before?.let(::downgradesSince)?.let(::rejected)
+            return write(edits) ?: before?.let(::afterBuildFileEdit)
         }
 
         /** Writes [edits] and checks what they changed with the guardrails. Returns the rejection, or null. */
@@ -266,21 +270,22 @@ class FixLoop(
             }
         }
 
-        private fun downgradesSince(before: Map<String, String>): String? {
-            val after = readVersions(adapter, repo).getOrElse { return unreadable(it) }
-            val downgrades = downgrades(versionChanges(before, after), adapter.versionScheme)
-            return if (downgrades.isEmpty()) {
-                null
-            } else {
-                "the edits move packages to lower versions: ${downgrades.joinToString(
-                    ", ",
-                ) { describe(it) }}"
+        /** After a build-file edit, the lockfiles follow it. Then nothing may resolve lower than [before]. Returns the rejection, or null. */
+        private fun afterBuildFileEdit(before: Map<String, String>): AttemptOutcome.Rejected? =
+            when (val update = adapter.updateLockfiles(repo, timeLeft)) {
+                is LockfileUpdate.Failed -> {
+                    rejected("the lockfile can't follow the edits: ${update.reason}")
+                }
+
+                is LockfileUpdate.Updated -> {
+                    lockfiles = update.files
+                    downgradesSince(adapter, repo, before)?.let(::rejected)
+                }
             }
-        }
 
         /**
-         * Verifies the applied edits. With progress, the files they changed become a commit with the first line of the
-         * rationale as subject. What the build left in the working tree stays out of it.
+         * Verifies the applied edits. With progress, the files they changed, and the lockfiles that followed them, become a
+         * commit with the first line of the rationale as subject. What the build left in the working tree stays out of it.
          */
         private fun verify(
             cluster: String,
@@ -297,7 +302,7 @@ class FixLoop(
                     .map { it.trim() }
                     .firstOrNull { it.isNotEmpty() } ?: "Fix $cluster"
             val body = "Addresses:\n" + diagnostics.joinToString("\n", transform = ::describe)
-            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", edited(repo, proposal.edits), identity)
+            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", (edited(repo, proposal.edits) + lockfiles).distinct(), identity)
             verification = after
             return AttemptOutcome.Accepted(commit, subject, progressBefore, progressAfter)
         }
@@ -320,6 +325,23 @@ private fun <T> firstThatFit(
 }
 
 private fun rejected(reason: String) = AttemptOutcome.Rejected(reason)
+
+/** Why the versions of [repo] now are no attempt to accept: some resolve lower than [before]. Null if none does. */
+private fun downgradesSince(
+    adapter: EcosystemAdapter,
+    repo: Path,
+    before: Map<String, String>,
+): String? {
+    val after = readVersions(adapter, repo).getOrElse { return unreadable(it) }
+    val downgrades = downgrades(versionChanges(before, after), adapter.versionScheme)
+    return if (downgrades.isEmpty()) {
+        null
+    } else {
+        "the edits move packages to lower versions: ${downgrades.joinToString(
+            ", ",
+        ) { describe(it) }}"
+    }
+}
 
 /** The files [edits] change, relative to [repo]'s root. The scope check made sure Git tracks them. */
 private fun edited(

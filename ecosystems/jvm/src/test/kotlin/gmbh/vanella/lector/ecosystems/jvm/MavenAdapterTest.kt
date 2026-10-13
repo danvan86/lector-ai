@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.ecosystems.jvm
 
 import gmbh.vanella.lector.core.Diagnostic
+import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.Recipe
 import gmbh.vanella.lector.core.RecipeRun
@@ -30,6 +31,12 @@ class MavenAdapterTest {
 
     private val root by lazy { repo.toRealPath() }
     private val runs = mutableListOf<List<String>>()
+
+    @Test
+    fun `no lockfile follows a build-file edit, Maven has none`() {
+        assertEquals(LockfileUpdate.Updated(emptyList()), adapter().updateLockfiles(repo, 1.minutes))
+        assertEquals(emptyList(), runs)
+    }
 
     @Test
     fun `speaks for the maven ecosystem, with Maven's version order`() {

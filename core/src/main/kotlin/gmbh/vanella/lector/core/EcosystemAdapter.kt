@@ -76,4 +76,27 @@ interface EcosystemAdapter {
         content: String,
         line: Int,
     ): String?
+
+    /**
+     * Brings the files the build tool derives from the build files, like a lockfile, in line with [repo]'s working tree
+     * after an attempt edited a build file. The files it changed go into the attempt's commit. A run longer than [timeout]
+     * is stopped with a [ProcessTimedOut].
+     */
+    fun updateLockfiles(
+        repo: Path,
+        timeout: Duration,
+    ): LockfileUpdate
+}
+
+/** What [EcosystemAdapter.updateLockfiles] did. */
+sealed interface LockfileUpdate {
+    /** The derived [files] it changed, relative to the repository root. */
+    data class Updated(
+        val files: List<String>,
+    ) : LockfileUpdate
+
+    /** The build tool couldn't follow the edited build files, e.g. because a version doesn't exist. */
+    data class Failed(
+        val reason: String,
+    ) : LockfileUpdate
 }

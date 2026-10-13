@@ -212,6 +212,11 @@ class AttributionTest {
 
         override fun isEditable(file: String) = true
 
+        override fun updateLockfiles(
+            repo: Path,
+            timeout: Duration,
+        ) = LockfileUpdate.Updated(emptyList())
+
         override fun testsRun(repo: Path) = testsRun(runTestsCalls.size)
 
         override fun testDisablingConfig(
