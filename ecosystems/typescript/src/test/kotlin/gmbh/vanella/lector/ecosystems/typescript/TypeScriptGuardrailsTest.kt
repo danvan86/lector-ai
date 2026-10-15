@@ -42,10 +42,26 @@ class TypeScriptGuardrailsTest {
             "packages/app/vitest.config.mts",
             "vite.config.ts",
             "vitest.workspace.ts",
+            "jest.config.cjs",
+            "jest.config.json",
+            "vitest.workspace.json",
+            "jest.unit.config.js",
+            "packages/app/vitest.e2e.config.ts",
+            "jest.preset.js",
+            "test/jest-e2e.json",
+            ".pnpmfile.cjs",
         )) {
             assertTrue(adapter.isBuildFile(file), file)
         }
-        for (file in listOf("src/index.ts", "src/tsconfig.ts", "README.md", "package-lock.json", "jest.setup.ts", "babel.config.js")) {
+        for (file in listOf(
+            "src/index.ts",
+            "src/tsconfig.ts",
+            "README.md",
+            "package-lock.json",
+            "jest.setup.ts",
+            "babel.config.js",
+            "vitest.setup.ts",
+        )) {
             assertFalse(adapter.isBuildFile(file), file)
         }
     }
@@ -162,11 +178,11 @@ class TypeScriptGuardrailsTest {
                 before.replace(
                     "\"test\": \"jest\"",
                     "\"test\": \"jest src/ok\"",
-                ) to "a change to the `test` script changes which tests run",
+                ) to "a change to a test script changes which tests run",
                 before.replace("\"preset\": \"ts-jest\"", "\"preset\": \"ts-jest\",\n    \"testPathIgnorePatterns\": [\"slow\"]") to
-                    "`testPathIgnorePatterns` leaves tests out",
+                    "a new `testPathIgnorePatterns` entry leaves tests out",
                 before.replace("\"preset\": \"ts-jest\"", "\"preset\": \"ts-jest\",\n    \"modulePathIgnorePatterns\": [\"x\"]") to
-                    "`modulePathIgnorePatterns` leaves tests out",
+                    "a new `modulePathIgnorePatterns` entry leaves tests out",
                 before.replace("\"preset\": \"ts-jest\"", "\"preset\": \"ts-jest\",\n    \"passWithNoTests\": true") to
                     "`passWithNoTests` leaves tests out",
                 before.replace("\"preset\": \"ts-jest\"", "\"preset\": \"ts-jest\",\n    \"exclude\": [\"x\"]") to
@@ -184,7 +200,7 @@ class TypeScriptGuardrailsTest {
         val vitest = "export default defineConfig({\n  test: {\n    environment: \"node\",\n  },\n});\n"
 
         assertEquals(
-            listOf("`testPathIgnorePatterns` leaves tests out"),
+            listOf("a new `testPathIgnorePatterns` entry leaves tests out"),
             check(
                 "jest.config.js",
                 jest,
@@ -212,6 +228,93 @@ class TypeScriptGuardrailsTest {
             emptyList(),
             check("jest.config.js", jest, jest.replace("preset: \"ts-jest\",", "preset: \"ts-jest\",\n  testTimeout: 10000,")),
         )
+    }
+
+    @Test
+    fun `a new entry in a list that leaves tests out is rejected inside the list too, in each place Jest reads it`() {
+        val jest = "module.exports = {\n  testPathIgnorePatterns: [\n    \"/node_modules/\",\n  ],\n};\n"
+        val added = jest.replace("\"/node_modules/\",", "\"/node_modules/\",\n    \"/src/broken.test.ts\",")
+        val manifest = "{\n  \"jest\": {\n    \"modulePathIgnorePatterns\": [\n      \"dist\"\n    ]\n  }\n}\n"
+
+        assertEquals(
+            listOf(Violation("build-file", "jest.config.js", 4, "a new `testPathIgnorePatterns` entry leaves tests out")),
+            check("jest.config.js", jest, added),
+        )
+        assertEquals(
+            listOf("`passWithNoTests` leaves tests out"),
+            check("jest.config.json", "{\n}\n", "{\n  \"passWithNoTests\": true\n}\n").map { it.reason },
+        )
+        assertEquals(
+            listOf(4, 5),
+            check("package.json", manifest, manifest.replace("\"dist\"", "\"dist\",\n      \"src\"")).map { it.line },
+            "the comma changes the line before, inside the list too",
+        )
+    }
+
+    @Test
+    fun `options that narrow which tests run are rejected, and Vitest's include only in its test options`() {
+        val jest = "module.exports = {\n  preset: \"ts-jest\",\n};\n"
+        for (option in listOf(
+            "testMatch: [\"**/ok.test.ts\"],",
+            "testRegex: \"ok\\\\.test\\\\.ts$\",",
+            "roots: [\"<rootDir>/src/ok\"],",
+            "testNamePattern: \"adds\",",
+        )) {
+            val after = jest.replace("preset: \"ts-jest\",", "preset: \"ts-jest\",\n  $option")
+            assertEquals(listOf(3), check("jest.config.ts", jest, after).map { it.line }, option)
+        }
+        val vitest =
+            "export default defineConfig({\n  optimizeDeps: {\n    include: [],\n  },\n  test: {\n    environment: \"node\",\n  },\n});\n"
+        assertEquals(
+            listOf("`include` changes which tests run"),
+            check(
+                "vitest.config.ts",
+                vitest,
+                vitest.replace("environment: \"node\",", "environment: \"node\",\n    include: [\"src/ok/**\"],"),
+            ).map { it.reason },
+        )
+        assertEquals(
+            emptyList(),
+            check("vite.config.ts", vitest, vitest.replace("include: [],", "include: [\"dequal\"],")),
+            "Vite's own include is no test option",
+        )
+        assertEquals(emptyList(), check("vitest.config.ts", "", "include: [\"src\"]\n"), "nor one outside any object")
+    }
+
+    @Test
+    fun `every script the test script runs through, and pre and post scripts, are guarded, also on one line`() {
+        val before = "{\n  \"scripts\": {\n    \"test\": \"npm run test:unit\",\n    \"test:unit\": \"jest\"\n  }\n}\n"
+        val cases =
+            listOf(
+                before.replace("\"test:unit\": \"jest\"", "\"test:unit\": \"jest src/ok\""),
+                before.replace("\"test:unit\": \"jest\"", "\"test:unit\": \"jest\",\n    \"pretest\": \"rm src/broken.test.ts\""),
+                before.replace("\"test:unit\": \"jest\"", "\"test:unit\": \"jest\",\n    \"posttest\": \"exit 0\""),
+            )
+        for (after in cases) {
+            assertEquals(
+                listOf("a change to a test script changes which tests run"),
+                check("package.json", before, after).map { it.reason }.distinct(),
+            )
+        }
+        val oneLine = "{\"scripts\": {\"build\": \"tsc\", \"test\": \"jest\"}}\n"
+        assertEquals(1, check("package.json", oneLine, oneLine.replace("\"jest\"", "\"jest src/ok\"")).size)
+        assertEquals(
+            emptyList(),
+            check(
+                "package.json",
+                before,
+                before.replace("\"scripts\": {", "\"scripts\": {\n    \"testing-library\": \"x\","),
+            ),
+            "a script whose name only starts like one",
+        )
+    }
+
+    @Test
+    fun `a line after an exclude list that closed is no exclude entry`() {
+        val before = "{\n  \"exclude\": [\"dist\"],\n  \"compilerOptions\": {\n    \"types\": [\n      \"node\"\n    ]\n  }\n}\n"
+        val after = before.replace("\"node\"", "\"node\",\n      \"vitest/globals\"")
+
+        assertEquals(emptyList(), check("tsconfig.json", before, after))
     }
 
     @Test

@@ -112,6 +112,39 @@ class TypeScriptLanguageSupportTest {
     }
 
     @Test
+    fun `every way to skip a test, focus one, or expect it to fail is a skip marker, in each grammar (AC34)`() {
+        val source =
+            """
+            fit("a", () => {});
+            fdescribe("b", () => {});
+            it.failing("c", () => {});
+            test.fails("d", () => {});
+            test.skipIf(true)("e", () => {});
+            describe.runIf(false)("f", () => {});
+            it.concurrent.skip("g", () => {});
+            describe.sequential.only("h", () => {});
+            it.skip.each([1])("i %i", () => {});
+            it.each([1])("j %i", () => {});
+            """.trimIndent() + "\n"
+        val markers =
+            listOf(
+                "fit",
+                "fdescribe",
+                "it.failing",
+                "test.fails",
+                "test.skipIf",
+                "describe.runIf",
+                "it.concurrent.skip",
+                "describe.sequential.only",
+                "it.skip",
+            )
+
+        for (file in listOf("a.test.ts", "a.test.tsx", "a.test.js")) {
+            assertEquals(markers, requireNotNull(TypeScriptLanguageSupport.facts(file, source)).skips.map { it.text }, file)
+        }
+    }
+
+    @Test
     fun `parse errors in each grammar, and every extension in its language`() {
         val broken = "export function f( {\n  return 1;\n}\n"
 

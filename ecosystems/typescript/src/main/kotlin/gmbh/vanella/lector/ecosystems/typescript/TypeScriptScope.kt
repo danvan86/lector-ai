@@ -10,11 +10,18 @@ private val PACKAGE_MANAGER_FILES =
 // Generated sources by name: `client.generated.ts`, `schema.gen.ts`, and Yarn's `.pnp.cjs` and `.pnp.loader.mjs`.
 private val GENERATED_FILE = Regex("""^(?:.*\.generated\..*|.*\.gen\.ts|\.pnp\..*)$""")
 
-// The configuration of the type check and of the test runners: `tsconfig.json`, `tsconfig.build.json`, `jest.config.ts`,
-// `vitest.config.mts`, and Vite's config, which Vitest reads its `test` options from.
-private val CONFIG_FILE =
-    Regex("""^(?:tsconfig.*\.json|(?:jest|vitest|vite|vitest\.workspace)\.config\.[cm]?[jt]s|vitest\.workspace\.[cm]?[jt]s)$""")
-private val TEST_CONFIG = Regex("""^(?:(?:jest|vitest|vite|vitest\.workspace)\.config\.[cm]?[jt]s|vitest\.workspace\.[cm]?[jt]s)$""")
+// The test runners' configuration: `jest.config.ts`, `vitest.config.mts`, a variant a script names with `--config`
+// (`jest.unit.config.js`, `vitest.e2e.config.ts`), Vite's config, which Vitest reads its `test` options from, the
+// workspace file, Jest presets, and Jest's JSON configs (`jest-e2e.json`).
+private val TEST_CONFIG =
+    Regex(
+        """^(?:(?:jest|vitest|vite)(?:[.-][\w-]+)*\.config\.(?:[cm]?[jt]s|json)|vitest\.workspace\.(?:[cm]?[jt]s|json)|""" +
+            """jest\.preset\.[cm]?js|jest[.-][\w.-]*\.json)$""",
+    )
+
+// What the package managers read besides package.json: the type check's config, the pnpm workspace, and pnpm's hooks,
+// which change what an install resolves.
+private val BUILD_FILE = Regex("""^(?:package\.json|tsconfig.*\.json|pnpm-workspace\.yaml|\.pnpmfile\.[cm]?js)$""")
 
 /**
  * The TypeScript editable scope and build files (spec section 8). Every source is editable, `.js` and `.mjs` included,
@@ -28,10 +35,10 @@ internal object TypeScriptScope {
             !GENERATED_FILE.matches(parts.last())
     }
 
-    /** Every `package.json`, `tsconfig*.json`, `pnpm-workspace.yaml`, and the Jest, Vitest, and Vite configuration. */
+    /** Every `package.json`, `tsconfig*.json`, `pnpm-workspace.yaml`, `.pnpmfile.cjs`, and the test runners' configuration. */
     fun isBuildFile(file: String): Boolean {
         val name = file.substringAfterLast('/')
-        return name == PACKAGE_JSON || name == "pnpm-workspace.yaml" || CONFIG_FILE.matches(name)
+        return BUILD_FILE.matches(name) || TEST_CONFIG.matches(name)
     }
 }
 
@@ -41,12 +48,17 @@ private val SKIP_LIB_CHECK = Regex(""""skipLibCheck"\s*:\s*true""")
 private val NO_CHECK = Regex(""""noCheck"\s*:""")
 private val CHECK_JS = Regex(""""checkJs"\s*:\s*false""")
 
-// In package.json: the `test` script.
-private val TEST_SCRIPT = Regex("""^\s*"test"\s*:""")
+// In package.json: the `test` script, the scripts it runs through (`test:unit`), and its `pre` and `post` scripts.
+private val TEST_SCRIPT = Regex(""""(?:pre|post)?test(?:[:._-][^"]*)?"\s*:""")
 
-// In package.json and the test configuration: options that leave tests out, quoted (JSON) or not (JavaScript).
-private val LEAVING_OUT = Regex("""\b(testPathIgnorePatterns|modulePathIgnorePatterns|passWithNoTests)\b""")
-private val EXCLUDE = Regex("""["']?exclude["']?\s*:""")
+// In package.json and the test configuration, quoted (JSON) or not (JavaScript): options that leave tests out or
+// narrow which run, on their key's line or as a new entry of the list they open; Vitest's `include` and `dir` only in
+// its `test` options, Vite has its own.
+private val LEAVING_OUT = listOf("testPathIgnorePatterns", "modulePathIgnorePatterns", "exclude")
+private val NARROWING = listOf("testMatch", "testRegex", "roots", "testNamePattern")
+private val VITEST_NARROWING = listOf("include", "dir")
+private val PASS_WITH_NO_TESTS = Regex("""\bpassWithNoTests\b""")
+private val TEST_BLOCK = key("test")
 
 /** The TypeScript build-file blocklist (spec section 8): what loosens the type check or leaves tests out. */
 internal object TypeScriptTestSkipping {
@@ -57,12 +69,25 @@ internal object TypeScriptTestSkipping {
         line: Int,
     ): String? {
         val name = file.substringAfterLast('/')
-        val text = content.lines()[line - 1]
+        val lines = content.lines()
+        val text = lines[line - 1]
         return when {
-            name.startsWith("tsconfig") -> typeCheck(text) ?: exclude(content, line, "leaves files out of the type check")
-            name == PACKAGE_JSON && TEST_SCRIPT.containsMatchIn(text) -> "a change to the `test` script changes which tests run"
-            name == PACKAGE_JSON || TEST_CONFIG.matches(name) -> leavingOut(text) ?: exclude(content, line, "leaves tests out")
-            else -> null
+            name.startsWith("tsconfig") -> {
+                typeCheck(text)
+                    ?: option(lines, line - 1, listOf("exclude"))?.let { "a new `exclude` entry leaves files out of the type check" }
+            }
+
+            name == PACKAGE_JSON && TEST_SCRIPT.containsMatchIn(text) -> {
+                "a change to a test script changes which tests run"
+            }
+
+            name == PACKAGE_JSON || TEST_CONFIG.matches(name) -> {
+                testOptions(lines, line - 1)
+            }
+
+            else -> {
+                null
+            }
         }
     }
 
@@ -77,21 +102,45 @@ internal object TypeScriptTestSkipping {
         }
     }
 
-    private fun leavingOut(text: String): String? {
-        val option = LEAVING_OUT.find(text) ?: return null
-        return "`${option.value}` leaves tests out"
+    private fun testOptions(
+        lines: List<String>,
+        index: Int,
+    ): String? {
+        if (PASS_WITH_NO_TESTS.containsMatchIn(lines[index])) return "`passWithNoTests` leaves tests out"
+        option(lines, index, LEAVING_OUT)?.let { return "a new `$it` entry leaves tests out" }
+        option(lines, index, NARROWING)?.let { return "`$it` changes which tests run" }
+        val vitest = option(lines, index, VITEST_NARROWING) ?: return null
+        val block = opener(lines, index, '{', '}')
+        return if (block != null && TEST_BLOCK.containsMatchIn(lines[block])) "`$vitest` changes which tests run" else null
     }
 
-    /** Why [line] adds to an `exclude` list: it has the key, or it is inside the list the nearest key above it opens. */
-    private fun exclude(
-        content: String,
-        line: Int,
-        effect: String,
+    /** Which of [options] [index] sets: on the option's own line, or inside the list the option opened. Null if none. */
+    private fun option(
+        lines: List<String>,
+        index: Int,
+        options: List<String>,
     ): String? {
-        val lines = content.lines()
-        val opened = (line - 1 downTo 0).firstOrNull { EXCLUDE.containsMatchIn(lines[it]) }
-        val between = if (opened == null) "" else lines.subList(opened, line - 1).joinToString("\n")
-        val inside = opened == line - 1 || between.count { it == '[' } > between.count { it == ']' }
-        return if (inside) "a new `exclude` entry $effect" else null
+        val list = opener(lines, index, '[', ']')
+        return options.firstOrNull { key(it).containsMatchIn(lines[index]) || (list != null && key(it).containsMatchIn(lines[list])) }
     }
+}
+
+/** The key [name] of a JSON or JavaScript object, quoted or not. */
+private fun key(name: String) = Regex("""(?:^|[\s{,])["']?$name["']?\s*:""")
+
+/** The line of the innermost [open] above [index] that is still open there, or null. Brackets in strings count too. */
+private fun opener(
+    lines: List<String>,
+    index: Int,
+    open: Char,
+    close: Char,
+): Int? {
+    var depth = 0
+    for (row in index - 1 downTo 0) {
+        for (char in lines[row].reversed()) {
+            if (char == close) depth++
+            if (char == open && depth-- == 0) return row
+        }
+    }
+    return null
 }
