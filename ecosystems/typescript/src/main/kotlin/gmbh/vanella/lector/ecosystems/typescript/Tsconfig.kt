@@ -17,7 +17,7 @@ private val JSONC =
 
 /**
  * What the adapter reads from a `tsconfig.json`, which is JSON with comments and trailing commas: whether it has
- * project [references], and whether it [compilesNothing] on its own (an empty `files` list and no `include`, as the
+ * project [references], and whether it [compilesNothing] on its own (an empty `files` list, no `include`, and no base, as the
  * root of a workspace often has). A file that can't be read is neither: `tsc` reports what is wrong with it.
  */
 internal data class Tsconfig(
@@ -34,7 +34,8 @@ internal data class Tsconfig(
                 } ?: return Tsconfig(references = false, compilesNothing = false)
             val references = (json["references"] as? JsonArray).orEmpty().isNotEmpty()
             val emptyFiles = (json["files"] as? JsonArray)?.isEmpty() == true
-            return Tsconfig(references, emptyFiles && "include" !in json && !references)
+            // `extends` brings the base's `include`, which an empty `files` doesn't override.
+            return Tsconfig(references, emptyFiles && "include" !in json && "extends" !in json && !references)
         }
     }
 }

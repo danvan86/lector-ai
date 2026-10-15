@@ -5,11 +5,12 @@ import gmbh.vanella.lector.core.Severity
 import java.nio.file.Path
 import kotlin.io.path.invariantSeparatorsPathString
 
-// `src/a.ts(4,7): error TS2322: Type 'string' is not assignable to type 'number'.`
-private val LOCATED = Regex("""^(.+)\((\d+),(\d+)\): error (TS\d+): (.*)$""")
+// `src/a.ts(4,7): error TS2322: Type 'string' is not assignable to type 'number'.` A pnpm install prefixes a workspace
+// package's lifecycle script with its directory and the script: `packages/lib prepare: src/a.ts(4,7): error …`.
+private val LOCATED = Regex("""^(?:(\S+) [\w:.-]+: )?(.+)\((\d+),(\d+)\): error (TS\d+): (.*)$""")
 
 // The regex group of a located error's code; its message follows.
-private const val CODE = 4
+private const val CODE = 5
 
 // `error TS18003: No inputs were found in config file '…'.`
 private val GLOBAL = Regex("""^error (TS\d+): (.*)$""")
@@ -32,10 +33,10 @@ internal object TscOutput {
             val last = diagnostics.lastOrNull()
             when {
                 located != null -> {
-                    val (file, row, column) = located.destructured
+                    val (pkg, file, row, column) = located.destructured
                     val (code, message) = located.groupValues.drop(CODE)
-                    diagnostics +=
-                        Diagnostic(relative(root, workDir, file), row.toInt(), column.toInt(), code, message, Severity.ERROR, "tsc")
+                    val dir = if (pkg.isEmpty()) workDir else root.resolve(pkg)
+                    diagnostics += Diagnostic(relative(root, dir, file), row.toInt(), column.toInt(), code, message, Severity.ERROR, "tsc")
                 }
 
                 global != null -> {

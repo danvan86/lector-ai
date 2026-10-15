@@ -100,6 +100,18 @@ class TypeScriptIntegrationTest {
     }
 
     @Test
+    fun `a failing Vitest test in a workspace package is rerun alone, by its file and name`() {
+        fixture("pnpm-workspace")
+        val test = repo.resolve("packages/app/src/welcome.test.ts")
+        test.writeText(test.readText().replace(".toBe(\"HELLO, ADA!\")", ".toBe(\"hello, ada!\")"))
+
+        val failures = adapter.verify(repo, 10.minutes)
+
+        assertEquals(listOf("packages/app/src/welcome.test.ts#welcome > shouts the greeting"), failures.map { it.test })
+        assertEquals(failures.map { it.test }, adapter.runTests(repo, failures, 10.minutes).map { it.test })
+    }
+
+    @Test
     fun `a failure the update caused and one that was there before are told apart on the base commit`() {
         fixture("npm-jest")
         vendor("1.0.0", "a * 2")

@@ -246,7 +246,8 @@ class NodeBuildTest {
         assertEquals(
             listOf(
                 "npm ci in .",
-                "npm exec --no -- jest src\\/calc\\.test\\.ts src\\/b\\.test\\.ts --ci --reporters=default --reporters=/opt/jest-junit " +
+                "npm exec --no -- jest /src\\/calc\\.test\\.ts$ /src\\/b\\.test\\.ts$ " +
+                    "--ci --reporters=default --reporters=/opt/jest-junit " +
                     "-t ^(?:calc add fails|top)$ in .",
             ),
             commands(),

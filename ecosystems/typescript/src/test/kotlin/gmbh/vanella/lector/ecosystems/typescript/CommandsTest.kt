@@ -65,6 +65,11 @@ class CommandsTest {
         )
         assertEquals(Tsconfig(references = false, compilesNothing = true), read("""{"files": [] // base config only""" + "\n}"))
         assertEquals(Tsconfig(references = false, compilesNothing = false), read("""{"files": [], "include": ["src"]}"""))
+        assertEquals(
+            Tsconfig(references = false, compilesNothing = false),
+            read("""{"extends": "./tsconfig.base.json", "files": []}"""),
+            "the base's include applies",
+        )
         assertEquals(Tsconfig(references = false, compilesNothing = false), read("""{"files": ["a.ts"], "references": []}"""))
         assertEquals(Tsconfig(references = false, compilesNothing = false), read("""{"compilerOptions": {}}"""))
         assertEquals(Tsconfig(references = false, compilesNothing = false), read("""[]"""))

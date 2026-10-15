@@ -83,5 +83,23 @@ class TscOutputTest {
         assertEquals(listOf("src/a.ts:4"), TscOutput.parse(output, root, root).map { "${it.file}:${it.line}" })
     }
 
+    @Test
+    fun `a workspace package's lifecycle script in a pnpm install names its directory before tsc's path`() {
+        assertEquals(
+            listOf(
+                Diagnostic(
+                    "packages/lib/src/index.ts",
+                    4,
+                    14,
+                    "TS2322",
+                    "Type 'string' is not assignable to type 'number'.",
+                    Severity.ERROR,
+                    "tsc",
+                ),
+            ),
+            TscOutput.parse(output("pnpm-install-prepare.txt"), root, root),
+        )
+    }
+
     private fun output(name: String) = requireNotNull(javaClass.getResource("/outputs/$name")).readText()
 }

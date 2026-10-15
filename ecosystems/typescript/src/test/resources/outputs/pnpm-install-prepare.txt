@@ -1,0 +1,8 @@
+Scope: all 3 workspace projects
+Lockfile is up to date, resolution step is skipped
+Already up to date
+
+packages/lib prepare$ tsc -p tsconfig.json
+packages/lib prepare: src/index.ts(4,14): error TS2322: Type 'string' is not assignable to type 'number'.
+packages/lib prepare: Failed
+ ELIFECYCLE  Command failed with exit code 2.
