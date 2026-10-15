@@ -16,6 +16,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.toPath
 import kotlin.io.path.writeText
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -43,6 +44,10 @@ class NodeBuildTest {
     private val runs = mutableListOf<Run>()
     private val reportPath = Regex("""/[^ ]*/report-\d+\.xml""")
     private var answer: (Run) -> ProcessResult = { ProcessResult(0, "") }
+    private val builds = mutableListOf<NodeBuild>()
+
+    @AfterTest
+    fun `close every build, which deletes its temp directory`() = builds.forEach { it.close() }
 
     @Test
     fun `verify on the pnpm workspace installs frozen, builds lib before the type check, checks each package, then runs vitest`() {
@@ -564,7 +569,7 @@ class NodeBuildTest {
             )
         runs += run
         answer(run)
-    }
+    }.also { builds += it }
 
     /** The commands run so far, with the report path replaced, and their directory. */
     private fun commands() = runs.map { "${it.command.joinToString(" ").replace(reportPath, "<report>")} in ${it.dir}" }

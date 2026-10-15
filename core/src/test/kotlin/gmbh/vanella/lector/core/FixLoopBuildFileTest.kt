@@ -70,6 +70,22 @@ class FixLoopBuildFileTest : FixLoopFixture() {
     }
 
     @Test
+    fun `a lockfile a rejected attempt created stays out of the next attempt's commit`() {
+        val adapter =
+            FakeAdapter(versions = { mapOf(lib to "2.0") }, lockfiles = { dir ->
+                dir.resolve("new.lock").writeText("created\n")
+                LockfileUpdate.Updated(listOf("new.lock"))
+            })
+        val raise = Edit("pom.xml", "org.example:other 3.0", "org.example:other 3.1")
+
+        val result = loop(adapter, ScriptedLlm(edits(raise), edits(fix))).run(repo, context, adapter.initial())
+
+        assertIs<AttemptOutcome.Rejected>(result.attempts.first().outcome, "no progress")
+        assertIs<AttemptOutcome.Accepted>(result.attempts.last().outcome)
+        assertEquals("App.java", git("show", "--format=", "--name-only", "HEAD").trim())
+    }
+
+    @Test
     fun `an attempt that edits no build file leaves the lockfile alone`() {
         var updates = 0
         val adapter =

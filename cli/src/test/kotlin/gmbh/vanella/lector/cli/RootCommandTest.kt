@@ -143,6 +143,7 @@ class RootCommandTest {
                 "pnpm-lock.yaml, or yarn.lock.\n",
             result.stderr,
         )
+        assertEquals("", result.stdout)
         assertEquals(2, result.statusCode)
     }
 }

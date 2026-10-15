@@ -117,6 +117,7 @@ class PrCommandTest {
         val result = command().test("$repo --event $event $bot", envvars = token)
 
         assertEquals("Skipped: the PR changes no version of the repository's maven packages\n", result.stdout)
+        assertEquals("", result.stderr)
         assertEquals(0, result.statusCode)
     }
 
@@ -395,18 +396,26 @@ class PrCommandTest {
         val npmrc = dir.resolve("ci.npmrc").also { it.writeText("") }
         val yarnrc = dir.resolve("ci.yarnrc.yml").also { it.writeText("") }
 
-        command().test(
-            listOf(repo.toString(), "--event", event.toString()) + bot.split(" ") + listOf("--npmrc", "", "--yarnrc", ""),
-            envvars = token,
-        )
-        command().test("$repo --event $event $bot --npmrc $npmrc --yarnrc $yarnrc", envvars = token)
-        command().test(
-            "$repo --event $event $bot",
-            envvars =
-                token + mapOf("LECTOR_NPMRC" to npmrc.toString(), "LECTOR_YARNRC" to yarnrc.toString()),
-        )
+        val results =
+            listOf(
+                command().test(
+                    listOf(repo.toString(), "--event", event.toString()) + bot.split(" ") + listOf("--npmrc", "", "--yarnrc", ""),
+                    envvars = token,
+                ),
+                command().test("$repo --event $event $bot --npmrc $npmrc --yarnrc $yarnrc", envvars = token),
+                command().test(
+                    "$repo --event $event $bot",
+                    envvars =
+                        token + mapOf("LECTOR_NPMRC" to npmrc.toString(), "LECTOR_YARNRC" to yarnrc.toString()),
+                ),
+            )
 
         assertEquals(listOf(null to null, npmrc to yarnrc, npmrc to yarnrc), registries)
+        for (result in results) {
+            assertEquals(0, result.statusCode, result.stderr)
+            assertEquals("Skipped: no update source recognizes the PR by mallory on renovate/spring-boot\n", result.stdout)
+            assertEquals("", result.stderr)
+        }
     }
 
     @Test
@@ -415,6 +424,7 @@ class PrCommandTest {
             val result = command().test("$repo --event $event $bot $option ${dir.resolve("none")}", envvars = token)
 
             assertContains(result.stderr, "Error: The $name ${dir.resolve("none")} is not a file")
+            assertEquals("", result.stdout)
             assertEquals(2, result.statusCode)
         }
     }
