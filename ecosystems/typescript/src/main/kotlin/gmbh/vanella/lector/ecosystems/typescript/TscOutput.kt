@@ -9,8 +9,8 @@ import kotlin.io.path.invariantSeparatorsPathString
 // package's lifecycle script with its directory and the script: `packages/lib prepare: src/a.ts(4,7): error …`.
 private val LOCATED = Regex("""^(?:(\S+) [\w:.-]+: )?(.+)\((\d+),(\d+)\): error (TS\d+): (.*)$""")
 
-// The regex group of a located error's code; its message follows.
-private const val CODE = 5
+// The regex group of a located error's column; its code and message follow.
+private const val COLUMN = 4
 
 // `error TS18003: No inputs were found in config file '…'.`
 private val GLOBAL = Regex("""^error (TS\d+): (.*)$""")
@@ -33,8 +33,8 @@ internal object TscOutput {
             val last = diagnostics.lastOrNull()
             when {
                 located != null -> {
-                    val (pkg, file, row, column) = located.destructured
-                    val (code, message) = located.groupValues.drop(CODE)
+                    val (pkg, file, row) = located.destructured
+                    val (column, code, message) = located.groupValues.drop(COLUMN)
                     val dir = if (pkg.isEmpty()) workDir else root.resolve(pkg)
                     diagnostics += Diagnostic(relative(root, dir, file), row.toInt(), column.toInt(), code, message, Severity.ERROR, "tsc")
                 }

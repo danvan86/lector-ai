@@ -106,12 +106,17 @@ internal object TypeScriptTestSkipping {
         lines: List<String>,
         index: Int,
     ): String? {
-        if (PASS_WITH_NO_TESTS.containsMatchIn(lines[index])) return "`passWithNoTests` leaves tests out"
-        option(lines, index, LEAVING_OUT)?.let { return "a new `$it` entry leaves tests out" }
-        option(lines, index, NARROWING)?.let { return "`$it` changes which tests run" }
-        val vitest = option(lines, index, VITEST_NARROWING) ?: return null
+        val leaving = option(lines, index, LEAVING_OUT)
+        val narrowing = option(lines, index, NARROWING)
+        val vitest = option(lines, index, VITEST_NARROWING)
         val block = opener(lines, index, '{', '}')
-        return if (block != null && TEST_BLOCK.containsMatchIn(lines[block])) "`$vitest` changes which tests run" else null
+        return when {
+            PASS_WITH_NO_TESTS.containsMatchIn(lines[index]) -> "`passWithNoTests` leaves tests out"
+            leaving != null -> "a new `$leaving` entry leaves tests out"
+            narrowing != null -> "`$narrowing` changes which tests run"
+            vitest != null && block != null && TEST_BLOCK.containsMatchIn(lines[block]) -> "`$vitest` changes which tests run"
+            else -> null
+        }
     }
 
     /** Which of [options] [index] sets: on the option's own line, or inside the list the option opened. Null if none. */

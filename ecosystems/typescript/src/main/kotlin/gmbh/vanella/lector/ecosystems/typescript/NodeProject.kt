@@ -108,13 +108,7 @@ internal class NodeProject(
             }
             val lockfile = repo.resolve(lockfiles.single())
             val pinned = root.packageManager
-            val (tool, command) = MANAGERS.getValue(lockfiles.single())
-            if (pinned != null && !pinned.startsWith("$command@")) {
-                throw ToolError(
-                    "${lockfile.name} is $tool's, but package.json's packageManager is $pinned. lector-ai doesn't pick a package " +
-                        "manager: make them agree.",
-                )
-            }
+            val command = checkPinned(lockfile, pinned)
             return when (command) {
                 PackageManager.NPM.command -> PackageManager.NPM.also { checkNpm(lockfile) }
                 PackageManager.PNPM.command -> PackageManager.PNPM.also { checkPnpm(lockfile) }
@@ -239,4 +233,19 @@ internal class NodeProject(
             )
         }
     }
+}
+
+/** The command of [lockfile]'s package manager. Fails if `packageManager` ([pinned]) names another one. */
+private fun checkPinned(
+    lockfile: Path,
+    pinned: String?,
+): String {
+    val (tool, command) = MANAGERS.getValue(lockfile.name)
+    if (pinned != null && !pinned.startsWith("$command@")) {
+        throw ToolError(
+            "${lockfile.name} is $tool's, but package.json's packageManager is $pinned. lector-ai doesn't pick a package " +
+                "manager: make them agree.",
+        )
+    }
+    return command
 }

@@ -99,14 +99,7 @@ internal class NodeBuild(
         val session = session(repo, timeout).getOrElse { return listOf(unreadable(it)) }
         val install = session.install(frozen = true)
         val stage1 = install.ifEmpty { (session.build() + session.typeCheck()).distinct() }
-        if (stage1.isNotEmpty()) return stage1
-        val runs = session.project.packages.map { session.test(it, only = null) }
-        session.project.packages
-            .zip(runs)
-            .forEach { (pkg, run) -> run.diagnostics.mapNotNull { it.test }.forEach { ranIn[it] = pkg.dir } }
-        val counts = runs.map { it.count }
-        testsRun[session.root] = if (null in counts) null else counts.filterNotNull().sum()
-        return runs.flatMap { it.diagnostics }
+        return stage1.ifEmpty { session.tests() }
     }
 
     /** The test cases the last verify of [repo] ran, or null if a package's runner reports no count or verify ran no test. */
@@ -273,6 +266,15 @@ internal class NodeBuild(
             val result = run(command, pkg.dir(root))
             val errors = TscOutput.parse(result.output, root, pkg.dir(root))
             return if (result.exitCode != 0 && errors.isEmpty()) listOf(failure(command, pkg, result, tool = "tsc")) else errors
+        }
+
+        /** Stage 2: every package's tests. Remembers how many ran, and which package ran each failed test. */
+        fun tests(): List<Diagnostic> {
+            val runs = project.packages.map { test(it, only = null) }
+            project.packages.zip(runs).forEach { (pkg, run) -> run.diagnostics.mapNotNull { it.test }.forEach { ranIn[it] = pkg.dir } }
+            val counts = runs.map { it.count }
+            testsRun[root] = if (null in counts) null else counts.filterNotNull().sum()
+            return runs.flatMap { it.diagnostics }
         }
 
         /** Stage 2 for [pkg]: its tests, or [only] the tests with these names. A package without a `test` script has none. */
