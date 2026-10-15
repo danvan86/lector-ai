@@ -4,6 +4,7 @@ import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.ProcessResult
+import gmbh.vanella.lector.core.ProcessTimedOut
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.UpdateType
@@ -139,6 +140,10 @@ class TypeScriptAdapterTest {
         )
         assertEquals("", adapter { ProcessResult(0, "{not json") }.ground(repo, change(), listOf(error("src/same.ts"))))
         assertEquals("", adapter { ProcessResult(0, "{\"dequal\": 1}") }.ground(repo, change(), listOf(error("src/same.ts"))))
+        assertEquals(
+            "",
+            adapter { throw ProcessTimedOut("yarn did not finish within 2m") }.ground(repo, change(), listOf(error("src/same.ts"))),
+        )
     }
 
     @Test

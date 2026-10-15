@@ -3,6 +3,7 @@ package gmbh.vanella.lector.ecosystems.typescript
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.ProcessResult
+import gmbh.vanella.lector.core.ProcessTimedOut
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.ToolError
 import kotlinx.serialization.SerializationException
@@ -161,7 +162,12 @@ internal class NodeBuild(
                 logger.warn("Can't locate {} through Plug'n'Play: {}", names, it.message)
                 return emptyMap()
             }
-        val result = session.run(listOf("yarn", "node", "-e", PNP_SCRIPT, "$issuer/") + names, session.root)
+        val result =
+            try {
+                session.run(listOf("yarn", "node", "-e", PNP_SCRIPT, "$issuer/") + names, session.root)
+            } catch (e: ProcessTimedOut) {
+                ProcessResult(-1, e.message)
+            }
         val json = result.output.lines().lastOrNull { it.startsWith("{") }
         // A line that starts with `{` and parses is an object.
         val locations =

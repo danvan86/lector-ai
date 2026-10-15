@@ -76,6 +76,9 @@ internal class DeclarationGrounding(
                 .map { root.resolve(it) }
                 .filter { it.isRegularFile() }
         val imports = failing.flatMap { imports(it, name) }
+        // A PR can change hundreds of packages: only those the failing files import, or the errors name, are looked up.
+        val module = Regex("""['"]${Regex.escape(name)}(?:/[^'"]*)?['"]""")
+        if (imports.isEmpty() && diagnostics.none { module.containsMatchIn(it.message) }) return ""
         val quoted = diagnostics.flatMap { diagnostic -> QUOTED_NAME.findAll(diagnostic.message).map { it.groupValues[1] } }
         val symbols = (imports.flatMap { it.names } + quoted).toSet()
         if (symbols.isEmpty()) return ""
@@ -208,10 +211,11 @@ internal class DeclarationGrounding(
         file: Path,
         name: String,
     ): List<Import> {
-        val source = file.readText()
-        val tree = parse(if (file.toString().endsWith(".tsx")) TreeSitterTsx() else TreeSitterTypescript(), source)
-        return tree.children().filter { it.type == "import_statement" }.mapNotNull { statement ->
-            val module = statement.getChildByFieldName("source").text(source).trim('"', '\'')
+        val tree = Parsed(if (file.toString().endsWith(".tsx")) TreeSitterTsx() else TreeSitterTypescript(), file.readText())
+        // `import x = require("…")` has no module path of its own.
+        val statements = tree.root.children().filter { it.type == "import_statement" && !it.getChildByFieldName("source").isNull }
+        return statements.mapNotNull { statement ->
+            val module = tree.text(statement.getChildByFieldName("source")).trim('"', '\'')
             val subpath =
                 if (module == name) {
                     "."
@@ -220,7 +224,7 @@ internal class DeclarationGrounding(
                 } else {
                     null
                 }
-            subpath?.let { Import(it, statement.descendants("import_specifier").map { s -> s.getChildByFieldName("name").text(source) }) }
+            subpath?.let { Import(it, statement.descendants("import_specifier").map { s -> tree.text(s.getChildByFieldName("name")) }) }
         }
     }
 }
@@ -230,12 +234,13 @@ private object DeclarationFile {
     fun read(text: String): Pair<List<Declaration>, List<String>> {
         val declarations = mutableListOf<Declaration>()
         val reExports = mutableListOf<String>()
-        for (node in parse(TreeSitterTypescript(), text).children()) {
+        val tree = Parsed(TreeSitterTypescript(), text)
+        for (node in tree.root.children()) {
             val source = node.getChildByFieldName("source")
             val declared = if (node.type == "export_statement") node.getChildByFieldName("declaration") else node
             when {
-                node.type == "export_statement" && !source.isNull -> reExports += source.text(text).trim('"', '\'')
-                !declared.isNull -> name(declared, text)?.let { declarations += Declaration(it, node.text(text)) }
+                node.type == "export_statement" && !source.isNull -> reExports += tree.text(source).trim('"', '\'')
+                !declared.isNull -> name(declared, tree)?.let { declarations += Declaration(it, tree.text(node)) }
             }
         }
         return declarations to reExports
@@ -244,23 +249,29 @@ private object DeclarationFile {
     /** The name a declaration declares: a function, class, interface, type, enum, namespace, or the first variable. */
     private fun name(
         node: TSNode,
-        text: String,
+        tree: Parsed,
     ): String? {
         val declaration = if (node.type == "ambient_declaration") node.getNamedChild(0) else node
         val named = declaration.getChildByFieldName("name")
-        if (!named.isNull) return named.text(text)
+        if (!named.isNull) return tree.text(named)
         val variable = declaration.descendants("variable_declarator").firstOrNull() ?: return null
-        return variable.getChildByFieldName("name").text(text)
+        return tree.text(variable.getChildByFieldName("name"))
     }
 }
 
-private fun parse(
+/** [text] parsed with [language]. tree-sitter counts in UTF-8 bytes, so the text is encoded once. */
+private class Parsed(
     language: TSLanguage,
     text: String,
-): TSNode {
-    val parser = TSParser()
-    parser.setLanguage(language)
-    return parser.parseString(null, text).rootNode
+) {
+    private val bytes = text.toByteArray(Charsets.UTF_8)
+    val root: TSNode =
+        TSParser()
+            .apply { setLanguage(language) }
+            .parseString(null, text)
+            .rootNode
+
+    fun text(node: TSNode) = String(bytes, node.startByte, node.endByte - node.startByte, Charsets.UTF_8)
 }
 
 private fun TSNode.children() = (0 until namedChildCount).map { getNamedChild(it) }
@@ -276,12 +287,6 @@ private fun TSNode.descendants(type: String): List<TSNode> =
             it.descendants(type)
         }
     }
-
-/** The node's text in [source]. tree-sitter counts in UTF-8 bytes. */
-private fun TSNode.text(source: String): String {
-    val bytes = source.toByteArray(Charsets.UTF_8)
-    return String(bytes, startByte, endByte - startByte, Charsets.UTF_8)
-}
 
 /** The `@types` package of [name]: `@types/lodash`, and `@types/scope__pkg` for `@scope/pkg`. */
 internal fun typesPackage(name: String) = "@types/" + name.removePrefix("@").replace("/", "__")

@@ -23,7 +23,12 @@ class DeclarationGroundingTest {
     private val repo by lazy { dir.resolve("repo").createDirectories().toRealPath() }
     private val change = DependencyChange("npm", "deq", "1.0.0", "2.0.0", UpdateType.MAJOR)
     private val located = mutableMapOf<String, PackageFiles>()
-    private val grounding = DeclarationGrounding { _, _, names -> names.mapNotNull { name -> located[name]?.let { name to it } }.toMap() }
+    private val lookups = mutableListOf<List<String>>()
+    private val grounding =
+        DeclarationGrounding { _, _, names ->
+            lookups += names
+            names.mapNotNull { name -> located[name]?.let { name to it } }.toMap()
+        }
 
     @Test
     fun `the types condition of the imported subpath in exports comes first`() {
@@ -165,6 +170,7 @@ class DeclarationGroundingTest {
     fun `without a symbol, a package, or a declaration it names, there is no grounding`() {
         source("import * as deq from \"deq\";\nimport { other } from \"other\";\n")
         assertEquals("", grounding.ground(repo, change, listOf(Diagnostic(null, null, null, null, "no names", Severity.ERROR, "tsc"))))
+        assertEquals("", ground("no names"), "a namespace import names no symbol")
         assertEquals("", ground("Cannot find name 'dequal'."), "no package")
 
         pkg("deq", "package.json" to "{}", "index.d.ts" to "export declare function dequal(): boolean;\n")
@@ -172,6 +178,26 @@ class DeclarationGroundingTest {
 
         pkg("deq", "package.json" to "{}")
         assertEquals("", ground("Cannot find name 'dequal'."), "no declaration file")
+    }
+
+    @Test
+    fun `a package that no failing file imports and no message names isn't looked up`() {
+        source("import { other } from \"other\";\n")
+        pkg("deq", "package.json" to "{}", "index.d.ts" to "export declare function other(): boolean;\n")
+
+        assertEquals("", ground("Property 'other' does not exist."))
+        assertEquals(emptyList(), lookups)
+
+        assertEquals("// deq/index.d.ts", ground("Module '\"deq\"' has no exported member 'other'.").lines()[2])
+        assertEquals(listOf(listOf("deq", "@types/deq")), lookups)
+    }
+
+    @Test
+    fun `an import without a module path, like import x = require(), is no import of the package`() {
+        source("import fs = require(\"fs\");\nimport \"./side-effect\";\nimport { dequal } from \"deq\";\n")
+        pkg("deq", "package.json" to "{}", "index.d.ts" to "export declare function dequal(): boolean;\n")
+
+        assertEquals("// deq/index.d.ts", ground().lines()[2])
     }
 
     @Test
@@ -278,6 +304,7 @@ class DeclarationGroundingTest {
 
         assertEquals(null, PackageFiles.at(root.toString()).read("b.d.ts"))
         assertEquals("x", PackageFiles.at(dir.resolve("project/.yarn/__virtual__/p-virtual-1/2/p").toString()).read("a.d.ts"))
+        assertEquals(null, PackageFiles.at("/p/.yarn/__virtual__/p-virtual-1/9/p").read("a.d.ts"), "deeper than the path")
         assertEquals("b/c", normalizePackagePath("./a/../b//c"))
         assertEquals(null, normalizePackagePath("../outside"))
     }

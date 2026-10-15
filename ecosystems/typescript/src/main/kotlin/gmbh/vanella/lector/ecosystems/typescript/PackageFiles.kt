@@ -20,7 +20,8 @@ internal fun interface PackageFiles {
     companion object {
         /** The package at [location]: a directory, or a directory inside a zip archive (`…/cache/x.zip/node_modules/x/`). */
         fun at(location: String): PackageFiles {
-            val real = real(location)
+            // A virtual path deeper than its directories leads nowhere.
+            val real = real(location) ?: return PackageFiles { null }
             if (ZIP !in real) {
                 return PackageFiles { file ->
                     Path
@@ -39,10 +40,11 @@ internal fun interface PackageFiles {
          * The real path of a package Yarn gives a virtual path, because it has peer dependencies:
          * `<dir>/.yarn/__virtual__/<hash>/<n>/<rest>` is `<rest>` [n] directories above `<dir>/.yarn`.
          */
-        private fun real(location: String): String {
+        private fun real(location: String): String? {
             val virtual = VIRTUAL.matchEntire(location) ?: return location
             val (folder, depth, rest) = virtual.destructured
-            val base = (1..depth.toInt()).fold(Path.of(folder).parent) { dir, _ -> dir.parent }
+            // Path.parent is null above the root.
+            val base = (0..depth.toInt()).fold<Int, Path?>(Path.of(folder)) { dir, _ -> dir?.parent } ?: return null
             return base.resolve(rest).toString() + if (location.endsWith("/")) "/" else ""
         }
 
