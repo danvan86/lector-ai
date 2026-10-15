@@ -9,7 +9,7 @@ import kotlin.io.path.readLines
 private val logger = LoggerFactory.getLogger(NodeSelection::class.java)
 
 private val VERSION_FILES = listOf(".nvmrc", ".node-version")
-private val VERSION = Regex("""v?(\d+)(?:\.\d+){0,2}""")
+private val VERSION = Regex("""v?(\d{1,9})(?:\.\d+){0,2}""")
 private val HEADER = Regex("""#define NODE_(MAJOR|MINOR|PATCH)_VERSION (\d+)""")
 private const val PARTS = 3
 

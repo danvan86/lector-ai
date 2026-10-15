@@ -48,10 +48,19 @@ class NodeProjectTest {
     }
 
     @Test
-    fun `workspace globs follow npm's rules, negations and nested directories included, never into node_modules`() {
-        file("package.json", """{"workspaces": {"packages": ["apps/*", "libs/**", "!libs/old"]}}""")
+    fun `workspace globs follow npm's rules, negations and nested directories included, never into node_modules or dot directories`() {
+        file("package.json", """{"workspaces": {"packages": ["apps/*", "./libs/**", "!libs/old", "!./libs/older"]}}""")
         file("package-lock.json", """{"lockfileVersion": 3}""")
-        for (dir in listOf("apps/web", "apps/api", "libs/a", "libs/a/nested", "libs/old", "apps/web/node_modules/dep")) {
+        for (dir in listOf(
+            "apps/web",
+            "apps/api",
+            "libs/a",
+            "libs/a/nested",
+            "libs/old",
+            "libs/older",
+            "libs/.hidden",
+            "apps/web/node_modules/dep",
+        )) {
             file("$dir/package.json", """{"name": "${dir.replace('/', '-')}"}""")
         }
         file("apps/docs/README.md", "no package")
@@ -161,6 +170,9 @@ class NodeProjectTest {
                 "lector-ai doesn't guess the Yarn version: add \"packageManager\": \"yarn@<version>\" to package.json.",
         )
 
+        file(".yarnrc.yml", "nodeLinker: node-modules\n")
+        assertError("yarn.lock is Yarn Berry's, but package.json names no packageManager and .yarnrc.yml no yarnPath. ", prefix = true)
+
         file(".yarnrc.yml", "yarnPath: .yarn/releases/yarn-4.18.1.cjs\n")
         assertEquals(PackageManager.YARN_BERRY, NodeProject.read(repo).manager)
     }
@@ -255,16 +267,28 @@ class NodeProjectTest {
         assertError("yarn.lock has __metadata.version 0, written by Yarn 3 or older. lector-ai supports version 8 and newer (Yarn 4).")
 
         file("yarn.lock", "key: [\n")
-        assertError("Can't read yarn.lock: it is neither Yarn classic's format (`# yarn lockfile v1`) nor Yarn Berry's (`__metadata`)")
+        assertError("Can't read yarn.lock: ", prefix = true)
+        val message = assertFailsWith<ToolError> { NodeProject.read(repo) }.message
+        assertFalse("neither Yarn classic's format" in message, "the YAML parser's own error: $message")
     }
 
     @Test
-    fun `Yarn Berry needs packageManager to name Yarn, or a yarnPath`() {
+    fun `a packageManager that isn't the lockfile's is a tool error`() {
         file("package.json", """{"packageManager": "pnpm@10.34.6"}""")
         file("yarn.lock", "__metadata:\n  version: 10\n")
         file(".yarnrc.yml", "nodeLinker: node-modules\n")
+        assertError(
+            "yarn.lock is Yarn's, but package.json's packageManager is pnpm@10.34.6. lector-ai doesn't pick a package manager: " +
+                "make them agree.",
+        )
 
-        assertError("yarn.lock is Yarn Berry's, but package.json names no packageManager and .yarnrc.yml no yarnPath. ", prefix = true)
+        file("yarn.lock").toFile().delete()
+        file("pnpm-lock.yaml", "lockfileVersion: '9.0'\n")
+        file("package.json", """{"packageManager": "yarn@4.18.1+sha512.abc"}""")
+        assertError("pnpm-lock.yaml is pnpm's, but package.json's packageManager is yarn@4.18.1+sha512.abc. ", prefix = true)
+
+        file("package.json", """{"packageManager": "pnpm@10.34.6"}""")
+        assertEquals(PackageManager.PNPM, NodeProject.read(repo).manager)
     }
 
     @Test

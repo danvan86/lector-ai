@@ -4,7 +4,8 @@ import gmbh.vanella.lector.core.UpdateType
 import gmbh.vanella.lector.core.VersionScheme
 
 // `1.2.3-rc.1+build`, with a leading `v` and missing numbers allowed: `v2`, `2.1`.
-private val VERSION = Regex("""v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?""")
+// At most nine digits per number: they fit an Int. A longer one is no version.
+private val VERSION = Regex("""v?(\d{1,9})(?:\.(\d{1,9}))?(?:\.(\d{1,9}))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?""")
 
 // A version in a range: numbers may be `x`, `X`, or `*` (any), or missing.
 private val PARTIAL = Regex("""v?(\d+|[xX*])?(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?""")
@@ -122,12 +123,13 @@ private fun compareIdentifiers(
     x: String,
     y: String,
 ): Int {
-    val numberX = x.toIntOrNull()
-    val numberY = y.toIntOrNull()
+    val numberX = x.all(Char::isDigit)
+    val numberY = y.all(Char::isDigit)
+    // Numbers of any length: the longer is higher (semver forbids leading zeros), the same length compares by digits.
     return when {
-        numberX != null && numberY != null -> numberX.compareTo(numberY)
-        numberX != null -> -1
-        numberY != null -> 1
+        numberX && numberY -> compareValuesBy(x, y, { it.length }, { it })
+        numberX -> -1
+        numberY -> 1
         else -> x.compareTo(y)
     }
 }

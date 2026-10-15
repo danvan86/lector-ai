@@ -17,8 +17,13 @@ import kotlin.io.path.visitFileTree
 internal const val PACKAGE_JSON = "package.json"
 internal const val TSCONFIG = "tsconfig.json"
 
-// Directories no workspace package lives in, and that are too large to search.
-private val SKIPPED = setOf("node_modules", ".git")
+// The tool behind each lockfile, as messages name it, and its command.
+private val MANAGERS =
+    mapOf(
+        PackageManager.NPM.lockfile to ("npm" to PackageManager.NPM.command),
+        PackageManager.PNPM.lockfile to ("pnpm" to PackageManager.PNPM.command),
+        PackageManager.YARN_BERRY.lockfile to ("Yarn" to PackageManager.YARN_BERRY.command),
+    )
 
 // The oldest lockfile formats of the maintained package manager majors (checked October 2026).
 private const val OLDEST_NPM_LOCKFILE = 2
@@ -102,10 +107,18 @@ internal class NodeProject(
                 )
             }
             val lockfile = repo.resolve(lockfiles.single())
-            return when (lockfiles.single()) {
-                PackageManager.NPM.lockfile -> PackageManager.NPM.also { checkNpm(lockfile) }
-                PackageManager.PNPM.lockfile -> PackageManager.PNPM.also { checkPnpm(lockfile) }
-                else -> yarn(repo, lockfile, root)
+            val pinned = root.packageManager
+            val (tool, command) = MANAGERS.getValue(lockfiles.single())
+            if (pinned != null && !pinned.startsWith("$command@")) {
+                throw ToolError(
+                    "${lockfile.name} is $tool's, but package.json's packageManager is $pinned. lector-ai doesn't pick a package " +
+                        "manager: make them agree.",
+                )
+            }
+            return when (command) {
+                PackageManager.NPM.command -> PackageManager.NPM.also { checkNpm(lockfile) }
+                PackageManager.PNPM.command -> PackageManager.PNPM.also { checkPnpm(lockfile) }
+                else -> yarn(repo, lockfile, pinned)
             }
         }
 
@@ -134,7 +147,7 @@ internal class NodeProject(
         private fun yarn(
             repo: Path,
             lockfile: Path,
-            root: PackageJson,
+            pinned: String?,
         ): PackageManager {
             if ("# yarn lockfile v1" in lockfile.readText()) return PackageManager.YARN_CLASSIC
             val metadata = berryMetadata(lockfile)
@@ -147,7 +160,7 @@ internal class NodeProject(
             }
             val yarnrc = repo.resolve(".yarnrc.yml")
             val yarnPath = yarnrc.isRegularFile() && mapping(yamlDocuments(yarnrc, yarnrc.name).firstOrNull())["yarnPath"] != null
-            if (root.packageManager?.startsWith("yarn@") != true && !yarnPath) {
+            if (pinned == null && !yarnPath) {
                 throw ToolError(
                     "${lockfile.name} is Yarn Berry's, but package.json names no packageManager and .yarnrc.yml no yarnPath. " +
                         "lector-ai doesn't guess the Yarn version: add \"packageManager\": \"yarn@<version>\" to package.json.",
@@ -157,12 +170,7 @@ internal class NodeProject(
         }
 
         private fun berryMetadata(lockfile: Path): Map<*, *> {
-            val metadata =
-                try {
-                    mapping(yamlDocuments(lockfile, lockfile.name).firstOrNull())["__metadata"]
-                } catch (_: ToolError) {
-                    null
-                }
+            val metadata = mapping(yamlDocuments(lockfile, lockfile.name).firstOrNull())["__metadata"]
             return metadata as? Map<*, *>
                 ?: throw ToolError(
                     "Can't read ${lockfile.name}: it is neither Yarn classic's format (`# yarn lockfile v1`) nor Yarn Berry's (`__metadata`)",
@@ -178,15 +186,25 @@ internal class NodeProject(
 
         /**
          * The directories with a `package.json` that the workspace [patterns] name, relative to [repo], sorted. `!` excludes;
-         * `node_modules` and `.git` are never searched.
+         * `node_modules` and dot directories are never searched.
          */
         private fun workspaceDirs(
             repo: Path,
             patterns: List<String>,
         ): List<String> {
             if (patterns.isEmpty()) return emptyList()
-            val (excluded, included) = patterns.map { it.trim().removePrefix("./").removeSuffix("/") }.partition { it.startsWith("!") }
-            val matchers = { globs: List<String> -> globs.map { FileSystems.getDefault().getPathMatcher("glob:${it.removePrefix("!")}") } }
+            val (excluded, included) = patterns.map { it.trim() }.partition { it.startsWith("!") }
+            val matchers = { globs: List<String> ->
+                globs.map {
+                    val glob =
+                        it
+                            .removePrefix("!")
+                            .trim()
+                            .removePrefix("./")
+                            .removeSuffix("/")
+                    FileSystems.getDefault().getPathMatcher("glob:$glob")
+                }
+            }
             val include = matchers(included)
             val exclude = matchers(excluded)
             return packageDirs(repo)
@@ -195,14 +213,18 @@ internal class NodeProject(
                 .sorted()
         }
 
-        /** Every directory below [repo] with a `package.json`, relative to it. `node_modules` and `.git` are never searched. */
+        /**
+         * Every directory below [repo] with a `package.json`, relative to it. `node_modules` and dot directories are never
+         * searched: the package managers' globs don't enter them.
+         */
         @OptIn(ExperimentalPathApi::class)
         private fun packageDirs(repo: Path): List<Path> {
             val dirs = mutableListOf<Path>()
             repo.visitFileTree {
                 onPreVisitDirectory { dir, _ ->
-                    if (dir != repo && dir.resolve(PACKAGE_JSON).exists()) dirs.add(repo.relativize(dir))
-                    if (dir.name in SKIPPED) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+                    val skipped = dir != repo && (dir.name == "node_modules" || dir.name.startsWith("."))
+                    if (!skipped && dir != repo && dir.resolve(PACKAGE_JSON).exists()) dirs.add(repo.relativize(dir))
+                    if (skipped) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
                 }
             }
             return dirs

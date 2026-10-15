@@ -12,7 +12,8 @@ import kotlin.io.path.readText
 
 /**
  * What the adapter reads from a `package.json`. [dependencies] are the installed ones of every kind (`dependencies`,
- * `devDependencies`, `optionalDependencies`), by name; the first kind that names a package wins. [workspaces] are the
+ * `devDependencies`, `optionalDependencies`), by name; `dependencies` wins over `devDependencies`, which wins over
+ * `optionalDependencies`. [workspaces] are the
  * globs of npm and Yarn workspaces, [engines] is `engines.node`.
  */
 internal data class PackageJson(

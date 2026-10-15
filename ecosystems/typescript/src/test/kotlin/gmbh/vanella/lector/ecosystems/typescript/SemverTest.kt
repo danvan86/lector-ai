@@ -140,4 +140,12 @@ class SemverTest {
         assertEquals(0, SemverScheme.compareSelectors(">=1", ">=2"))
         assertTrue(SemverScheme.compareSelectors(">=1", "1.0.0") > 0)
     }
+
+    @Test
+    fun `numbers longer than an Int are no version, and long pre-release numbers still compare as numbers`() {
+        assertEquals(null, Semver.parse("99999999999.0.0"))
+        assertTrue(SemverScheme.compare("1.0.0-dev.9999999999", "1.0.0-dev.10000000000") < 0)
+        assertTrue(SemverScheme.compare("1.0.0-dev.10000000000", "1.0.0-dev.10000000001") < 0)
+        assertEquals(0, SemverScheme.compare("1.0.0-dev.10000000000", "1.0.0-dev.10000000000"))
+    }
 }

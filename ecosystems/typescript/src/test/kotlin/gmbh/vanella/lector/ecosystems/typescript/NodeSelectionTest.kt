@@ -83,6 +83,8 @@ class NodeSelectionTest {
             "Can't read the Node version node in .nvmrc. lector-ai reads a version, a major, lts/*, or an LTS codename.",
             assertFailsWith<ToolError> { selection.home(repo, engines = null) }.message,
         )
+        repo.resolve(".nvmrc").writeText("99999999999\n")
+        assertFailsWith<ToolError> { selection.home(repo, engines = null) }
     }
 
     @Test
