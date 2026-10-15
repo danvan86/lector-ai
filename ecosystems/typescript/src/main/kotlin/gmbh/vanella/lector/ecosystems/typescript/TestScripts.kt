@@ -44,12 +44,9 @@ internal object TestScripts {
     private fun arguments(
         runner: Runner,
         arguments: List<String>,
-    ) = if (runner ==
-        Runner.VITEST
-    ) {
-        arguments.filterIndexed { index, argument -> !(index == 0 && argument == "run") && argument != "--run" }
-    } else {
-        arguments
+    ) = when (runner) {
+        Runner.VITEST -> arguments.filterIndexed { index, argument -> !(index == 0 && argument == "run") && argument != "--run" }
+        Runner.JEST -> arguments
     }
 
     private fun segments(tokens: List<String>): List<List<String>> {

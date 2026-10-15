@@ -72,7 +72,10 @@ internal class NodeBuild(
     private val jestJunit: Path?,
     private val run: ProcessRunner,
 ) : AutoCloseable {
-    private val variables = environment.filterKeys { name -> name in VARIABLE_NAMES || VARIABLE_PREFIXES.any { name.startsWith(it) } }
+    private val managerVariables =
+        environment.filterKeys { name ->
+            name in VARIABLE_NAMES || VARIABLE_PREFIXES.any { name.startsWith(it) }
+        }
 
     // Per working tree: what the last install installed, whether the dependency builds ran since, and the test count.
     private val installed = mutableMapOf<Path, String>()
@@ -224,7 +227,7 @@ internal class NodeBuild(
         val project = NodeProject.read(root)
         private val commands = Commands(project.manager)
         private val deadline = TimeSource.Monotonic.markNow() + timeout
-        private val variables = variables(root, project)
+        private val variables = environmentOf(root, project)
 
         /** The install, unless the last one in this working tree installed the same files. Returns its problems, if it failed. */
         fun install(frozen: Boolean): List<Diagnostic> {
@@ -235,11 +238,8 @@ internal class NodeBuild(
             val command = commands.install(frozen)
             val result = run(command, root)
             // Lifecycle scripts build: a failed install yields their tsc errors, like a failed build script.
-            if (result.exitCode !=
-                0
-            ) {
-                return TscOutput.parse(result.output, root, root).ifEmpty { listOf(failure(command, project.root, result)) }
-            }
+            val errors = { TscOutput.parse(result.output, root, root).ifEmpty { listOf(failure(command, project.root, result)) } }
+            if (result.exitCode != 0) return errors()
             installed[root] = fingerprint()
             return emptyList()
         }
@@ -250,13 +250,8 @@ internal class NodeBuild(
                 dependencyBuilds(project).flatMap { pkg ->
                     val command = commands.script("build")
                     val result = run(command, pkg.dir(root))
-                    if (result.exitCode ==
-                        0
-                    ) {
-                        emptyList()
-                    } else {
-                        TscOutput.parse(result.output, root, pkg.dir(root)).ifEmpty { listOf(failure(command, pkg, result)) }
-                    }
+                    val errors = { TscOutput.parse(result.output, root, pkg.dir(root)).ifEmpty { listOf(failure(command, pkg, result)) } }
+                    if (result.exitCode == 0) emptyList() else errors()
                 }
             built.add(root)
             return diagnostics
@@ -375,35 +370,32 @@ internal class NodeBuild(
         }
     }
 
-    private fun variables(
+    /** The variables of every process in the working tree [root], on top of the allowlisted ones. */
+    private fun environmentOf(
         root: Path,
         project: NodeProject,
     ): Map<String, String> =
         buildMap {
-            putAll(variables)
+            putAll(managerVariables)
             // No prompts (rule 6): Corepack asks before a download, pnpm before it purges node_modules, unless CI is set.
             // The tool always runs as CI; a CI variable of the environment stays as it is.
             put("COREPACK_ENABLE_DOWNLOAD_PROMPT", "0")
             if ("CI" !in environment) put("CI", "true")
-            val node = nodes.home(root, project.root.manifest.engines)
-            if (node !=
-                null
-            ) {
-                put("PATH", listOfNotNull(node.resolve("bin").toString(), environment["PATH"]).joinToString(File.pathSeparator))
-            }
+            val bin = nodes.home(root, project.root.manifest.engines)?.resolve("bin")
+            if (bin != null) put("PATH", listOfNotNull(bin.toString(), environment["PATH"]).joinToString(File.pathSeparator))
             if (npmrc != null) put("NPM_CONFIG_USERCONFIG", npmrc.toAbsolutePath().toString())
             // pnpm puts its store on the repository's file system if HOME is on another one, as in a container: not in the
             // user's working tree, unless the user says so.
             val home = environment["HOME"]
             if (project.manager == PackageManager.PNPM && home != null &&
-                variables.keys.none { it.lowercase() == "npm_config_store_dir" }
+                managerVariables.keys.none { it.lowercase() == "npm_config_store_dir" }
             ) {
                 put("npm_config_store_dir", "$home/.local/share/pnpm/store")
             }
             if (yarnrc != null && project.manager == PackageManager.YARN_BERRY) {
                 yarnrc.copyTo(temp.resolve(".yarnrc.yml"), overwrite = true)
                 put("HOME", temp.toString())
-                if (home != null && "YARN_GLOBAL_FOLDER" !in variables) put("YARN_GLOBAL_FOLDER", "$home/.yarn/berry")
+                if (home != null && "YARN_GLOBAL_FOLDER" !in managerVariables) put("YARN_GLOBAL_FOLDER", "$home/.yarn/berry")
             }
         }
 

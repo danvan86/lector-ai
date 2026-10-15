@@ -54,13 +54,11 @@ internal object NodeTestReports {
     ): Diagnostic? {
         val failure = testCase.failure ?: return null
         val file = if (runner == Runner.JEST) testCase.file else testCase.classname
+        // jest-junit writes the describe blocks as the class name, Vitest the full name as the name.
         val name =
-            if (runner ==
-                Runner.JEST
-            ) {
-                listOf(testCase.classname, testCase.name).filter { it.isNotEmpty() }
-            } else {
-                listOf(testCase.name)
+            when (runner) {
+                Runner.JEST -> listOf(testCase.classname, testCase.name).filter { it.isNotEmpty() }
+                Runner.VITEST -> listOf(testCase.name)
             }
         // A root runner with projects names the file from the root, and the place in the failure from the project.
         val suffixes = if (file == null) emptyList() else file.indices.filter { it == 0 || file[it - 1] == '/' }.map { file.substring(it) }

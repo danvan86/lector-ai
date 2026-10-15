@@ -14,8 +14,8 @@ maven-artifact = "3.10.0"
 tree-sitter = "0.26.6"
 tree-sitter-java = "0.23.5"
 tree-sitter-kotlin = "0.3.8.1"
+# TypeScript and TSX: two grammars of one upstream repository, which share the adapter's queries.
 tree-sitter-typescript = "0.23.2"
-tree-sitter-tsx = "0.23.2"
 tree-sitter-javascript = "0.25.0"
 # YAML 1.2, for pnpm's lockfile and workspace file and Yarn Berry's lockfile.
 snakeyaml-engine = "3.2"
@@ -42,7 +42,7 @@ tree-sitter = { module = "io.github.bonede:tree-sitter", version.ref = "tree-sit
 tree-sitter-java = { module = "io.github.bonede:tree-sitter-java", version.ref = "tree-sitter-java" }
 tree-sitter-kotlin = { module = "io.github.bonede:tree-sitter-kotlin", version.ref = "tree-sitter-kotlin" }
 tree-sitter-typescript = { module = "io.github.bonede:tree-sitter-typescript", version.ref = "tree-sitter-typescript" }
-tree-sitter-tsx = { module = "io.github.bonede:tree-sitter-tsx", version.ref = "tree-sitter-tsx" }
+tree-sitter-tsx = { module = "io.github.bonede:tree-sitter-tsx", version.ref = "tree-sitter-typescript" }
 tree-sitter-javascript = { module = "io.github.bonede:tree-sitter-javascript", version.ref = "tree-sitter-javascript" }
 snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyaml-engine" }
 # OpenRewrite: only on the build-time classpath of the index generator, never at run time.
