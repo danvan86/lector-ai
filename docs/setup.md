@@ -283,7 +283,9 @@ pass the `npmrc` or `yarnrc` input, and the token through the step's `env` as `N
 Corepack fetches package managers from npmjs.org: point `COREPACK_NPM_REGISTRY` (and `COREPACK_NPM_TOKEN` or
 `COREPACK_NPM_USERNAME` and `COREPACK_NPM_PASSWORD`) at your mirror the same way. The processes get `NODE_AUTH_TOKEN`,
 `NPM_TOKEN`, and the `NPM_CONFIG_*`, `npm_config_*`, `YARN_*`, and `COREPACK_*` variables of the step, never the App
-token:
+token. Lifecycle scripts and tests run the dependencies' code, and these variables reach it: give them a token that can
+only read the registry. For GitHub Packages through `NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`, as setup-node's
+examples show, that means a job whose `permissions` grant `packages: read` and nothing it could write with:
 
 ```yaml
       - uses: danvan86/lector-ai/action@v0.1.0

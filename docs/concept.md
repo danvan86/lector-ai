@@ -86,14 +86,15 @@ The pipeline itself is **not** an extension point. It is a fixed sequence in the
      ┌────────┬───┴────┬─────────┬─────────┐
      ▼        ▼        ▼         ▼         ▼
   sources  ecosystems  llm    recipes     git
-     │     ├─ jvm       │        │         │
-     │     └─ ts …      │        │         │
+     │     ├─ jvm ─┐    │        │         │
+     │     ├─ ts ──┤    │        │         │
+     │     └─ shared    │        │         │
      └────────┴────────┴────┬────┴─────────┘
                             ▼
                           core
 ```
 
-Each ecosystem is its own submodule (`ecosystems:jvm`, `ecosystems:typescript`, …), so it brings only its own dependencies.
+Each ecosystem is its own submodule (`ecosystems:jvm`, `ecosystems:typescript`, …), so it brings only its own dependencies. What the ecosystems share outside `core` (the JUnit XML reader, the tree-sitter facts) is in `ecosystems:shared`; no ecosystem depends on another.
 
 ### 2.2 Plugin model
 
@@ -275,7 +276,7 @@ A local model often doesn't know the new version of an API, because it was relea
 
 **Progress** is measured stage by stage. The failures caused by the update are counted as the tuple (build errors without a location, compile errors, test failures), and an attempt counts as progress only if this tuple gets lower, comparing the stages in that order. So fixing a missing artifact counts even if it unmasks 50 compile errors, and a new compile error never counts as progress while fixing tests. An attempt without progress is rejected and rolled back.
 
-**No downgrades by the LLM.** After an attempt that touched a build file, the resolved versions are read again. If any package resolves lower than before the fix loop, including the PR's own package, the attempt is rejected. So is an attempt after which the PR's own package no longer resolves at all. Reverting the bump is the easiest way to make a build green.
+**No downgrades by the LLM.** After an attempt that touched a build file, the adapter first brings the files the build tool derives from it, like a lockfile, in line (they go into the attempt's commit), and the resolved versions are read again. If any package resolves lower than before the fix loop, including the PR's own package, the attempt is rejected. So is an attempt after which the PR's own package no longer resolves at all. Reverting the bump is the easiest way to make a build green.
 
 ## 7. Guardrails
 

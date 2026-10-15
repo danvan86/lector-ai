@@ -24,9 +24,9 @@ The release workflow refuses a version tag until the line above says `done`, tog
 | SnakeYAML Engine (`org.snakeyaml:snakeyaml-engine`, pnpm's and Yarn's lockfiles) | Apache License 2.0 |
 | The recipe index and its license report: recipe names, the packages and versions they cover, and their artifacts and licenses, generated from `rewrite-recipe-bom` | see the MSAL check |
 | Eclipse Temurin JDKs 17, 21, 25 | GPL v2 with the Classpath Exception |
-| Apache Maven 3.9 | Apache License 2.0 |
+| Apache Maven 3.10 | Apache License 2.0 |
 | Node.js 22 and 24 (from the official `node` images: `node`, its headers) | MIT, with the licenses of its bundled dependencies in its `LICENSE` |
-| npm, bundled with each Node | Artistic License 2.0 |
+| npm, bundled with each Node | Artistic License 2.0 (npm), with the ISC, MIT, and BSD licenses of its bundled dependencies |
 | Corepack 0.36 (`docker/lector/node`) | MIT |
 | pnpm 12, Yarn 4 (`@yarnpkg/cli-dist`), and Yarn 1, pre-cached by Corepack | MIT (pnpm), BSD-2-Clause (Yarn) |
 | jest-junit 17 and its dependencies (`mkdirp`, `strip-ansi`, `ansi-regex`, `uuid`, `xml`) | Apache License 2.0 (jest-junit), MIT (its dependencies) |
