@@ -13,6 +13,9 @@ const val MAVEN = "maven"
 // The ecosystems the harness builds, and the report reports separately.
 private val ECOSYSTEMS = setOf(MAVEN, "npm")
 
+/** The ecosystems with a recipe step. npm has none: OpenRewrite JavaScript is MSAL-licensed (concept section 9). */
+val RECIPE_ECOSYSTEMS = setOf(MAVEN)
+
 private const val RESOURCE = "corpus.json"
 private val ID = Regex("[a-z0-9]+(-[a-z0-9]+)*")
 private val COMMIT = Regex("[0-9a-f]{40}")

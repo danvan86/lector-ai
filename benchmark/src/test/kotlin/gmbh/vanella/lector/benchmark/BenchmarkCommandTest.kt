@@ -185,6 +185,20 @@ class BenchmarkCommandTest {
         assertEquals(0, result.statusCode)
         listOf("matrix", "run", "merge", "report").forEach { assertContains(result.stdout, it) }
         val matrix = benchmarkCommand().test("matrix").stdout
-        assertEquals(Corpus.load().cases.size * 7, Regex("\"repetition\"").findAll(matrix).count())
+        assertEquals(
+            Corpus
+                .load()
+                .cases
+                .sumOf {
+                    if (it.ecosystem ==
+                        MAVEN
+                    ) {
+                        7L
+                    } else {
+                        3L
+                    }
+                }.toInt(),
+            Regex("\"repetition\"").findAll(matrix).count(),
+        )
     }
 }

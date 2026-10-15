@@ -30,6 +30,16 @@ class PlanTest {
     }
 
     @Test
+    fun `a case of an ecosystem without recipes runs only the fix loop`() {
+        val npm = case("zod-4").copy(ecosystem = "npm")
+
+        assertEquals(
+            listOf(RunKey("zod-4", Mode.FIX_LOOP_ONLY, 1), RunKey("zod-4", Mode.FIX_LOOP_ONLY, 2), RunKey("zod-4", Mode.FIX_LOOP_ONLY, 3)),
+            plan(Corpus(listOf(npm))),
+        )
+    }
+
+    @Test
     fun `a plan can be limited to some cases`() {
         assertEquals(setOf("two"), plan(corpus, setOf("two")).map { it.case }.toSet())
     }

@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 class ReportTest {
     private val results = Results.decode(fixture("results.json"))
@@ -103,25 +104,33 @@ class ReportTest {
 
     @Test
     fun `with cases of more than one ecosystem, each gets its own numbers, the JVM first`() {
-        val npm = results.runs.filter { it.case == "boot-3" }.map { it.copy(case = "zod-4", ecosystem = "npm") }
+        val npm =
+            results.runs
+                .filter { it.case == "boot-3" && it.mode == Mode.FIX_LOOP_ONLY }
+                .map { it.copy(case = "zod-4", ecosystem = "npm") }
         val other = npm.map { it.copy(case = "pandas-2", ecosystem = "pypi") }
 
         val report = Report.render(results.copy(runs = other + npm + results.runs), null)
 
-        val headings = report.lines().filter { it.startsWith("# ") || it == "## 90/10 verdict" }
+        val headings = report.lines().filter { it.startsWith("# ") || it == "## 90/10 verdict" || it == "## Recipe step" }
         assertEquals(
             listOf(
                 "# Benchmark ${results.date}",
                 "# JVM (`maven`)",
                 "## 90/10 verdict",
                 "# TypeScript (`npm`)",
-                "## 90/10 verdict",
+                "## Recipe step",
                 "# pypi (`pypi`)",
-                "## 90/10 verdict",
+                "## Recipe step",
             ),
             headings,
         )
         assertEquals(1, report.split("## Manual review").size - 1, "the review is one for all")
-        assertContains(report.substringAfter("# TypeScript").substringBefore("# pypi"), "| zod-4 |")
+        val typescript = report.substringAfter("# TypeScript").substringBefore("# pypi")
+        assertContains(typescript, "None for `npm`: its ecosystem has no recipes, so only the fix loop runs.")
+        assertContains(typescript, "| zod-4 | 0/3 |")
+        assertContains(typescript, "Green after the fix loop: 0 in at least one run, 0 in every run.")
+        assertContains(typescript, "| Case | Fix loop only |")
+        assertFalse("Recipe only" in typescript, "no recipe mode in its tables")
     }
 }
