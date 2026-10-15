@@ -323,6 +323,26 @@ class NodeBuildTest {
     }
 
     @Test
+    fun `a project an edit made unreadable is a problem of the attempt, not a tool error`() {
+        fixture("npm-jest")
+        val build = build()
+        edit("package.json") { it.replace("\"private\": true,", "\"private\": true,,") }
+
+        val problem = build.verify(repo, 1.hours).single()
+        assertEquals(listOf(null, "npm"), listOf(problem.file, problem.tool))
+        assertContains(problem.message, "Can't read package.json")
+        assertContains(build.runTests(repo, listOf(test("src/calc.test.ts#calc > add", "jest")), 1.hours).single().message, "package.json")
+        assertContains((build.updateLockfiles(repo, 1.hours) as LockfileUpdate.Failed).reason, "Can't read package.json")
+        assertEquals(emptyMap(), build.pnpLocations(repo, repo, listOf("dequal")))
+        assertEquals(emptyList(), runs, "nothing runs")
+        assertEquals(null, build.testsRun(repo))
+
+        fixture("npm-jest")
+        repo.resolve(".nvmrc").writeText("26\n")
+        assertContains(build(nodes = NodeSelection(mapOf(24 to node()))).verify(repo, 1.hours).single().message, "asks for Node 26")
+    }
+
+    @Test
     fun `updateLockfiles installs without the frozen flag and names the lockfile if it changed`() {
         fixture("pnpm-workspace")
         val build = build()

@@ -4,6 +4,7 @@ import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.Severity
+import gmbh.vanella.lector.core.ToolError
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -86,8 +87,8 @@ internal class NodeBuild(
         repo: Path,
         timeout: Duration,
     ): List<Diagnostic> {
-        val session = Session(repo.toRealPath(), timeout)
-        testsRun.remove(session.root)
+        testsRun.remove(repo.toRealPath())
+        val session = session(repo, timeout).getOrElse { return listOf(unreadable(it)) }
         val install = session.install(frozen = true)
         val stage1 = install.ifEmpty { (session.build() + session.typeCheck()).distinct() }
         if (stage1.isNotEmpty()) return stage1
@@ -109,7 +110,7 @@ internal class NodeBuild(
         tests: List<Diagnostic>,
         timeout: Duration,
     ): List<Diagnostic> {
-        val session = Session(repo.toRealPath(), timeout)
+        val session = session(repo, timeout).getOrElse { return listOf(unreadable(it)) }
         val install = session.install(frozen = true)
         val problems = install.ifEmpty { if (session.root !in built) session.build() else emptyList() }
         if (problems.isNotEmpty()) return problems
@@ -133,7 +134,7 @@ internal class NodeBuild(
         repo: Path,
         timeout: Duration,
     ): LockfileUpdate {
-        val session = Session(repo.toRealPath(), timeout)
+        val session = session(repo, timeout).getOrElse { return LockfileUpdate.Failed(unreadable(it).message) }
         val lockfile = session.root.resolve(session.project.manager.lockfile)
         val before = lockfile.readText()
         val failure = session.install(frozen = false)
@@ -155,7 +156,11 @@ internal class NodeBuild(
         issuer: Path,
         names: List<String>,
     ): Map<String, String> {
-        val session = Session(repo.toRealPath(), PNP_TIMEOUT)
+        val session =
+            session(repo, PNP_TIMEOUT).getOrElse {
+                logger.warn("Can't locate {} through Plug'n'Play: {}", names, it.message)
+                return emptyMap()
+            }
         val result = session.run(listOf("yarn", "node", "-e", PNP_SCRIPT, "$issuer/") + names, session.root)
         val json = result.output.lines().lastOrNull { it.startsWith("{") }
         // A line that starts with `{` and parses is an object.
@@ -168,6 +173,24 @@ internal class NodeBuild(
         if (result.exitCode != 0 || locations == null) logger.warn("Can't locate {} through Plug'n'Play: {}", names, result.output.trim())
         return locations.orEmpty().mapNotNull { (name, location) -> location.text()?.let { name to it } }.toMap()
     }
+
+    /**
+     * A session on [repo], or the [ToolError] that its project can't be read. `detect` read it before the run, so only an
+     * edit of the fix loop or another commit, like the base's, makes it unreadable: a problem of that working tree.
+     */
+    private fun session(
+        repo: Path,
+        timeout: Duration,
+    ): Result<Session> =
+        try {
+            Result.success(Session(repo.toRealPath(), timeout))
+        } catch (e: ToolError) {
+            Result.failure(e)
+        }
+
+    /** The problem that a working tree's project can't be read. */
+    private fun unreadable(error: Throwable) =
+        Diagnostic(null, null, null, null, "The project can't be read: ${error.message}", Severity.ERROR, ECOSYSTEM)
 
     @OptIn(ExperimentalPathApi::class)
     override fun close() {

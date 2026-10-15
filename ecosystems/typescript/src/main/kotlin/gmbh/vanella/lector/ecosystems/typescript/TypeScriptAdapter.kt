@@ -45,7 +45,7 @@ class TypeScriptAdapter(
     private val build = NodeBuild(selection, environment, npmrc, yarnrc, jestJunit, run)
     private val grounding = DeclarationGrounding(::installedPackages)
 
-    override val ecosystem = "npm"
+    override val ecosystem = ECOSYSTEM
     override val versionScheme = SemverScheme
 
     // OpenRewrite JavaScript is MSAL-licensed and runs only in the Moderne CLI (spec Q10).
@@ -127,6 +127,9 @@ class TypeScriptAdapter(
             }.toMap()
     }
 }
+
+/** The package registry this adapter speaks for, as Renovate and Dependabot name it. */
+internal const val ECOSYSTEM = "npm"
 
 /** The program [name] in the directories of [path]: the child process's `PATH` decides, not the tool's. */
 internal fun executable(
