@@ -62,7 +62,14 @@ internal object NodeTestReports {
             } else {
                 listOf(testCase.name)
             }
-        val location = if (file == null) null else Regex(Regex.escape(file) + """:(\d+):(\d+)""").find(failure.text)
+        // A root runner with projects names the file from the root, and the place in the failure from the project.
+        val suffixes = if (file == null) emptyList() else file.indices.filter { it == 0 || file[it - 1] == '/' }.map { file.substring(it) }
+        val location =
+            suffixes.firstNotNullOfOrNull {
+                Regex(
+                    """(?:^|[\s(/])""" + Regex.escape(it) + """:(\d+):(\d+)""",
+                ).find(failure.text)
+            }
         val (line, column) = if (location == null) null to null else location.groupValues[1].toInt() to location.groupValues[2].toInt()
         val path = if (file == null) pkg.relative(PACKAGE_JSON) else pkg.relative(file)
         return Diagnostic(

@@ -79,6 +79,10 @@ internal class NodeBuild(
     private val built = mutableSetOf<Path>()
     private val testsRun = mutableMapOf<Path, Int?>()
 
+    // The package whose runner ran each failed test: a root runner (Vitest or Jest projects) runs the workspace packages'
+    // tests too. Test names are relative to the repository, so they hold on the base commit's checkout as well.
+    private val ranIn = mutableMapOf<String, String>()
+
     private val tempDir = lazy { Files.createTempDirectory("lector-node") }
     private val temp by tempDir
     private var reports = 0
@@ -94,6 +98,9 @@ internal class NodeBuild(
         val stage1 = install.ifEmpty { (session.build() + session.typeCheck()).distinct() }
         if (stage1.isNotEmpty()) return stage1
         val runs = session.project.packages.map { session.test(it, only = null) }
+        session.project.packages
+            .zip(runs)
+            .forEach { (pkg, run) -> run.diagnostics.mapNotNull { it.test }.forEach { ranIn[it] = pkg.dir } }
         val counts = runs.map { it.count }
         testsRun[session.root] = if (null in counts) null else counts.filterNotNull().sum()
         return runs.flatMap { it.diagnostics }
@@ -118,7 +125,7 @@ internal class NodeBuild(
         // A failure of a whole package reruns its whole test run.
         return tests
             .mapNotNull { it.test }
-            .groupBy { session.owner(it.substringBefore('#')) }
+            .groupBy { session.ranBy(it) }
             .flatMap { (pkg, ids) ->
                 session
                     .test(
@@ -343,8 +350,12 @@ internal class NodeBuild(
             }
         }
 
-        /** The package [path] (relative to the root) is in: the one with the longest directory that contains it. */
-        fun owner(path: String) = project.packages.filter { it.dir.isEmpty() || path.startsWith("${it.dir}/") }.maxBy { it.dir.length }
+        /** The package whose runner ran [test] in the last verify, else the one its file is in: the longest directory that contains it. */
+        fun ranBy(test: String): NodePackage {
+            val path = test.substringBefore('#')
+            return project.packages.firstOrNull { it.dir == ranIn[test] }
+                ?: project.packages.filter { it.dir.isEmpty() || path.startsWith("${it.dir}/") }.maxBy { it.dir.length }
+        }
 
         fun run(
             command: List<String>,

@@ -255,6 +255,33 @@ class NodeBuildTest {
     }
 
     @Test
+    fun `runTests reruns a test where its runner ran it, like a root Vitest with projects`() {
+        fixture("pnpm-workspace")
+        edit("package.json") { it.replace("\"private\": true,", "\"private\": true,\n  \"scripts\": {\"test\": \"vitest run\"},") }
+        edit("packages/app/package.json") { it.replace(Regex(""",\s*"test": "vitest run""""), "") }
+        answer = { run ->
+            val report = run.command.firstOrNull { it.startsWith("--outputFile.junit=") }?.substringAfter('=')
+            if (report != null) output("vitest-projects-junit.xml").copyTo(Path.of(report))
+            ProcessResult(if (report != null) 1 else 0, "")
+        }
+        val build = build()
+
+        val failed = build.verify(repo, 1.hours)
+        runs.clear()
+        build.runTests(repo, failed, 1.hours)
+
+        assertEquals(listOf("packages/app/src/welcome.test.ts#welcome > shouts the greeting"), failed.map { it.test })
+        assertEquals(listOf(6), failed.map { it.line }, "the failure names the place from the project")
+        assertEquals(
+            listOf(
+                "pnpm exec vitest run packages/app/src/welcome.test.ts --reporter=default --reporter=junit --outputFile.junit=<report> " +
+                    "-t ^(?:welcome shouts the greeting)$ in .",
+            ),
+            commands(),
+        )
+    }
+
+    @Test
     fun `runTests of a runner's failure without a report runs the package's tests again, all of them`() {
         fixture("pnpm-workspace")
 
