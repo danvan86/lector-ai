@@ -14,10 +14,16 @@ import kotlin.io.path.readText
 internal fun yamlDocuments(
     file: Path,
     label: String,
+) = yamlDocuments(file.readText(), label)
+
+/** The documents of the YAML [text], named [label] in errors. Fails with a [ToolError] if it isn't YAML. */
+internal fun yamlDocuments(
+    text: String,
+    label: String,
 ): List<Any?> {
     val settings = LoadSettings.builder().setCodePointLimit(Int.MAX_VALUE).build()
     return try {
-        Load(settings).loadAllFromString(file.readText()).toList()
+        Load(settings).loadAllFromString(text).toList()
     } catch (e: YamlEngineException) {
         throw ToolError("Can't read $label: ${e.message}", e)
     }

@@ -203,6 +203,13 @@ class GradleAdapter(
 
     override fun isEditable(file: String) = GradleScope.isEditable(file)
 
+    /** Gradle runs every test and check by default: removing a setting loosens nothing. */
+    override fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ) = emptyList<String>()
+
     /** Gradle's dependency locking isn't supported, so nothing follows a build-file edit. */
     override fun updateLockfiles(
         repo: Path,

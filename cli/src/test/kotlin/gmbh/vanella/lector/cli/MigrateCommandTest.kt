@@ -279,6 +279,12 @@ class MigrateCommandTest {
 
         override fun isEditable(file: String) = true
 
+        override fun loosening(
+            file: String,
+            before: String,
+            after: String,
+        ) = emptyList<String>()
+
         override fun updateLockfiles(
             repo: Path,
             timeout: Duration,

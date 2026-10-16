@@ -103,6 +103,12 @@ class TypeScriptAdapter(
         line: Int,
     ) = TypeScriptTestSkipping.reason(file, content, line)
 
+    override fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ) = TypeScriptLoosening.of(file, before, after)
+
     override fun updateLockfiles(
         repo: Path,
         timeout: Duration,

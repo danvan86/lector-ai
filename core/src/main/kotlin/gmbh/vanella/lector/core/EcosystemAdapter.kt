@@ -78,6 +78,17 @@ interface EcosystemAdapter {
     ): String?
 
     /**
+     * What the change of the build file [file] from [before] to [after] loosens as a whole, as reasons for the model: what
+     * no added line shows, like a removed setting or a narrowed list. Empty if nothing. Maven and Gradle run every test and
+     * check by default, so removing a setting loosens nothing there; TypeScript's `test` script and `strict` are opt-in.
+     */
+    fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ): List<String>
+
+    /**
      * Brings the files the build tool derives from the build files, like a lockfile, in line with [repo]'s working tree
      * after an attempt edited a build file. The files it changed go into the attempt's commit. A run longer than [timeout]
      * is stopped with a [ProcessTimedOut].

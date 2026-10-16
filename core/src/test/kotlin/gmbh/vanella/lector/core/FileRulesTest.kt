@@ -80,20 +80,33 @@ class FileRulesTest {
     @Test
     fun `the build-file blocklist rejects added lines the adapter names, only in build files`() {
         val blocklist =
-            BuildFileBlocklist({ it == "pom.xml" }) { _, content, line ->
-                if ("skip" in
-                    content.lines()[line - 1]
-                ) {
-                    "skips tests"
-                } else {
-                    null
-                }
-            }
+            BuildFileBlocklist(
+                { it == "pom.xml" },
+                { _, content, line -> if ("skip" in content.lines()[line - 1]) "skips tests" else null },
+                { _, _, _ -> emptyList() },
+            )
         val pom = change("pom.xml", "<a/>\n<skip>false</skip>\n", "<a/>\n<skip>false</skip>\n<skip>true</skip>\n<b/>\n")
         val source = change("App.java", "", "// skip\n")
 
         assertEquals(
             listOf(Violation("build-file", "pom.xml", 3, "skips tests")),
+            blocklist.check(AttemptChanges(listOf(pom, source), emptyList())),
+        )
+    }
+
+    @Test
+    fun `the build-file blocklist rejects what the adapter says a build file's whole change loosens, removals included`() {
+        val blocklist =
+            BuildFileBlocklist(
+                { it == "pom.xml" },
+                { _, _, _ -> null },
+                { _, before, after -> if ("<tests/>" in before && "<tests/>" !in after) listOf("removes the tests") else emptyList() },
+            )
+        val pom = change("pom.xml", "<a/>\n<tests/>\n", "<a/>\n")
+        val source = change("App.java", "<tests/>\n", "")
+
+        assertEquals(
+            listOf(Violation("build-file", "pom.xml", null, "removes the tests")),
             blocklist.check(AttemptChanges(listOf(pom, source), emptyList())),
         )
     }

@@ -35,6 +35,11 @@ class MavenAdapterTest {
     @Test
     fun `no lockfile follows a build-file edit, Maven has none`() {
         assertEquals(LockfileUpdate.Updated(emptyList()), adapter().updateLockfiles(repo, 1.minutes))
+        assertEquals(
+            emptyList(),
+            adapter().loosening("pom.xml", "<skipTests>false</skipTests>\n", ""),
+            "removing a setting loosens nothing",
+        )
         assertEquals(emptyList(), runs)
     }
 

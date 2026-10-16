@@ -332,6 +332,111 @@ class TypeScriptGuardrailsTest {
     }
 
     @Test
+    fun `removing a test script, or renaming it, runs no tests and is rejected (D1)`() {
+        val before = "{\n  \"scripts\": {\n    \"build\": \"tsc\",\n    \"test\": \"jest\"\n  }\n}\n"
+        val removed = before.replace(",\n    \"test\": \"jest\"", "")
+        val renamed = before.replace("\"test\": \"jest\"", "\"check\": \"jest\"")
+
+        assertEquals(
+            listOf(Violation("build-file", "packages/app/package.json", null, "removing the `test` script runs no tests")),
+            check("packages/app/package.json", before, removed),
+        )
+        assertEquals(listOf("removing the `test` script runs no tests"), check("package.json", before, renamed).map { it.reason })
+        assertEquals(emptyList(), check("package.json", before, before.replace("    \"build\": \"tsc\",\n", "")), "another script")
+    }
+
+    @Test
+    fun `removing a strict option, or the base that sets it, loosens the type check and is rejected (D1)`() {
+        val before =
+            "{\n  \"extends\": \"./tsconfig.base.json\",\n  \"compilerOptions\": {\n    \"strict\": true,\n" +
+                "    \"noImplicitOverride\": true,\n    \"checkJs\": true,\n    \"skipLibCheck\": false\n  }\n}\n"
+        val cases =
+            listOf(
+                before.replace("    \"strict\": true,\n", "") to "removing `strict: true` loosens the type check",
+                before.replace("    \"strict\": true,", "    // \"strict\": true,") to "removing `strict: true` loosens the type check",
+                before.replace("    \"noImplicitOverride\": true,\n", "") to "removing `noImplicitOverride: true` loosens the type check",
+                before.replace("    \"checkJs\": true,\n", "") to "removing `checkJs: true` loosens the type check",
+                before.replace("  \"extends\": \"./tsconfig.base.json\",\n", "") to
+                    "removing `extends` drops the options of `./tsconfig.base.json`",
+            )
+        for ((after, reason) in cases) {
+            assertEquals(listOf(reason), check("tsconfig.json", before, after).map { it.reason }, reason)
+        }
+        assertEquals(emptyList(), check("tsconfig.json", before, before.replace(",\n    \"skipLibCheck\": false", "")))
+    }
+
+    @Test
+    fun `narrowing what the type check covers is rejected, widening it isn't (D1)`() {
+        val before = "{\n  \"include\": [\"src\", \"test\"]\n}\n"
+        assertEquals(
+            listOf("the type check no longer covers `test`"),
+            check("tsconfig.json", before, "{\n  \"include\": [\"src\"]\n}\n").map { it.reason },
+        )
+        assertEquals(
+            listOf("the type check no longer covers `src`, `test`"),
+            check("tsconfig.json", before, "{\n  \"files\": []\n}\n").map { it.reason },
+        )
+        assertEquals(
+            listOf("a new `include` or `files` list narrows the type check, which covered every file"),
+            check("tsconfig.json", "{\n}\n", "{\n  \"include\": [\"src\"]\n}\n").map { it.reason },
+        )
+        assertEquals(emptyList(), check("tsconfig.json", before, "{\n  \"include\": [\"src\", \"test\", \"types\"]\n}\n"))
+        assertEquals(emptyList(), check("tsconfig.json", before, "{\n}\n"), "no list covers every file")
+
+        val solution =
+            "{\n  \"files\": [],\n  \"references\": [\n    { \"path\": \"./packages/lib\" },\n    { \"path\": \"./packages/app\" }\n  ]\n}\n"
+        assertEquals(
+            listOf("the type check no longer covers the project `./packages/app`"),
+            check("tsconfig.json", solution, solution.replace(",\n    { \"path\": \"./packages/app\" }", "")).map { it.reason },
+        )
+    }
+
+    @Test
+    fun `narrowing the workspaces leaves packages out and is rejected, in package_json and pnpm-workspace_yaml (D1)`() {
+        val manifest = "{\n  \"workspaces\": [\n    \"packages/*\"\n  ]\n}\n"
+        assertEquals(
+            listOf("the workspaces no longer include `packages/*`"),
+            check("package.json", manifest, manifest.replace("packages/*", "packages/lib")).map { it.reason },
+        )
+        assertEquals(
+            listOf("the workspaces newly exclude `!packages/app`"),
+            check("package.json", manifest, manifest.replace("\"packages/*\"", "\"packages/*\",\n    \"!packages/app\"")).map {
+                it.reason
+            },
+        )
+        val yaml = "packages:\n  - \"packages/*\"\n"
+        assertEquals(
+            listOf("the workspaces newly exclude `!packages/app`"),
+            check("pnpm-workspace.yaml", yaml, "$yaml  - \"!packages/app\"\n").map { it.reason },
+        )
+        assertEquals(emptyList(), check("pnpm-workspace.yaml", yaml, "$yaml  - \"tools/*\"\n"), "a new package")
+        assertEquals(
+            emptyList(),
+            check(
+                "package.json",
+                "{\n  \"workspaces\": {\"packages\": [\"a/*\"]}\n}\n",
+                "{\n  \"workspaces\": {\"packages\": [\"a/*\"]},\n  \"private\": true\n}\n",
+            ),
+            "Yarn classic's object form",
+        )
+    }
+
+    @Test
+    fun `a build file that can't be read before or after loosens nothing it could tell`() {
+        assertEquals(emptyList(), check("package.json", "{\n  \"scripts\": {\"test\": \"jest\"}\n}\n", "{,\n"))
+        assertEquals(emptyList(), check("tsconfig.json", "[]\n", "{\n}\n"))
+        assertEquals(emptyList(), check("pnpm-workspace.yaml", "packages: [\n", "packages: []\n"))
+        assertEquals(emptyList(), check("jest.config.js", "module.exports = { roots: [\"src\"] };\n", "module.exports = {};\n"))
+    }
+
+    @Test
+    fun `settings that were off, references that name no path, and a workspace file without packages loosen nothing`() {
+        assertEquals(emptyList(), check("tsconfig.json", "{\n  \"compilerOptions\": {\"strict\": false}\n}\n", "{\n}\n"))
+        assertEquals(emptyList(), check("tsconfig.json", "{\n  \"references\": [\"./a\", {\"prepend\": true}]\n}\n", "{\n}\n"))
+        assertEquals(emptyList(), check("pnpm-workspace.yaml", "onlyBuiltDependencies: [esbuild]\n", "packages: [42]\n"))
+    }
+
+    @Test
     fun `other build files have no blocklist`() {
         val before = "packages:\n  - \"packages/*\"\n"
 

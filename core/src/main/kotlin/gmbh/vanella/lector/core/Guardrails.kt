@@ -16,7 +16,7 @@ class Guardrails(
     private val rules =
         listOf(
             DiffSize(maxChangedLines),
-            BuildFileBlocklist(adapter::isBuildFile, adapter::testDisablingConfig),
+            BuildFileBlocklist(adapter::isBuildFile, adapter::testDisablingConfig, adapter::loosening),
             ParseErrors,
             SymbolComparison,
             TestDeletion,

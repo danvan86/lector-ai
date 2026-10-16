@@ -152,6 +152,12 @@ open class FixLoopFixture {
 
         override fun isBuildFile(file: String) = file == "pom.xml"
 
+        override fun loosening(
+            file: String,
+            before: String,
+            after: String,
+        ) = emptyList<String>()
+
         override fun updateLockfiles(
             repo: Path,
             timeout: Duration,

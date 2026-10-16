@@ -153,6 +153,13 @@ class MavenAdapter(
 
     override fun isEditable(file: String) = JvmScope.isEditable(file)
 
+    /** Maven runs every test and check by default: removing a setting loosens nothing. */
+    override fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ) = emptyList<String>()
+
     /** Maven has no lockfile: the POMs name every version. */
     override fun updateLockfiles(
         repo: Path,
