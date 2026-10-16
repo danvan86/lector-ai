@@ -202,6 +202,7 @@ EcosystemAdapter
   updateLockfiles(repo)              → Updated(files) | Failed(reason)  (after a build-file edit: the lockfile follows it)
   isEditable(file)                   → bool           (the editable scope: no build output, no generated code)
   testDisablingConfig(file, content, line) → String?  (build-file blocklist: config that disables tests)
+  loosening(file, before, after)     → String[]       (build-file blocklist: what a whole change loosens, removals included)
   testsRun(repo)                     → Int?           (tests the last verify ran; reported, not enforced)
   languageSupport                    → LanguageSupport (tree-sitter grammar + queries → source facts)
 
@@ -290,9 +291,9 @@ The easiest way for an LLM to make the build green is to delete code. The follow
 | Test protection | No deleted test methods, ever: a test that doesn't compile is fixed, not removed. No new skip markers (`@Disabled`, `@Ignore`, assumptions). No fewer assertions in a test method, and an existing assertion changes only if a current compile diagnostic points into it: a failing test is fixed in the code, not in what it expects. New assertions are fine |
 | Test count | The static count of test methods in the changed files must not drop. It works even when the build is red from the start and no test ran. The runtime count of the final verify is reported, not enforced |
 | Stubbing | No new `return null`, empty bodies, or `TODO` placeholders in an added or changed line |
-| Suppression | No new suppressions such as `@SuppressWarnings`, `@Suppress`, `// @ts-ignore`, `# type: ignore`, `#pragma warning disable` in an added or changed line |
+| Suppression | No new suppressions such as `@SuppressWarnings`, `@Suppress`, `// @ts-ignore`, `# type: ignore`, `#pragma warning disable` in an added or changed line. TypeScript: also a module declaration without a body (`declare module "dep";`), which types a whole package as `any` |
 | Parse errors | A changed file has no more parse errors than before. Facts from a file that doesn't parse can't be trusted |
-| Build-file blocklist | No test-disabling configuration in an added or changed line of a build file. Maven: `skipTests`, `skipITs`, `maven.test.skip`, `testFailureIgnore`, `<exclude>`/`<skip>` in surefire or failsafe. TypeScript: no loosened type check in `tsconfig*.json` (`strict*` or `noImplicit*` to `false`, `skipLibCheck`, `noCheck`, `checkJs: false`, new `exclude` entries), no change to the `test` script, no options that leave tests out in `package.json` or the Jest, Vitest, and Vite config. The blocklist lives in the adapter |
+| Build-file blocklist | No test-disabling configuration in an added or changed line of a build file. Maven: `skipTests`, `skipITs`, `maven.test.skip`, `testFailureIgnore`, `<exclude>`/`<skip>` in surefire or failsafe. TypeScript: no loosened type check in `tsconfig*.json` (`strict*` or `noImplicit*` to `false`, `skipLibCheck`, `noCheck`, `checkJs: false`, new `exclude` entries), no change to a test script (`test`, `test:*`, `pretest`, `posttest`), no options that leave tests out or narrow which run (`testPathIgnorePatterns`, `exclude`, `testMatch`, `roots`, Vitest's `include`, …) in `package.json` or the Jest, Vitest, and Vite config. Because TypeScript's `test` script and strict options are opt-in, the adapter also checks each build file's whole change: removing a test script, a strict option that was on, or its `extends`, and narrowing `include`, `files`, `references`, or the workspaces are rejected too. The blocklist lives in the adapter |
 
 An edit that breaks a rule is rejected and counts as a failed attempt. The violations (rule, file, line, reason) go into the retry, so the model doesn't repeat the same cheat, and into the report, with a count per rule.
 

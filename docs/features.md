@@ -134,14 +134,14 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 - `ecosystems:typescript` with `TypeScriptAdapter` (ecosystem `npm`, semver): npm, pnpm, Yarn classic, and Yarn Berry with Plug'n'Play, single packages and workspaces; Node 22 and 24 picked from `.nvmrc`, `.node-version`, or `engines.node`; package managers through Corepack, as `packageManager` pins them
 - Verify: the frozen install, the `build` script of every workspace package another one depends on, `tsc` (`--build` with project references, else `--noEmit` per package), then Jest (with the image's `jest-junit`), Vitest, or the `test` script; reruns by test file and name
 - No recipe step: OpenRewrite JavaScript is MSAL-licensed and runs only in the Moderne CLI ([licensing](licensing.md)). Verify leads straight to the fix loop
-- Guardrails: tree-sitter TypeScript, TSX, and JavaScript queries; a blocklist for loosening the type check and leaving tests out; no edits to lockfiles, registry config, installed packages, build output, or generated code
+- Guardrails: tree-sitter TypeScript, TSX, and JavaScript queries; a blocklist for loosening the type check and leaving tests out, by added lines and by each build file's whole change; no edits to lockfiles, registry config, installed packages, build output, or generated code
 - Grounding from `.d.ts` files (`exports` types, `types`, `index.d.ts`, `@types`), following re-exports, read from Yarn's zip archives under Plug'n'Play
 - Resolved versions from all four lockfile formats, without an install; a build-file fix lets the lockfile follow, in the same commit
 - Renovate's and Dependabot's npm updates map to `npm`; Node version PRs are skipped. `--npmrc`, `--yarnrc`, and the action's `npmrc` and `yarnrc` inputs
 - Tool image: Node 22 and 24, Corepack 0.36, pnpm 12, Yarn 4 and 1 pre-cached, `jest-junit`; versions in `docker/lector/node` for Dependabot
 - Shared with the JVM adapters through `ecosystems:shared`: the JUnit XML reader and the tree-sitter facts
 - Four fixture repositories and tagged integration tests with the real toolchains (`./gradlew :ecosystems:typescript:integrationTest`)
-- Benchmark: cases name their ecosystem, the report shows TypeScript apart from the JVM, and three TypeScript cases (real Renovate and Dependabot PRs on npm and Yarn 1, each checked in the tool image) join the corpus
+- Benchmark: cases name their ecosystem, the report shows TypeScript apart from the JVM (fix loop only: npm has no recipes), and three TypeScript cases (real Renovate and Dependabot PRs on npm and Yarn 1, each checked in the tool image) join the corpus
 - Still open: the run on a real Renovate PR in a TypeScript test repository on GitHub, and the first benchmark run with the TypeScript cases
 
 **Changes to `core` in M9:**
@@ -149,10 +149,12 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | Change | Reason |
 |---|---|
 | `EcosystemAdapter.updateLockfiles`, called by the fix loop after a build-file edit, before the downgrade check; the files it changed go into the attempt's commit | A fix to `package.json` needs its lockfile in the same commit, or the next frozen install fails, and the downgrade check must read the versions the lockfile resolves after the edit. Maven and Gradle update nothing. The one port change TypeScript forced |
+| `EcosystemAdapter.loosening`, called by the build-file blocklist with each build file before and after an attempt | The blocklist saw only added lines. In TypeScript, removing a line loosens: without the `test` script a package runs no tests, without `"strict": true` the type check is lax. Maven and Gradle run every test and check by default and return nothing (review D1) |
 | None for "only files tracked by Git" (spec section 9) | The scope rule has rejected untracked files for every adapter since M4 (`Scope` in `FileRules.kt`) |
 
 The lesson: the ports held for a second ecosystem. What they missed is that a build-file edit can change a second file the
-build tool derives from it.
+build tool derives from it, and that removing a setting can loosen as much as adding one, where the safe behaviour is
+opt-in.
 
 **Done when:** a TypeScript repo runs through without changes to `core`. If `core` had to change, that's the lesson.
 

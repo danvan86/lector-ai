@@ -15,6 +15,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 7 | Tagged integration tests with real toolchains on the four fixtures and a base/head fixture | ✅ |
 | 8 | Quality gates verified | ✅ |
 | 9 | Docs in sync | ✅ |
+| 10 | Review and fixes ([`review.md`](review.md)): 36 findings and 2 found while fixing; 30 fixed, 8 not changed with reasons; decisions D1 (core `loosening` port), D2 (no CI job for the image's Node toolchain), D3 (`declare module` is a suppression) | ✅ |
 
 ## Quality gates
 
@@ -22,7 +23,11 @@ Final check from a clean state, each on its own, all exit `0`: `ktlintCheck`, `d
 (841 unit tests in all modules), `:cli:endToEndTest` (21), `koverVerify` (100 % lines and branches per module,
 `ecosystems:shared` and `ecosystems:typescript` included), `clean build --rerun-tasks --no-build-cache`, and the opt-in
 `:ecosystems:typescript:integrationTest` (6, real npm, pnpm, Yarn 1 and 4, tsc, Jest, Vitest) and
-`:ecosystems:jvm:integrationTest` (5, after the JUnit parser moved). The tool image builds, and `lector verify` is green
+`:ecosystems:jvm:integrationTest` (5, after the JUnit parser moved).
+
+After the review's fixes: `clean build --rerun-tasks --no-build-cache` exit `0`, 863 unit tests (core 205, jvm 193,
+typescript 143, cli 124, benchmark 69, sources 40, recipes 37, git 24, llm 20, shared 8), 21 end-to-end, 100 % lines
+and branches per module; `:ecosystems:typescript:integrationTest --rerun` 7 (a real Vitest rerun added). The tool image builds, and `lector verify` is green
 on the four fixtures inside it.
 
 Probes, each reverted afterwards (`git status` clean):

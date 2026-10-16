@@ -20,7 +20,8 @@ A Renovate or Dependabot PR in a TypeScript repository (single package or worksp
   - no lockfile, or more than one of the three;
   - a lockfile format older than the maintained majors of its manager (section 7);
   - a requested Node version that isn't in the image (section 2);
-  - no `typescript` dependency in the root or a workspace package that has a `tsconfig.json`.
+  - no `typescript` dependency in the root or a workspace package that has a `tsconfig.json`;
+  - a `packageManager` that names another manager than the lockfile's (added by the review, F18).
 
 **Why:** each ecosystem is its own submodule with its own dependencies (concept 2.1). npm, pnpm, and Yarn classic and Berry are all supported (Q2), and so are workspaces from the start (Q6). Green means the full suite, so all workspace packages are verified. Like M7 Q2, the tool doesn't guess when the repo is ambiguous.
 
@@ -94,15 +95,16 @@ A Renovate or Dependabot PR in a TypeScript repository (single package or worksp
   - methods: function declarations, class methods, and functions assigned to exported constants;
   - tests: `it` / `test` calls, grouped by `describe`;
   - assertions: `expect(…)` and `assert…` calls inside a test;
-  - skip markers: `.skip`, `.todo`, `.only`, `xit`, `xtest`, `xdescribe`;
-  - suppressions: `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable*`;
+  - skip markers: `.skip`, `.todo`, `.only`, `xit`, `xtest`, `xdescribe`, and every other spelling of them (`fit`, `fdescribe`, `.failing`, `.fails`, `.skipIf`, `.runIf`, chained forms; review F6);
+  - suppressions: `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable*`, and a module declaration without a body (`declare module "dep";`, review D3);
   - stubs: `return null`, `return undefined`, empty function bodies, and `TODO` placeholders in place of logic;
   - parse errors.
 - **Build files:** every `package.json`, `tsconfig*.json`, `pnpm-workspace.yaml`, `jest.config.*`, and `vitest.config.*`.
 - **Build-file blocklist** (added or changed lines):
   - in `tsconfig*.json`: `strict`, any `strict*`, or any `noImplicit*` set to `false`; `skipLibCheck: true`; `noCheck`; `checkJs: false`; new `exclude` entries;
   - in `package.json`: any change to the `test` script; `passWithNoTests`;
-  - in `package.json` and the Jest/Vitest config files: new `testPathIgnorePatterns`, `modulePathIgnorePatterns`, or `exclude` entries, and `passWithNoTests`.
+  - in `package.json` and the Jest/Vitest config files: new `testPathIgnorePatterns`, `modulePathIgnorePatterns`, or `exclude` entries, and `passWithNoTests`;
+  - added by the review: every test script (`test:*`, `pretest`, `posttest`; F8), options that narrow which tests run (`testMatch`, `testRegex`, `roots`, `testNamePattern`, Vitest's `include` and `dir`; F10), and, through the core's `loosening` port, each build file's whole change: a removed test script, a removed strict option that was on or its `extends`, and narrowed `include`, `files`, `references`, or workspaces (D1).
 - **`editableScope`** excludes `node_modules/`, `.yarn/`, `.pnp.*`, lockfiles, `.npmrc`, `.yarnrc.yml`, `dist/`, `build/`, `out/`, `coverage/`, `.next/`, `**/generated/**`, `**/__generated__/**`, `*.generated.*`, `*.gen.ts`.
 
 **Why:** a grammar plus queries is all a new language needs (concept section 7, M4). JavaScript config files and plain-JS sources occur in every TypeScript repo, and an unguarded file can't be accepted (Q18). The suppression list was chosen in Q8. `.only` silently skips every other test. Build files stay editable so that real fixes are possible, like `moduleResolution: "bundler"` or a split-out `@types` package. Loosening the compiler or skipping tests is blocked (Q7, Q17). Registry config and lockfiles are not the model's to edit, the same way the Gradle wrapper isn't (M7).
@@ -148,8 +150,8 @@ A Renovate or Dependabot PR in a TypeScript repository (single package or worksp
   - a base/head fixture with one test failure caused by the update and one pre-existing failure;
   - grounding on the PnP fixture returns declarations read from a zip archive.
 - **End-to-end:** a GitHub TypeScript test repository with Renovate and the documented M5 workflow on a standard runner with the 7B model. A real Renovate PR that breaks the type check gets a fix commit and a sticky comment with no manual steps.
-- **Benchmark:** at least three TypeScript cases in the M6 corpus, with results reported separately from the JVM (concept section 11).
-- **Core changes:** `docs/features.md` lists every change made to `core` during M9, with its reason. Expected: only section 9.
+- **Benchmark:** at least three TypeScript cases in the M6 corpus, with results reported separately from the JVM (concept section 11). They run only the fix-loop mode: npm has no recipes (review F19).
+- **Core changes:** `docs/features.md` lists every change made to `core` during M9, with its reason. Expected: only section 9. Found: `updateLockfiles` (implementation) and `loosening` (review D1); section 9 needed none.
 
 **Why:** fixtures cover each package manager and the workspace build case quickly. The test repository proves the M5 flow on a non-JVM repo. The benchmark gives TypeScript its own numbers. The list of core changes is the M9 "done when" (Q22).
 
