@@ -145,6 +145,16 @@ class TypeScriptLanguageSupportTest {
     }
 
     @Test
+    fun `a module declaration without a body types a whole package as any, so it is a suppression (D3)`() {
+        val source = "declare module \"dep\";\ndeclare module \"typed\" {\n  export const x: number;\n}\ndeclare module \"*.svg\";\n"
+
+        assertEquals(
+            listOf(fragment(1, "declare module \"dep\""), fragment(5, "declare module \"*.svg\"")),
+            requireNotNull(TypeScriptLanguageSupport.facts("src/global.d.ts", source)).suppressions,
+        )
+    }
+
+    @Test
     fun `parse errors in each grammar, and every extension in its language`() {
         val broken = "export function f( {\n  return 1;\n}\n"
 

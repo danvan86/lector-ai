@@ -318,6 +318,20 @@ class TypeScriptGuardrailsTest {
     }
 
     @Test
+    fun `a new module declaration without a body is rejected as a suppression, one with types isn't (D3)`() {
+        val before = "export {};\n"
+
+        assertEquals(
+            listOf(Violation("suppression", "src/global.d.ts", 2, "the edits add the suppression `declare module \"dep\"`")),
+            check("src/global.d.ts", before, "$before" + "declare module \"dep\";\n"),
+        )
+        assertEquals(
+            emptyList(),
+            check("src/global.d.ts", before, "$before" + "declare module \"dep\" {\n  export function f(): void;\n}\n"),
+        )
+    }
+
+    @Test
     fun `other build files have no blocklist`() {
         val before = "packages:\n  - \"packages/*\"\n"
 
