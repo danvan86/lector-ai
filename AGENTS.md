@@ -29,12 +29,12 @@ core/          data model, ports (interfaces), pipeline, fix loop, guardrails
 recipes/       recipe index built from OpenRewrite metadata
 llm/           Ollama client, prompts
 sources/       update-source adapters (renovate, dependabot, fallback)
-ecosystems/    ecosystem adapters, one submodule each (jvm, ...)
+ecosystems/    ecosystem adapters, one submodule each (jvm, typescript, ...), and shared (what they share outside core)
 git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
 benchmark/     benchmark harness and report (M6); uses core and the adapters, never shipped
 action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
-docker/        Dockerfiles of the tool image and the Ollama image (not Gradle modules)
+docker/        Dockerfiles of the tool image and the Ollama image, and the image's Node toolchain versions (not Gradle modules)
 ```
 
 Adapters are compile-time plugins: modules that implement a `core` interface and are registered in `cli`. No dynamic loading. See concept section 2.
@@ -47,6 +47,7 @@ Adapters are compile-time plugins: modules that implement a `core` interface and
 ./gradlew :cli:endToEndTest # end-to-end tests against the installed start script
 ./gradlew :cli:integrationTest # opt-in: verify and migrate with real Maven and Gradle on fixtures (needs mvn and network)
 ./gradlew :ecosystems:jvm:integrationTest # opt-in: the Gradle adapter with real Gradle on fixtures (needs network)
+./gradlew :ecosystems:typescript:integrationTest # opt-in: the TypeScript adapter with real npm, pnpm, Yarn, tsc, Jest, Vitest (needs Node 22+ and network)
 ./gradlew :cli:realModelTest # opt-in: heal with a real model in Ollama (needs Docker, mvn, network); -Plector.model=<name>
 ./gradlew :recipes:generateRecipeIndex # recipe index and license report, under recipes/build/generated/recipe-index/
 ./gradlew :benchmark:report -Presults=benchmark/results/<date> # report.md from results.json and review.json there
@@ -87,7 +88,8 @@ These come from the concept. Don't break them without updating the concept first
 - A PR can carry hundreds of changes: a labelled PR lists every transitive one. Per-change work reads what the changes share once per run, and every list for a person or the model names the first few and counts the rest.
 - The repository under repair is the user's. Commit only the files a step changed: a build leaves output in the tree, and test fixtures ignore `target/`, so `git add --all` looks fine in tests and isn't. Reset the working tree on every way out of a failed step, exceptions and errors included.
 - An adapter's build files are every file the build tool reads its configuration from, not only the manifest (Maven: `.mvn/` and the wrapper, too; Gradle: every included build, whatever its name). The build-file guardrails and the downgrade check see only what `isBuildFile` names, so a missed file is a way around them.
-- A blocklist rule matches every way to write the setting, not only the spelling in the spec: the setter (`setOnlyIf`), the plural (`excludes`), the closure and list forms. Test each route. One missed spelling lets the model filter a failing test out.
+- A blocklist rule matches every way to write the setting, not only the spelling in the spec: the setter (`setOnlyIf`), the plural (`excludes`), the closure and list forms, a new entry inside a multi-line list. Test each route. One missed spelling lets the model filter a failing test out. Where the safe setting is opt-in (TypeScript's `strict`, the `test` script), removing it loosens too: the adapter's `loosening` sees the whole change.
+- After `detect`, what an edit or a slow tool causes is a problem of the attempt, never a `ToolError`: an adapter that re-reads the project in `verify`, `updateLockfiles`, or `ground` turns an unreadable file into a `Diagnostic` or a failed update, and a timeout in grounding into no grounding. Otherwise a trailing comma from the model ends the run with exit `2`.
 - The process allowlist strips the environment. The variables a build tool reads credentials from (Maven `MAVEN_*`, Gradle `GRADLE_*` and `ORG_GRADLE_PROJECT_*`) are passed by its adapter, not added to `core`, and the setup guide names them.
 - Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
 - All library and plugin versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Base image versions live in the `FROM` lines of the Dockerfiles under `docker/`. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs. A version pinned to a release line on purpose (a JDK per image stage) gets an `ignore` for major updates in `.github/dependabot.yml`: Dependabot proposes major Docker tags by default.
@@ -99,7 +101,7 @@ These come from the concept. Don't break them without updating the concept first
 `./gradlew build` fails on any finding. The gates are strict by default and relaxed only where a real case needs it.
 
 - **ktlint** owns formatting (`ktlint_official`, configured in `.editorconfig`). Run `ktlintFormat` instead of formatting by hand.
-- **detekt** owns code smells and likely bugs. Defaults plus the deviations in `config/detekt/detekt.yml`. Notable project rules: no `print`/`println`, also not via `System.out` and its `printf`, `format`, `append`, `write` (stdout is the report channel; use Clikt `echo` and SLF4J), no process exit outside `main`, no `else` on sealed types, no unused imports (ktlint no longer checks them).
+- **detekt** owns code smells and likely bugs. Check it with `check` (or `detektMain detektTest`), as `build` does: the plain `detekt` task skips the rules that need type resolution. Defaults plus the deviations in `config/detekt/detekt.yml`. Notable project rules: no `print`/`println`, also not via `System.out` and its `printf`, `format`, `append`, `write` (stdout is the report channel; use Clikt `echo` and SLF4J), no process exit outside `main`, no `else` on sealed types, no unused imports (ktlint no longer checks them).
 - **Kover** requires 100 % line and branch coverage per module. The only exclusion is the `main` entry point (`MainKt`): it exits the process, so only the end-to-end tests run it. Kover counts branches that no test can reach: `?: …` after a `let` that never returns null, a safe call on a non-null value, the exceptional copy of a `finally` block, a null check in a default argument. Write a plain `if` on a single safe call, and catch-and-rethrow instead of `finally`.
 - Fix the code first. If a rule is wrong for this project, change it in the config with a one-line reason. A single justified exception may use `@Suppress("RuleName")` with a comment that says why.
 - Never add baselines, `ignoreFailures`, or further coverage exclusions.

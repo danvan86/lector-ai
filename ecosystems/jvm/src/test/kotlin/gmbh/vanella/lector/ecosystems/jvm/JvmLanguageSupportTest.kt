@@ -5,12 +5,10 @@ import gmbh.vanella.lector.core.LineRange
 import gmbh.vanella.lector.core.Method
 import gmbh.vanella.lector.core.SourceFacts
 import gmbh.vanella.lector.core.TestMethod
-import org.treesitter.TreeSitterJava
 import kotlin.io.path.readText
 import kotlin.io.path.toPath
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 /** The queries on the source fixtures under `fixtures/language-facts/`. */
@@ -155,13 +153,6 @@ class JvmLanguageSupportTest {
     fun `a file in no language here has no facts`() {
         assertNull(JvmLanguageSupport.facts("pom.xml", "<project/>"))
         assertNull(JvmLanguageSupport.facts("README.md", "# Java"))
-    }
-
-    @Test
-    fun `a language without query files fails with the missing file`() {
-        val error = assertFailsWith<IllegalStateException> { TreeSitterLanguage("cobol", TreeSitterJava()) }
-
-        assertEquals("No query file queries/cobol/types.scm", error.message)
     }
 
     private fun facts(fixture: String) =

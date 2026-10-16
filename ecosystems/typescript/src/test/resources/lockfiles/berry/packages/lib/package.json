@@ -1,0 +1,7 @@
+{
+  "name": "@lock/lib",
+  "version": "1.0.0",
+  "optionalDependencies": {
+    "is-number": "6.0.0"
+  }
+}

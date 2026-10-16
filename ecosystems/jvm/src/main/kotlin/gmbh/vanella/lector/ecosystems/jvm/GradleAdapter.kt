@@ -4,6 +4,7 @@ import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.LanguageSupport
+import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.RecipeRun
 import gmbh.vanella.lector.core.RecipeRunner
@@ -201,6 +202,19 @@ class GradleAdapter(
         GradleScope.isBuildFile(file) || models.values.any { model -> model.includedBuilds.any { file.startsWith("$it/") } }
 
     override fun isEditable(file: String) = GradleScope.isEditable(file)
+
+    /** Gradle runs every test and check by default: removing a setting loosens nothing. */
+    override fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ) = emptyList<String>()
+
+    /** Gradle's dependency locking isn't supported, so nothing follows a build-file edit. */
+    override fun updateLockfiles(
+        repo: Path,
+        timeout: Duration,
+    ) = LockfileUpdate.Updated(emptyList())
 
     override fun testDisablingConfig(
         file: String,

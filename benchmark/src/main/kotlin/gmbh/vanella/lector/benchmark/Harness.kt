@@ -65,7 +65,7 @@ class Harness(
             status: RunStatus,
             reason: String?,
             metrics: Metrics?,
-        ) = RunResult(case.id, mode, repetition, tool.commit, tool.model, status, reason, metrics)
+        ) = RunResult(case.id, mode, repetition, tool.commit, tool.model, status, reason, metrics, case.ecosystem)
         logger.info("Running {} in mode {}, repetition {}", case.id, mode.id, repetition)
         return try {
             val metrics = Run(case, mode, checkout.checkout(case, dir)).measure()
@@ -86,7 +86,13 @@ class Harness(
     ) {
         private val started = timeSource.markNow()
         private val adapter =
-            adapters.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in ${case.repository}")
+            adapters.firstOrNull { it.detect(repo) }?.also { detected ->
+                if (detected.ecosystem != case.ecosystem) {
+                    throw ToolError(
+                        "${case.id} is a ${case.ecosystem} case in the corpus, but its repository is a ${detected.ecosystem} build",
+                    )
+                }
+            } ?: throw ToolError("No supported ecosystem in ${case.repository}")
         private val base: BaseCommit = GitBaseCommit.resolve(repo, case.base)
         private val changes =
             case.changes.map {

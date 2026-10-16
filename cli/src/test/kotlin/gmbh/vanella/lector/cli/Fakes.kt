@@ -9,6 +9,7 @@ import gmbh.vanella.lector.core.Fragment
 import gmbh.vanella.lector.core.LanguageSupport
 import gmbh.vanella.lector.core.LineRange
 import gmbh.vanella.lector.core.LlmClient
+import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.Proposal
 import gmbh.vanella.lector.core.RecipeRun
 import gmbh.vanella.lector.core.RecipeRunner
@@ -67,6 +68,17 @@ internal class FakeAdapter(
         }
 
     override fun isEditable(file: String) = true
+
+    override fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ) = emptyList<String>()
+
+    override fun updateLockfiles(
+        repo: Path,
+        timeout: Duration,
+    ) = LockfileUpdate.Updated(emptyList())
 
     override fun testsRun(repo: Path) = testsRun.invoke(repo)
 

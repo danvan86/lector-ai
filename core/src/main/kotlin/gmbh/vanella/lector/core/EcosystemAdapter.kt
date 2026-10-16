@@ -76,4 +76,38 @@ interface EcosystemAdapter {
         content: String,
         line: Int,
     ): String?
+
+    /**
+     * What the change of the build file [file] from [before] to [after] loosens as a whole, as reasons for the model: what
+     * no added line shows, like a removed setting or a narrowed list. Empty if nothing. Maven and Gradle run every test and
+     * check by default, so removing a setting loosens nothing there; TypeScript's `test` script and `strict` are opt-in.
+     */
+    fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ): List<String>
+
+    /**
+     * Brings the files the build tool derives from the build files, like a lockfile, in line with [repo]'s working tree
+     * after an attempt edited a build file. The files it changed go into the attempt's commit. A run longer than [timeout]
+     * is stopped with a [ProcessTimedOut].
+     */
+    fun updateLockfiles(
+        repo: Path,
+        timeout: Duration,
+    ): LockfileUpdate
+}
+
+/** What [EcosystemAdapter.updateLockfiles] did. */
+sealed interface LockfileUpdate {
+    /** The derived [files] it changed, relative to the repository root. */
+    data class Updated(
+        val files: List<String>,
+    ) : LockfileUpdate
+
+    /** The build tool couldn't follow the edited build files, e.g. because a version doesn't exist. */
+    data class Failed(
+        val reason: String,
+    ) : LockfileUpdate
 }

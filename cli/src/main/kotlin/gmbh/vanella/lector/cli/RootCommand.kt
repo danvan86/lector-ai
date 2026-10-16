@@ -6,6 +6,8 @@ import gmbh.vanella.lector.core.UpdateSource
 import gmbh.vanella.lector.ecosystems.jvm.GradleAdapter
 import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
 import gmbh.vanella.lector.ecosystems.jvm.installedJdks
+import gmbh.vanella.lector.ecosystems.typescript.TypeScriptAdapter
+import gmbh.vanella.lector.ecosystems.typescript.installedNodes
 import gmbh.vanella.lector.recipes.BundledRecipeIndex
 import gmbh.vanella.lector.sources.DependabotSource
 import gmbh.vanella.lector.sources.FallbackSource
@@ -37,9 +39,10 @@ internal fun sources(options: SourceOptions): List<UpdateSource> =
     )
 
 /**
- * The ecosystem adapters, configured from the [environment]: the installed JDKs, Gradle's own variables (the Gradle
- * adapter picks them), and the OpenRewrite Gradle plugin the image ships (`LECTOR_REWRITE_GRADLE_PLUGIN`). Gradle comes
- * first: it refuses a repository with a `pom.xml` next to its Gradle files, which Maven would otherwise take.
+ * The ecosystem adapters, configured from the [environment]: the installed JDKs and Nodes, the build tools' own
+ * variables (each adapter picks its own), the OpenRewrite Gradle plugin the image ships (`LECTOR_REWRITE_GRADLE_PLUGIN`),
+ * and its `jest-junit` (`LECTOR_JEST_JUNIT`). Gradle comes first: it refuses a repository with a `pom.xml` next to its
+ * Gradle files, which Maven would otherwise take. TypeScript comes last: a JVM repository may carry a `package.json`.
  */
 internal fun adapters(
     config: BuildConfig,
@@ -50,5 +53,6 @@ internal fun adapters(
     return listOf(
         GradleAdapter(config.gradleInit, jdks, environment, path("LECTOR_REWRITE_GRADLE_PLUGIN")),
         MavenAdapter(config.mavenSettings, jdks = jdks),
+        TypeScriptAdapter(config.npmrc, config.yarnrc, installedNodes(environment), environment, path("LECTOR_JEST_JUNIT")),
     )
 }

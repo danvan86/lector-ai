@@ -21,6 +21,7 @@ class CorpusTest {
                 "head" to "\"$head\"",
                 "changes" to """[{"package": "com.google.guava:guava", "from": "18.0", "to": "21.0"}]""",
                 "note" to "null",
+                "ecosystem" to "\"maven\"",
             ) + fields.map { (name, value) -> name to if (name == "changes" || name == "note") value else "\"$value\"" }
         return values.entries.joinToString(", ", "{", "}") { (name, value) -> "\"$name\": $value" }
     }
@@ -39,6 +40,15 @@ class CorpusTest {
         assertEquals(head, case.head)
         assertEquals(listOf(Change("com.google.guava:guava", "18.0", "21.0")), case.changes)
         assertEquals("synthetic", corpus.cases.last().origin)
+    }
+
+    @Test
+    fun `a case names its ecosystem, maven or npm`() {
+        val corpus = Corpus.parse(corpus(case(), case("id" to "zod-4", "ecosystem" to "npm")))
+
+        assertEquals(listOf(MAVEN, "npm"), corpus.cases.map { it.ecosystem })
+        val error = assertFailsWith<IllegalArgumentException> { Corpus.parse(corpus(case("ecosystem" to "pypi"))) }
+        assertEquals("guava-21: ecosystem pypi is none of maven, npm", error.message)
     }
 
     @Test

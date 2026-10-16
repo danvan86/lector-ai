@@ -95,6 +95,23 @@ jobs:
             21
             25
       - uses: gradle/actions/setup-gradle@v6
+      # Node 22 and 24, Corepack, and jest-junit for the TypeScript cases, like the tool image's (docker/lector/node).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: echo "LECTOR_NODE_22=$(dirname "$(dirname "$(which node)")")" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Install Corepack and jest-junit
+        run: |
+          echo "LECTOR_NODE_24=$(dirname "$(dirname "$(which node)")")" >> "$GITHUB_ENV"
+          cd docker/lector/node
+          npm ci --omit=dev --ignore-scripts
+          mkdir -p "$RUNNER_TEMP/corepack"
+          node_modules/.bin/corepack enable --install-directory "$RUNNER_TEMP/corepack" pnpm yarn
+          echo "$RUNNER_TEMP/corepack" >> "$GITHUB_PATH"
+          echo "LECTOR_JEST_JUNIT=$PWD/node_modules/jest-junit" >> "$GITHUB_ENV"
       - name: Run the case
         run: |
           ./gradlew -q :benchmark:run --args="run --case $CASE --mode $MODE --repetition $REPETITION \

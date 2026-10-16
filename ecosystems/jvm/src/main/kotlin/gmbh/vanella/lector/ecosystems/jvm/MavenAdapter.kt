@@ -4,6 +4,7 @@ import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.LanguageSupport
+import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.ProcessResult
 import gmbh.vanella.lector.core.RecipeRun
 import gmbh.vanella.lector.core.RecipeRunner
@@ -151,6 +152,19 @@ class MavenAdapter(
         file == "pom.xml" || file.endsWith("/pom.xml") || file == "mvnw" || file == "mvnw.cmd" || file.startsWith(".mvn/")
 
     override fun isEditable(file: String) = JvmScope.isEditable(file)
+
+    /** Maven runs every test and check by default: removing a setting loosens nothing. */
+    override fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ) = emptyList<String>()
+
+    /** Maven has no lockfile: the POMs name every version. */
+    override fun updateLockfiles(
+        repo: Path,
+        timeout: Duration,
+    ) = LockfileUpdate.Updated(emptyList())
 
     override fun testDisablingConfig(
         file: String,

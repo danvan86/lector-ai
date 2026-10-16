@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="2" failures="1" errors="0" time="0.012320666">
+    <testsuite name="src/welcome.test.ts" timestamp="2026-10-13T19:35:04.054Z" hostname="runner" tests="2" failures="1" errors="0" skipped="0" time="0.012320666">
+        <testcase classname="src/welcome.test.ts" name="welcome &gt; shouts the greeting" time="0.001340292">
+        </testcase>
+        <testcase classname="src/welcome.test.ts" name="welcome &gt; fails on purpose" time="0.0095355">
+            <failure message="expected &apos;HELLO, BOB!&apos; to be &apos;hello, bob!&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;HELLO, BOB!&apos; to be &apos;hello, bob!&apos; // Object.is equality
+
+Expected: &quot;hello, bob!&quot;
+Received: &quot;HELLO, BOB!&quot;
+
+ ❯ src/welcome.test.ts:10:28
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>

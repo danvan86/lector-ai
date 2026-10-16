@@ -1,0 +1,13 @@
+src/a.ts(1,10): error TS2305: Module '"./b"' has no exported member 'missing'.
+src/a.ts(2,25): error TS2307: Cannot find module 'not-a-module' or its corresponding type declarations.
+src/a.ts(3,8): error TS1192: Module '"/work/tsc/src/b"' has no default export.
+src/a.ts(3,15): error TS2305: Module '"./b"' has no exported member 'Other'.
+src/a.ts(4,7): error TS2322: Type 'string' is not assignable to type 'number'.
+src/a.ts(6,15): error TS2339: Property 'b' does not exist on type '{ a: number; }'.
+src/a.ts(8,27): error TS2322: Type 'string' is not assignable to type 'number'.
+src/a.ts(10,10): error TS2322: Type 'string' is not assignable to type 'number'.
+src/c.ts(1,10): error TS2724: '"./b"' has no exported member named 'presnt'. Did you mean 'present'?
+src/c.ts(2,15): error TS2614: Module '"./d"' has no exported member 'Foo'. Did you mean to use 'import Foo from "./d"' instead?
+src/c.ts(5,7): error TS2322: Type '{ name: number; age: number; }' is not assignable to type 'Q'.
+  Types of property 'name' are incompatible.
+    Type 'number' is not assignable to type 'string'.

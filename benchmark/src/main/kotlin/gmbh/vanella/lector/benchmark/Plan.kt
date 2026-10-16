@@ -37,11 +37,17 @@ data class RunKey(
     val repetition: Int,
 )
 
-/** Every run of [corpus], or of the cases in [only] if it isn't null: each case in each mode, as often as the mode runs. */
+/**
+ * Every run of [corpus], or of the cases in [only] if it isn't null: each case in each mode, as often as the mode runs.
+ * A case of an ecosystem without recipes runs only the fix loop: the recipe modes would repeat it.
+ */
 fun plan(
     corpus: Corpus,
     only: Set<String>? = null,
 ): List<RunKey> {
     val cases = only?.map { corpus.case(it) } ?: corpus.cases
-    return cases.flatMap { case -> Mode.entries.flatMap { mode -> (1..mode.repetitions).map { RunKey(case.id, mode, it) } } }
+    return cases.flatMap { case -> modes(case.ecosystem).flatMap { mode -> (1..mode.repetitions).map { RunKey(case.id, mode, it) } } }
 }
+
+/** The modes that run for a case of [ecosystem]. */
+fun modes(ecosystem: String) = if (ecosystem in RECIPE_ECOSYSTEMS) Mode.entries else listOf(Mode.FIX_LOOP_ONLY)

@@ -36,6 +36,17 @@ object EditableEverywhere : EcosystemAdapter {
 
     override fun isEditable(file: String) = true
 
+    override fun loosening(
+        file: String,
+        before: String,
+        after: String,
+    ) = emptyList<String>()
+
+    override fun updateLockfiles(
+        repo: Path,
+        timeout: Duration,
+    ) = LockfileUpdate.Updated(emptyList())
+
     override fun testsRun(repo: Path): Int? = null
 
     override fun testDisablingConfig(

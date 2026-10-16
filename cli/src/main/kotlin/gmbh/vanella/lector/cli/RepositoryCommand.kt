@@ -17,10 +17,15 @@ import java.nio.file.Path
 import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 
-/** What the build tools read besides the repository: the user's Maven settings file and Gradle init script. */
+/**
+ * What the build tools read besides the repository: the user's Maven settings file, Gradle init script, and the npm and
+ * Yarn Berry registry configuration (user-level `.npmrc` and `.yarnrc.yml`).
+ */
 internal data class BuildConfig(
     val mavenSettings: Path? = null,
     val gradleInit: Path? = null,
+    val npmrc: Path? = null,
+    val yarnrc: Path? = null,
 )
 
 /** What a command prints, in both formats, and the verification its exit code follows. */
@@ -53,6 +58,12 @@ internal abstract class RepositoryCommand(
         metavar = "<file>",
         help = "Gradle init script, passed to every Gradle run, e.g. for a mirror",
     ).path()
+    private val npmrc by option(
+        "--npmrc",
+        metavar = "<file>",
+        help = "User-level .npmrc for npm, pnpm, and Yarn classic, e.g. for a registry",
+    ).path()
+    private val yarnrc by option("--yarnrc", metavar = "<file>", help = "User-level .yarnrc.yml for Yarn Berry, e.g. for a registry").path()
 
     /** Runs the stage on [repo]. Any exception is a tool error. */
     protected abstract fun execute(
@@ -78,7 +89,9 @@ internal abstract class RepositoryCommand(
         ensure(repo.isDirectory()) { "$repo is not a directory" }
         ensure(mavenSettings?.isRegularFile() != false) { "Maven settings $mavenSettings is not a file" }
         ensure(gradleInit?.isRegularFile() != false) { "Gradle init script $gradleInit is not a file" }
-        return adapters(BuildConfig(mavenSettings, gradleInit)).use { all ->
+        ensure(npmrc?.isRegularFile() != false) { "The npmrc $npmrc is not a file" }
+        ensure(yarnrc?.isRegularFile() != false) { "The yarnrc $yarnrc is not a file" }
+        return adapters(BuildConfig(mavenSettings, gradleInit, npmrc, yarnrc)).use { all ->
             val adapter = all.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in $repo. $SUPPORTED")
             // Resolve the base before the build, so a wrong ref fails in seconds, not after a full build.
             val base = base?.let { baseCommit(repo, it) }
@@ -89,7 +102,8 @@ internal abstract class RepositoryCommand(
 
 /** The build tools lector-ai detects, for the error when it finds none. */
 internal const val SUPPORTED =
-    "Supported: Maven (pom.xml at the root) and Gradle (settings.gradle(.kts) or build.gradle(.kts) at the root)."
+    "Supported: Maven (pom.xml at the root), Gradle (settings.gradle(.kts) or build.gradle(.kts) at the root), and TypeScript " +
+        "(package.json and tsconfig.json at the root)."
 
 /**
  * Runs [block] with these adapters, then closes the ones that hold resources, like the Gradle daemons, also when

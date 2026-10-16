@@ -15,26 +15,50 @@ private const val NO_RELEASE_NOTES =
     "The fix requests carry no release notes. `lector pr` passes the notes of a Renovate PR's body, so for those cases " +
         "the fix-loop numbers are a lower bound."
 
-/** `report.md`: the numbers of one benchmark run (spec section 5), from its results and the manual [review], if there is one. */
+// How the report names the ecosystems whose numbers it shows apart (concept section 11, M9).
+private val ECOSYSTEM_NAMES = mapOf(MAVEN to "JVM", "npm" to "TypeScript")
+
+/**
+ * `report.md`: the numbers of one benchmark run (spec section 5), from its results and the manual [review], if there is
+ * one. With cases of more than one ecosystem, each ecosystem gets its own numbers, JVM first.
+ */
 object Report {
     fun render(
         results: Results,
         review: Review?,
     ): String {
-        val runs = counted(results)
-        val sections =
-            listOf(
-                header(results),
-                verdictSection(runs),
-                greenRates(runs),
-                cases(results),
-                fixLoop(runs),
-                rejections(runs),
-                runtime(runs),
-                reviewSection(results, review),
-                problems(results),
-            )
+        val ecosystems =
+            results.runs
+                .map { it.ecosystem }
+                .distinct()
+                .sortedWith(compareBy({ it != MAVEN }, { it }))
+        val numbers =
+            ecosystems.flatMap { ecosystem ->
+                val part = results.copy(runs = results.runs.filter { it.ecosystem == ecosystem })
+                val heading = "# ${ECOSYSTEM_NAMES[ecosystem] ?: ecosystem} (`$ecosystem`)"
+                (if (ecosystems.size > 1) listOf(heading) else emptyList()) + numbers(part, ecosystem)
+            }
+        val sections = listOf(header(results)) + numbers + listOf(reviewSection(results, review), problems(results))
         return sections.joinToString("\n\n") + "\n"
+    }
+
+    /**
+     * The numbers of [results], all of [ecosystem]: the verdict, the green rates, the cases, the fix loop, the rejections,
+     * the runtime. An ecosystem without recipes has no verdict and no recipe modes.
+     */
+    private fun numbers(
+        results: Results,
+        ecosystem: String,
+    ): List<String> {
+        val runs = counted(results)
+        val modes = modes(ecosystem)
+        val verdict =
+            if (Mode.RECIPE_ONLY in modes) {
+                verdictSection(runs)
+            } else {
+                "## Recipe step\n\nNone for `$ecosystem`: its ecosystem has no recipes, so only the fix loop runs."
+            }
+        return listOf(verdict, greenRates(runs, modes), cases(results, modes), fixLoop(runs, modes), rejections(runs), runtime(runs, modes))
     }
 
     private fun header(results: Results): String {
@@ -66,9 +90,12 @@ object Report {
         return "## 90/10 verdict\n\n$text"
     }
 
-    private fun greenRates(runs: List<Pair<RunKey, Metrics>>): String {
+    private fun greenRates(
+        runs: List<Pair<RunKey, Metrics>>,
+        modes: List<Mode>,
+    ): String {
         val rows =
-            Mode.entries.map { mode ->
+            modes.map { mode ->
                 val metrics = runs.filter { it.first.mode == mode }.map { it.second }
                 val rate = greenRate(runs, mode)
                 val rateCells = if (rate == null) "– | –" else "${format(rate.mean)}% | ${format(rate.min)}–${format(rate.max)}%"
@@ -85,7 +112,10 @@ object Report {
         )
     }
 
-    private fun cases(results: Results): String {
+    private fun cases(
+        results: Results,
+        modes: List<Mode>,
+    ): String {
         val invalid = invalidCases(results)
         val byCase = results.runs.groupBy { it.case }
 
@@ -97,7 +127,7 @@ object Report {
         val rows =
             byCase.keys.map { case ->
                 val cells =
-                    Mode.entries.map { mode ->
+                    modes.map { mode ->
                         val runs = green(case, mode)
                         when {
                             case in invalid -> "invalid"
@@ -109,20 +139,27 @@ object Report {
             }
         val valid = byCase.keys - invalid.toSet()
         val recipeAlone = valid.count { case -> green(case, Mode.RECIPE_ONLY).any { it } }
-        val healedOnce = valid.count { case -> green(case, Mode.RECIPE_AND_FIX_LOOP).any { it } }
-        val healedAlways =
-            valid.count { case ->
-                green(case, Mode.RECIPE_AND_FIX_LOOP).let { it.isNotEmpty() && it.all { green -> green } }
-            }
+        // The full flow, or the fix loop where there are no recipes.
+        val healing = modes.last()
+        val healedOnce = valid.count { case -> green(case, healing).any { it } }
+        val healedAlways = valid.count { case -> green(case, healing).let { it.isNotEmpty() && it.all { green -> green } } }
+        val healed = "$healedOnce in at least one run, $healedAlways in every run."
         val summary =
-            "Each cell: green runs of the runs with a result. Green after the recipe alone: $recipeAlone of ${valid.size} valid cases. " +
-                "Green after recipe + fix loop: $healedOnce in at least one run, $healedAlways in every run."
-        return table("## Cases", summary, listOf("Case") + Mode.entries.map { MODE_NAMES.getValue(it) }, rows)
+            "Each cell: green runs of the runs with a result. " +
+                if (healing == Mode.RECIPE_AND_FIX_LOOP) {
+                    "Green after the recipe alone: $recipeAlone of ${valid.size} valid cases. Green after recipe + fix loop: $healed"
+                } else {
+                    "Green after the fix loop: $healed"
+                }
+        return table("## Cases", summary, listOf("Case") + modes.map { MODE_NAMES.getValue(it) }, rows)
     }
 
-    private fun fixLoop(runs: List<Pair<RunKey, Metrics>>): String {
+    private fun fixLoop(
+        runs: List<Pair<RunKey, Metrics>>,
+        modes: List<Mode>,
+    ): String {
         val rows =
-            Mode.entries.filter { it.usesFixLoop }.map { mode ->
+            modes.filter { it.usesFixLoop }.map { mode ->
                 val metrics = runs.filter { it.first.mode == mode }.map { it.second }
                 val stops =
                     metrics
@@ -161,9 +198,12 @@ object Report {
         )
     }
 
-    private fun runtime(runs: List<Pair<RunKey, Metrics>>): String {
+    private fun runtime(
+        runs: List<Pair<RunKey, Metrics>>,
+        modes: List<Mode>,
+    ): String {
         val rows =
-            Mode.entries.map { mode ->
+            modes.map { mode ->
                 val times = runs.filter { it.first.mode == mode }.map { it.second.runtime }
                 "| ${MODE_NAMES.getValue(mode)} | ${minutes(times) { it.total }} | ${minutes(times) { it.verify }} | " +
                     "${minutes(times) { it.recipe }} | ${minutes(times) { it.fixLoop }} |"

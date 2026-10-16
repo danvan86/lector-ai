@@ -4,7 +4,7 @@ Milestone: [M0](../features.md#m0--project-skeleton-) · Spec: [`m0-project-skel
 
 > **Summary for agents**
 >
-> - Eight modules: `core` (data model, ports, and pipeline, depends on nothing), `recipes` (recipe index), `llm` (Ollama client), `sources` (Renovate adapter), `git` (GitHub adapter), `ecosystems:jvm` (Maven and Gradle adapters), each depending on `core` only, `cli` (the `lector` command, depends on all six), and `benchmark` (M6, never shipped; see [Benchmark](benchmark.md)). Every module applies the convention plugin `lector.kotlin-conventions` from `buildSrc`. Library and plugin versions are in `gradle/libs.versions.toml`, the base images' in the Dockerfiles under `docker/`.
+> - Ten modules: `core` (data model, ports, and pipeline, depends on nothing), `recipes` (recipe index), `llm` (Ollama client), `sources` (Renovate, Dependabot, and fallback sources), `git` (GitHub adapter), `ecosystems:jvm` (Maven and Gradle adapters), `ecosystems:typescript` (TypeScript adapter, M9), each depending on `core` (the two ecosystems also on `ecosystems:shared`, what they share outside `core`), `cli` (the `lector` command, depends on all of them), and `benchmark` (M6, never shipped; see [Benchmark](benchmark.md)). Every module applies the convention plugin `lector.kotlin-conventions` from `buildSrc`. Library and plugin versions are in `gradle/libs.versions.toml`, the base images' in the Dockerfiles under `docker/`.
 > - `./gradlew build` is the single gate: compile, unit tests, end-to-end tests, ktlint, detekt, Kover. It fails on any finding.
 > - The CLI contract: stdout carries only command output, logs go to stderr through SLF4J, and `LectorCommand.execute()` sets the exit code (`0` for success, help, and version; `2` for invalid usage, because `1` means "caused by the update").
 > - The version is defined once, in `gradle.properties`. The build writes it into a resource, and `AppVersion` reads it at runtime.
@@ -39,19 +39,26 @@ flowchart LR
 | `core` | Data model, ports, attribution, process runner (M1), recipe step (M2), fix loop (M3), guardrails (M4), the PR pipeline and the ports `UpdateSource` and `GitHost` (M5), companion PRs and the source context (M8). | Nothing, by construction: its build file has no `project(…)` dependency. |
 | `recipes` | The recipe index (M2): generated at build time by its `generator` source set, read at run time by `BundledRecipeIndex`. | `core`, kotlinx-serialization-json, SLF4J API. OpenRewrite only in the `generator` source set, never at run time. |
 | `llm` | The Ollama client and the prompt (M3). | `core`, kotlinx-serialization-json, SLF4J API. No HTTP library: the JDK client. |
-| `ecosystems:jvm` | The Maven adapter (M1, recipe runner and resolved versions since M2, cluster keys and `javap` grounding since M3, tree-sitter language support, scope, and build-file blocklist since M4) and the Gradle adapter (M7). | `core`, `maven-artifact`, kotlinx-serialization-json, `tree-sitter` with the Java and Kotlin grammars (JNI). |
+| `ecosystems:shared` | What the ecosystem adapters share outside `core` (M9): the JUnit XML parser (`testCases`), `TreeSitterLanguage`, which runs an adapter's queries, and `xmlDocumentBuilder()`. Knows no ecosystem. | `core`, `tree-sitter` (as `api`: the adapters pass their grammars in). |
+| `ecosystems:jvm` | The Maven adapter (M1, recipe runner and resolved versions since M2, cluster keys and `javap` grounding since M3, tree-sitter language support, scope, and build-file blocklist since M4) and the Gradle adapter (M7). | `core`, `ecosystems:shared`, `maven-artifact`, kotlinx-serialization-json, `tree-sitter` with the Java and Kotlin grammars (JNI). |
+| `ecosystems:typescript` | The TypeScript adapter (M9): npm, pnpm, and Yarn, no recipe runner. See [TypeScript adapter](typescript-adapter.md). | `core`, `ecosystems:shared`, kotlinx-serialization-json, `snakeyaml-engine`, `tree-sitter` with the TypeScript, TSX, and JavaScript grammars. |
 | `sources` | Update-source adapters: `RenovateSource` (M5) reads a Renovate PR's body; `DependabotSource` (M8) reads `fetch-metadata`'s JSON and the PR body; `FallbackSource` (M8) compares resolved versions on labelled PRs. | `core`, kotlinx-serialization-json, SLF4J API. |
 | `git` | Git host adapters (M5): `GitHubHost` reads the event, comments, labels, fetches, and pushes; since M8 it also force-pushes and deletes `heal/` branches and finds, creates, updates, and closes companion PRs. | `core`, kotlinx-serialization-json, SLF4J API. No GitHub client: the JDK `HttpClient` and `git`. |
-| `benchmark` | The benchmark harness, corpus, and report (M6). Not shipped: no module depends on it. See [Benchmark](benchmark.md). | `core`, `recipes`, `llm`, `ecosystems:jvm`, Clikt, kotlinx-serialization-json with its compiler plugin, SLF4J API (`slf4j-simple` at runtime). |
-| `cli` | `lector` command, version lookup, logging setup. The composition root. | `core`, `recipes`, `llm`, `sources`, `git`, `ecosystems:jvm`, Clikt, kotlinx-serialization-json, SLF4J API (`slf4j-simple` at runtime). |
+| `benchmark` | The benchmark harness, corpus, and report (M6). Not shipped: no module depends on it. See [Benchmark](benchmark.md). | `core`, `recipes`, `llm`, `ecosystems:jvm`, `ecosystems:typescript`, Clikt, kotlinx-serialization-json with its compiler plugin, SLF4J API (`slf4j-simple` at runtime). |
+| `cli` | `lector` command, version lookup, logging setup. The composition root. | `core`, `recipes`, `llm`, `sources`, `git`, `ecosystems:jvm`, `ecosystems:typescript`, Clikt, kotlinx-serialization-json, SLF4J API (`slf4j-simple` at runtime). |
 | `buildSrc` | The convention plugin, and `gradleFixtures()` for the test tasks that run real Gradle (M7). Not a product module. | Kotlin, ktlint, detekt, and Kover Gradle plugins; the Kotlin serialization plugin on its classpath, for `benchmark`. |
 
-The dependency direction from the [concept](../concept.md#21-ports-and-adapters) holds: `cli → ecosystems:jvm → core`, `cli → recipes → core`, `cli → llm → core`, `cli → sources → core`, `cli → git → core`, and `cli → core`, never the other way. New adapter modules join the same way. `benchmark` sits beside `cli`: it uses `core` and the adapters, and nothing uses it. `action/` and `docker/` are not Gradle modules: they ship the start script as a container image and a GitHub Action ([PR pipeline](pr-pipeline.md)).
+The dependency direction from the [concept](../concept.md#21-ports-and-adapters) holds: `cli → ecosystems:jvm → core`, `cli → ecosystems:typescript → core`, both `→ ecosystems:shared → core`, `cli → recipes → core`, `cli → llm → core`, `cli → sources → core`, `cli → git → core`, and `cli → core`, never the other way. New adapter modules join the same way. `benchmark` sits beside `cli`: it uses `core` and the adapters, and nothing uses it. `action/` and `docker/` are not Gradle modules: they ship the start script as a container image and a GitHub Action ([PR pipeline](pr-pipeline.md)).
 
 ```mermaid
 flowchart TB
     cli["cli<br/>(composition root)"] --> core
     jvm["ecosystems:jvm"] --> core
+    ts["ecosystems:typescript"] --> core
+    jvm --> shared["ecosystems:shared"]
+    ts --> shared
+    shared --> core
+    cli --> ts
     cli --> jvm
     recipes --> core
     cli --> recipes
@@ -65,6 +72,7 @@ flowchart TB
     cli -.-> later
     bench["benchmark<br/>(not shipped)"] --> core
     bench --> jvm
+    bench --> ts
     bench --> recipes
     bench --> llm
 ```
@@ -117,7 +125,7 @@ flowchart LR
 | ktlint | `ktlint*SourceSetCheck`, `ktlintKotlinScriptCheck` | `*.kt` in every source set, `*.kts` in every module and the root, `*.kts` and `*.kt` in `buildSrc` | `ktlint_official` from `.editorconfig`. Fix with `./gradlew ktlintFormat`. |
 | detekt 2.x | `detektMain`, `detektTest` (type resolution), plus `detektGenerator` in `recipes` | Kotlin sources | `warningsAsErrors`. Forbidden: `print`/`println` (also `System.out`, including `printf`, `format`, `append`, `write`), process exit outside `main`, `else` on sealed types, unused imports (`UnusedImport`: ktlint no longer checks them). The plain `detekt` task is disabled because it only repeats the findings. |
 | Kover | `koverVerify` | In-process tests per module | 100 % lines and branches. `*.MainKt` is excluded because `main` exits the process; the end-to-end tests run the CLI's, the benchmark workflow the benchmark's. |
-| Tests | `test`, `endToEndTest` | Unit and end-to-end. The opt-in `:cli:integrationTest`, `:ecosystems:jvm:integrationTest`, and `:cli:realModelTest` are not part of `check`. | Every test must pass. |
+| Tests | `test`, `endToEndTest` | Unit and end-to-end. The opt-in `:cli:integrationTest`, `:ecosystems:jvm:integrationTest`, `:ecosystems:typescript:integrationTest`, and `:cli:realModelTest` are not part of `check`. | Every test must pass. |
 | Matching versions | `:recipes:checkRewritePluginVersion`, `:recipes:checkRewriteGradlePluginVersion`, `checkActionImage` | The rewrite plugins and the recipe BOM; the action's image tag and `version` | See [Build conventions](#build-conventions). |
 
 There are no baselines, no `ignoreFailures`, and no coverage exclusions besides `MainKt`. Each gate was shown to fail the build on a deliberate violation (see the spec's acceptance criteria and the review).
@@ -192,11 +200,11 @@ No Kotlin file contains the version literal. Tests compare against the same prop
 | Level | Task | What runs | Examples |
 |---|---|---|---|
 | Unit | `test` | In-process, excludes the `e2e`, `integration`, and `real-model` tags. Clikt's `test()` helper captures stdout, stderr, and the status code of a command. Exit codes that `LectorCommand.execute()` sets (usage errors) are tested with `executeInProcess()` (`Execution.kt`), which captures output and exit without ending the JVM. | `LectorCommandTest`, `AppVersionTest`, `RootCommandTest` |
-| Integration | `:cli:integrationTest`, `:ecosystems:jvm:integrationTest` | Tag `integration`. Real Maven and Gradle on fixture repositories; opt-in, not in `check`. See [Verify pipeline](verify-pipeline.md#tests), [Recipe migration](recipe-migration.md#tests), and [Gradle adapter](gradle-adapter.md#tests). | `VerifyIntegrationTest`, `MigrateIntegrationTest`, `GradleIntegrationTest` |
+| Integration | `:cli:integrationTest`, `:ecosystems:jvm:integrationTest`, `:ecosystems:typescript:integrationTest` | Tag `integration`. Real Maven, Gradle, and Node toolchains on fixture repositories; opt-in, not in `check`. See [Verify pipeline](verify-pipeline.md#tests), [Recipe migration](recipe-migration.md#tests), [Gradle adapter](gradle-adapter.md#tests), and [TypeScript adapter](typescript-adapter.md#tests). | `VerifyIntegrationTest`, `MigrateIntegrationTest`, `GradleIntegrationTest`, `TypeScriptIntegrationTest` |
 | Real model | `:cli:realModelTest` | Tag `real-model`. `heal` with a real model in Ollama through Testcontainers; opt-in, not in `check`. See [Fix loop](fix-loop.md#tests). | `RealModelTest` |
 | End-to-end | `endToEndTest` | Tag `e2e`. Runs `bin/lector` from `installDist` as a separate process with `JAVA_HOME` pinned. Streams go to files, with a 30 s timeout. | `LectorEndToEndTest` |
 
-`./gradlew test` stays fast and doesn't build the distribution. `endToEndTest` depends on `installDist` and finds the start script through the `lector.bin` system property, which is derived from `installDist` and `applicationName`. Test fixtures live under `src/test/resources/` of each module (for example a version resource without a `version` key in `cli`, Maven and Gradle fixture repos in `ecosystems:jvm`).
+`./gradlew test` stays fast and doesn't build the distribution. `endToEndTest` depends on `installDist` and finds the start script through the `lector.bin` system property, which is derived from `installDist` and `applicationName`. Test fixtures live under `src/test/resources/` of each module (for example a version resource without a `version` key in `cli`, Maven and Gradle fixture repos in `ecosystems:jvm`, npm, pnpm, and Yarn fixture repos in `ecosystems:typescript`).
 
 ```mermaid
 flowchart LR
@@ -217,7 +225,7 @@ flowchart LR
 | Real-model workflow | `.github/workflows/real-model.yml` | Manual (`workflow_dispatch`, optional `model`) and nightly: `./gradlew :cli:realModelTest`. Never on push or pull requests. |
 | Benchmark workflow | `.github/workflows/benchmark.yml` | Manual only (`workflow_dispatch`, optional `cases`): one job per case, mode, and repetition with the 7B Ollama image as a service, then a merged `results.json` and `report.md` as an artifact. See [Benchmark](benchmark.md). |
 | Release workflow | `.github/workflows/release.yml` | On a version tag `v*`: checks that the tag is `v<version>` and that the MSAL check in `docs/licensing.md` is done, then publishes the tool image and the Ollama images to GHCR. See [PR pipeline](pr-pipeline.md). |
-| Dependabot | `.github/dependabot.yml` | Weekly updates for the `gradle`, `github-actions`, and `docker` ecosystems. Gradle updates come through the version catalog, Docker updates through the Dockerfiles in `docker/`. Major updates of `eclipse-temurin` are ignored: the tool image has one stage per JDK release. |
+| Dependabot | `.github/dependabot.yml` | Weekly updates for the `gradle`, `github-actions`, `npm` (`docker/lector/node`, the image's Node tools), and `docker` ecosystems. Gradle updates come through the version catalog, Docker updates through the Dockerfiles in `docker/`. Major updates of `eclipse-temurin` and `node` are ignored: the tool image has one stage per JDK release and per Node LTS line. |
 | License | `LICENSE` | Apache 2.0. |
 
 ## Decisions and known limits
@@ -228,4 +236,4 @@ flowchart LR
 | Full `clikt` artifact, not `clikt-core` | `clikt-core` exits with `0` and prints errors to stdout unless `main` wires streams and exit codes by hand. The full artifact pulls in Mordant with JNA and needs `--enable-native-access=ALL-UNNAMED` in the start script and test JVMs. The tool image runs the same start script. | — |
 | detekt 2.x alpha | detekt 1.x can't analyze Kotlin 2.4. | When 2.0 is stable |
 | foojay version in `settings.gradle.kts` | A settings `plugins {}` block can't read the version catalog. | — |
-| Domain types and ports arrive with the milestones that need them | M1 added `Diagnostic`, `Verification`, and `EcosystemAdapter`; M2 added `DependencyChange`, `VersionScheme`, and the recipe ports; M3 added `Edit`, `LlmClient`, and the adapter's `ground`, `clusterKey`, and `isBuildFile`; M4 added `LanguageSupport`, `SourceFacts`, `Guardrail`, and the adapter's `languageSupport`, `isEditable`, `testDisablingConfig`, and `testsRun`; M5 added `UpdateSource`, `GitHost`, `PullRequest`, `CommitIdentity`, `PrPipeline`, and the `timeout` of `verify` and `runTests`; M7 added none (Gradle is a second adapter); M8 added `SourceContext`, `PrState`, `BranchPolicy.COMPANION`, and the companion-PR calls of `GitHost`. No type ahead of its first use. | Each milestone |
+| Domain types and ports arrive with the milestones that need them | M1 added `Diagnostic`, `Verification`, and `EcosystemAdapter`; M2 added `DependencyChange`, `VersionScheme`, and the recipe ports; M3 added `Edit`, `LlmClient`, and the adapter's `ground`, `clusterKey`, and `isBuildFile`; M4 added `LanguageSupport`, `SourceFacts`, `Guardrail`, and the adapter's `languageSupport`, `isEditable`, `testDisablingConfig`, and `testsRun`; M5 added `UpdateSource`, `GitHost`, `PullRequest`, `CommitIdentity`, `PrPipeline`, and the `timeout` of `verify` and `runTests`; M7 added none (Gradle is a second adapter); M8 added `SourceContext`, `PrState`, `BranchPolicy.COMPANION`, and the companion-PR calls of `GitHost`; M9 added the adapter's `updateLockfiles` with `LockfileUpdate`, and `loosening`. No type ahead of its first use. | Each milestone |

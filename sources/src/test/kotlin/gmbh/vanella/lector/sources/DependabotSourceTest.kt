@@ -84,8 +84,18 @@ class DependabotSourceTest {
     }
 
     @Test
-    fun `an ecosystem other than maven and gradle produces no change`() {
-        assertEquals(emptyList(), read("npm", body = "").updates)
+    fun `npm_and_yarn, what fetch-metadata reports for npm, pnpm, and Yarn, is the npm ecosystem, and so is npm`() {
+        assertEquals(listOf(PackageUpdate("npm", "axios", "1.2.0", "1.20.0")), read("npm", body = "").updates)
+        val metadata = DependabotSource.parseMetadata(captured("npm.json").replace("npm_and_yarn", "npm"))
+
+        assertEquals(listOf("npm"), DependabotSource(logins, metadata).read(pr(body = ""), NoContext).updates.map { it.ecosystem })
+    }
+
+    @Test
+    fun `an ecosystem other than Maven's, Gradle's, and npm's produces no change`() {
+        val metadata = DependabotSource.parseMetadata(captured("npm.json").replace("npm_and_yarn", "pip"))
+
+        assertEquals(emptyList(), DependabotSource(logins, metadata).read(pr(body = ""), NoContext).updates)
     }
 
     @Test

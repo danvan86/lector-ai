@@ -7,6 +7,15 @@ import kotlinx.serialization.json.Json
 /** The origin of a case whose head commit was made for the benchmark, not by a bot. */
 const val SYNTHETIC = "synthetic"
 
+/** The JVM's ecosystem, whose numbers the report shows first. */
+const val MAVEN = "maven"
+
+// The ecosystems the harness builds, and the report reports separately.
+private val ECOSYSTEMS = setOf(MAVEN, "npm")
+
+/** The ecosystems with a recipe step. npm has none: OpenRewrite JavaScript is MSAL-licensed (concept section 9). */
+val RECIPE_ECOSYSTEMS = setOf(MAVEN)
+
 private const val RESOURCE = "corpus.json"
 private val ID = Regex("[a-z0-9]+(-[a-z0-9]+)*")
 private val COMMIT = Regex("[0-9a-f]{40}")
@@ -56,6 +65,7 @@ data class Corpus(
             require(COMMIT.matches(case.base)) { "${case.id}: base is not a full commit hash" }
             require(COMMIT.matches(case.head)) { "${case.id}: head is not a full commit hash" }
             require(case.changes.isNotEmpty()) { "${case.id}: no changes" }
+            require(case.ecosystem in ECOSYSTEMS) { "${case.id}: ecosystem ${case.ecosystem} is none of ${ECOSYSTEMS.joinToString(", ")}" }
         }
     }
 }
@@ -63,6 +73,7 @@ data class Corpus(
 /**
  * One dependency update: a historical bot PR ([origin] is its URL) or a [SYNTHETIC] bump. [base] is the commit before
  * the update, [head] the commit with it, both in [repository]. [note] says what breaks, for the curator, or is null.
+ * [ecosystem] is the package namespace of its changes, which the report groups the numbers by (M9).
  */
 @Serializable
 data class Case(
@@ -73,6 +84,7 @@ data class Case(
     val head: String,
     val changes: List<Change>,
     val note: String?,
+    val ecosystem: String,
 )
 
 /** One package the case's update moves, in its ecosystem's notation. */

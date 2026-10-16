@@ -6,7 +6,7 @@ Milestone: [M4](../features.md#m4--guardrails-) · Spec: [`m4-guardrails/spec.md
 >
 > - Every attempt of the fix loop passes `Guardrails` (`core/…/Guardrails.kt`) before the downgrade check and the verify. A violation rejects the attempt: the tree is reset, the attempt counts against the budgets, and each `Violation(rule, file, line, reason)` goes into the retry request and the `heal` report (with a count per rule); the `pr` comment has the count per rule. Recipe output is never checked.
 > - The rules are generic and live in `core`: `Scope`, `DiffSize`, `BuildFileBlocklist` in `FileRules.kt`, the rules on source facts in `SourceRules.kt`. They see only `FileChange`s (before = last commit, after = working tree), `SourceFacts`, and the diagnostics caused by the update. No tree-sitter, no Java, no Maven in `core`.
-> - The language knowledge comes from the adapter: `EcosystemAdapter.languageSupport` (`LanguageSupport.facts(file, content): SourceFacts?`), `isEditable`, `isBuildFile`, `testDisablingConfig`. For the JVM: `JvmLanguageSupport` and `TreeSitterLanguage` with the query files under `ecosystems/jvm/src/main/resources/…/queries/{java,kotlin}/`, plus `JvmScope` and `MavenTestSkipping` in `MavenGuardrails.kt`, and `GradleScope` and `GradleTestSkipping` in `GradleGuardrails.kt` (M7).
+> - The language knowledge comes from the adapter: `EcosystemAdapter.languageSupport` (`LanguageSupport.facts(file, content): SourceFacts?`), `isEditable`, `isBuildFile`, `testDisablingConfig`, and, since M9, `loosening`. For the JVM: `JvmLanguageSupport` with the query files under `ecosystems/jvm/src/main/resources/…/queries/{java,kotlin}/`, run by `TreeSitterLanguage` in `ecosystems:shared`, plus `JvmScope` and `MavenTestSkipping` in `MavenGuardrails.kt`, and `GradleScope` and `GradleTestSkipping` in `GradleGuardrails.kt` (M7). For TypeScript (M9): see [TypeScript adapter](typescript-adapter.md#guardrails-for-typescript).
 > - A new language is a grammar and seven query files in its adapter, not a new rule. A new rule is one more `Guardrail` in the list in `Guardrails`, with a rejecting and a passing test in `core` (on hand-made facts) and in the adapter (on real source).
 > - Easiest rules to break: the scope check runs on the edits' paths *before* anything is written (a reset doesn't restore ignored files); stubs and suppressions count only if they are new in touched lines; every file the build tool reads its configuration from must be an `isBuildFile`, or the blocklist and the downgrade check don't see it.
 
@@ -21,10 +21,14 @@ flowchart LR
     g --> src["SourceRules.kt<br/>ParseErrors, SymbolComparison, TestDeletion,<br/>TestSkips, TestAssertions, TestCount, Stubbing, Suppression"]
     src --> facts["SourceFacts<br/>(via FileChange)"]
     facts --> port["LanguageSupport<br/>(core port)"]
-    jvm["JvmLanguageSupport<br/>TreeSitterLanguage + queries/*.scm<br/>(ecosystems:jvm)"] -. implements .-> port
-    file --> adapter["EcosystemAdapter<br/>isEditable, isBuildFile, testDisablingConfig"]
+    jvm["JvmLanguageSupport<br/>queries/*.scm<br/>(ecosystems:jvm)"] -. implements .-> port
+    tsl["TypeScriptLanguageSupport<br/>queries/*.scm<br/>(ecosystems:typescript, M9)"] -. implements .-> port
+    jvm --> tsr["TreeSitterLanguage<br/>(ecosystems:shared)"]
+    tsl --> tsr
+    file --> adapter["EcosystemAdapter<br/>isEditable, isBuildFile,<br/>testDisablingConfig, loosening"]
     maven["MavenAdapter<br/>JvmScope, MavenTestSkipping"] -. implements .-> adapter
     gradle["GradleAdapter<br/>GradleScope, GradleTestSkipping"] -. implements .-> adapter
+    ts["TypeScriptAdapter<br/>TypeScriptScope, TypeScriptTestSkipping,<br/>TypeScriptLoosening"] -. implements .-> adapter
 ```
 
 ## Modules and files
@@ -36,10 +40,11 @@ flowchart LR
 | | `Guardrails.kt` | The list of rules, `checkScope(repo, files)`, `check(changes, diagnostics)`, and `DEFAULT_MAX_CHANGED_LINES` (50). |
 | | `FileRules.kt` | `Scope`, `DiffSize`, `BuildFileBlocklist`. |
 | | `SourceRules.kt` | The rules on facts, and the helpers they share: `lost()` (items beyond the count left, by key), `normalized()` (whitespace runs as one space). |
-| | `EcosystemAdapter.kt` | Grew by `languageSupport`, `isEditable(file)`, `testDisablingConfig(file, content, line)`, and `testsRun(repo)`. |
+| | `EcosystemAdapter.kt` | Grew by `languageSupport`, `isEditable(file)`, `testDisablingConfig(file, content, line)`, and `testsRun(repo)`; in M9 by `loosening(file, before, after)`. |
 | | `FixLoop.kt` | Runs the guardrails per attempt; `AttemptOutcome.Rejected` carries `violations`; `Budgets.changedLinesPerAttempt`. |
 | | `Verification.kt`, `Attribution.kt` | `Verification.testsRun`, read right after `verify`, before the reruns that run only some tests. |
-| `ecosystems:jvm` | `TreeSitterLanguage.kt` | `JvmLanguageSupport` (by extension: `.java`, `.kt`, `.kts`; grammars load lazily) and `TreeSitterLanguage`, which runs the seven queries of a language and turns their captures into `SourceFacts`. |
+| `ecosystems:shared` | `TreeSitterLanguage.kt` | `TreeSitterLanguage(name, grammar, resources)`, which runs the seven queries of a language from `queries/<name>/` next to the class `resources` and turns their captures into `SourceFacts`. Moved out of `ecosystems:jvm` in M9. |
+| `ecosystems:jvm` | `JvmLanguageSupport.kt` | `JvmLanguageSupport` (by extension: `.java`, `.kt`, `.kts`; grammars load lazily). |
 | | `queries/java/*.scm`, `queries/kotlin/*.scm` | `types`, `methods`, `tests`, `assertions`, `skips`, `suppressions`, `stubs`. All language knowledge is here. |
 | | `MavenGuardrails.kt` | `JvmScope` (the editable scope) and `MavenTestSkipping` (the build-file blocklist). |
 | | `MavenAdapter.kt` | Wires both, `languageSupport = JvmLanguageSupport`, `isBuildFile` (now also the wrapper and `.mvn/`), and `testsRun` via `MAVEN_REPORTS.count()`. |
@@ -48,7 +53,7 @@ flowchart LR
 | | `FixLoopReport.kt` | Violations per attempt, rejections per rule, tests run, in text and JSON. |
 | | `RepositoryCommand.kt` | Catches any `Throwable`, so a native library that doesn't load exits `2`, not `1`. `PrCommand` does the same through the shared `toolError()`. |
 
-tree-sitter (`io.github.bonede:tree-sitter`, `tree-sitter-java`, `tree-sitter-kotlin`, versions in `gradle/libs.versions.toml`) is a dependency of `ecosystems:jvm` only. Its JARs carry JNI libraries for glibc Linux, macOS, and Windows; there are none for musl, so the container image can't be Alpine. The test JVMs of `ecosystems:jvm` get `--enable-native-access=ALL-UNNAMED`, as the start script already does.
+tree-sitter (`io.github.bonede:tree-sitter` and its grammars, versions in `gradle/libs.versions.toml`) is a dependency of the ecosystem modules only: `ecosystems:shared` (the runtime, as `api`), `ecosystems:jvm` (Java, Kotlin), `ecosystems:typescript` (TypeScript, TSX, JavaScript). Its JARs carry JNI libraries for glibc Linux, macOS, and Windows; there are none for musl, so the container image can't be Alpine. The test JVMs of these modules get `--enable-native-access=ALL-UNNAMED`, as the start script already does.
 
 ## One attempt
 
@@ -79,7 +84,7 @@ The rule names are the `Violation.rule` values in the report.
 |---|---|---|---|
 | `scope` | `Scope` | A path outside the repository, a path the adapter's `isEditable` refuses, a file Git doesn't track (ignored or untracked: at attempt time, that is build output) | Tracked, editable files |
 | `diff-size` | `DiffSize` | More than `--max-changed-lines` (default 50) added plus removed lines over all files | Up to the limit |
-| `build-file` | `BuildFileBlocklist` | An added or changed line of an `isBuildFile` file for which `testDisablingConfig` returns a reason | Removing such config; any other line |
+| `build-file` | `BuildFileBlocklist` | An added or changed line of an `isBuildFile` file for which `testDisablingConfig` returns a reason; since M9, each reason `loosening(file, before, after)` returns for the file's whole change (no line) | Removing such config where the safe setting is the default (Maven, Gradle: `loosening` returns nothing); any other line |
 | `parse-errors` | `ParseErrors` | A changed source file with more parse errors (`ERROR` or `MISSING` nodes) after than before | Same or fewer |
 | `symbol-comparison` | `SymbolComparison` | A method (by type and name, overloads counted) that is gone after | A method a current diagnostic in *its own file* points into, if its body was empty or a method the attempt added (in any file) has the same body, whitespace ignored |
 | `test-deletion` | `TestDeletion` | A deleted test method. No exception | — |
@@ -143,6 +148,7 @@ JSON: each attempt gains `violations` (`rule`, `file`, `line`, `reason`, empty u
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
+| Unit, `ecosystems:shared` | `test` | `TreeSitterLanguage` loading queries next to a class, with test queries for Java | `TreeSitterLanguageTest` |
 | Unit, `core` | `test` | Each rule on hand-made `FileChange`s and facts (`EditableEverywhere` and fake `LanguageSupport`s): rejecting and passing cases. The line diff and `touches`/`replaced`. The fix loop with a fake `LlmClient`: a violating attempt is reset, never verified, counted, and its violations are in the retry; a real `.gitignore`d file is a scope violation; a parser that throws an `Error` leaves a clean tree; recipe output with a deleted method is kept. | `FileRulesTest`, `SourceRulesTest`, `FileChangeTest`, `SourceFactsTest`, `FixLoopTest`, `RecipeStepTest` |
 | Unit, `ecosystems:jvm` | `test` | Every rule through `MavenAdapter` on real Java and Kotlin edits, rejecting and passing cases, with diagnostics pointing into the edited lines. The queries on `fixtures/language-facts/OrderTest.java` and `.kt`. The blocklist on POM, `.mvn/maven.config`, and plugin shapes, and on every Gradle spelling (M7). `TestReports.count`. | `JvmGuardrailsTest`, `JvmLanguageSupportTest`, `MavenGuardrailsTest`, `GradleGuardrailsTest`, `TestReportsTest` |
 | Unit, `cli` | `test` | Report text and JSON with violations, counts, and tests run; `--max-changed-lines` and its validation; an `Error` (`UnsatisfiedLinkError`) in a command exits `2`. | `FixLoopReportTest`, `HealCommandTest`, `VerifyCommandTest` |
@@ -152,7 +158,7 @@ JSON: each attempt gains `violations` (`rule`, `file`, `line`, `reason`, empty u
 
 | Decision / limit | Reason | Revisit |
 |---|---|---|
-| `tree-sitter-ng` with prebuilt grammars, in `ecosystems:jvm` | No native build step; `core` gets no native dependency (spec Q1). | M9, when a second ecosystem needs a parser |
+| `tree-sitter-ng` with prebuilt grammars, in the ecosystem modules | No native build step; `core` gets no native dependency (spec Q1). M9 moved `TreeSitterLanguage` to `ecosystems:shared` and added the TypeScript, TSX, and JavaScript grammars. | — |
 | Guardrails before verify, per attempt | A bad edit never costs a build (Q2). | — |
 | Static test count enforced, runtime count only reported | Works when the build is red from the start (Q4). | M6 |
 | Untracked files are out of scope, not only ignored ones | An untracked file at attempt time is build output. | — |

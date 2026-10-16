@@ -1,0 +1,16 @@
+{
+  "name": "lector-node-toolchain",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Node tools of the lector image: Corepack, which runs the projects' package managers, and jest-junit, which Jest reports through. The devDependencies are never installed: they pin the package manager versions the image pre-caches through Corepack, so that Dependabot updates them.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "corepack": "0.36.0",
+    "jest-junit": "17.0.0"
+  },
+  "devDependencies": {
+    "@yarnpkg/cli-dist": "4.18.1",
+    "pnpm": "12.11.2",
+    "yarn": "1.22.22"
+  }
+}

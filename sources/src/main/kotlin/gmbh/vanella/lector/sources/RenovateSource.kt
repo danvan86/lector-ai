@@ -27,8 +27,8 @@ private val ECOSYSTEMS =
     )
 
 // Rows without badges whose datasource is known anyway: Renovate's gradle-wrapper manager names Gradle itself `gradle`,
-// and a PR that only updates the wrapper has no badge columns.
-private val UNBADGED_DATASOURCES = mapOf("gradle" to "gradle-version")
+// and a PR that only updates the wrapper has no badge columns. Node is `node` in the nvm, nodenv, and engines rows.
+private val UNBADGED_DATASOURCES = mapOf("gradle" to "gradle-version", "node" to "node-version")
 
 // Update types that change a digest, a range, or lock files, but no version.
 private val NO_VERSION_CHANGE = setOf("digest", "pindigest", "pin", "lockfilemaintenance")

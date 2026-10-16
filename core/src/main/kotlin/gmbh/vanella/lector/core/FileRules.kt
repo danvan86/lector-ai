@@ -45,15 +45,21 @@ internal class DiffSize(
     }
 }
 
-/** Build-file blocklist: no new or changed line in a build file disables tests. What does is the adapter's knowledge. */
+/**
+ * Build-file blocklist: no new or changed line in a build file disables tests, and no change loosens it as a whole, by
+ * what it removes or narrows. What does is the adapter's knowledge.
+ */
 internal class BuildFileBlocklist(
     private val isBuildFile: (String) -> Boolean,
     private val testDisablingConfig: (file: String, content: String, line: Int) -> String?,
+    private val loosening: (file: String, before: String, after: String) -> List<String>,
 ) : Guardrail {
     override fun check(attempt: AttemptChanges) =
         attempt.files.filter { isBuildFile(it.file) }.flatMap { change ->
-            change.addedLines.mapNotNull { line ->
-                testDisablingConfig(change.file, change.after, line)?.let { Violation("build-file", change.file, line, it) }
-            }
+            val lines =
+                change.addedLines.mapNotNull { line ->
+                    testDisablingConfig(change.file, change.after, line)?.let { Violation("build-file", change.file, line, it) }
+                }
+            lines + loosening(change.file, change.before, change.after).map { Violation("build-file", change.file, null, it) }
         }
 }

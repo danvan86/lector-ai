@@ -12,17 +12,19 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class ResultsTest {
+    private val mavenCases = mapOf("a" to MAVEN, "b" to MAVEN)
+
     private val planned = listOf(RunKey("a", Mode.RECIPE_ONLY, 1), RunKey("a", Mode.FIX_LOOP_ONLY, 1), RunKey("a", Mode.FIX_LOOP_ONLY, 2))
 
     private fun run(
         key: RunKey,
         toolCommit: String = "abc",
         model: String = "qwen2.5-coder:7b",
-    ) = RunResult(key.case, key.mode, key.repetition, toolCommit, model, RunStatus.VALID, null, metrics(green = true))
+    ) = RunResult(key.case, key.mode, key.repetition, toolCommit, model, RunStatus.VALID, null, metrics(green = true), MAVEN)
 
     @Test
     fun `merging puts the runs in plan order and marks planned runs without a result as missing`() {
-        val results = Results.merge(planned, listOf(run(planned[2]), run(planned[0])), "ubuntu-24.04", "2026-10-12")
+        val results = Results.merge(planned, listOf(run(planned[2]), run(planned[0])), "ubuntu-24.04", "2026-10-12", mavenCases)
 
         assertEquals("abc", results.toolCommit)
         assertEquals("qwen2.5-coder:7b", results.model)
@@ -31,9 +33,18 @@ class ResultsTest {
         assertEquals(planned, results.runs.map { it.key })
         assertEquals(listOf(RunStatus.VALID, RunStatus.MISSING, RunStatus.VALID), results.runs.map { it.status })
         assertEquals(
-            RunResult("a", Mode.FIX_LOOP_ONLY, 1, "abc", "qwen2.5-coder:7b", RunStatus.MISSING, "no result", null),
+            RunResult("a", Mode.FIX_LOOP_ONLY, 1, "abc", "qwen2.5-coder:7b", RunStatus.MISSING, "no result", null, MAVEN),
             results.runs[1],
         )
+    }
+
+    @Test
+    fun `a missing run takes its case's ecosystem`() {
+        val npm = RunKey("zod-4", Mode.RECIPE_ONLY, 1)
+
+        val results = Results.merge(listOf(npm) + planned, listOf(run(planned[0])), "r", "2026-10-12", mavenCases + ("zod-4" to "npm"))
+
+        assertEquals(listOf("npm", MAVEN), results.runs.take(2).map { it.ecosystem })
     }
 
     @Test
@@ -43,7 +54,7 @@ class ResultsTest {
             listOf(run(planned[0]), run(planned[1], model = "qwen3-coder:30b")),
             emptyList(),
         ).forEach { runs ->
-            val error = assertFailsWith<IllegalArgumentException> { Results.merge(planned, runs, "r", "2026-10-12") }
+            val error = assertFailsWith<IllegalArgumentException> { Results.merge(planned, runs, "r", "2026-10-12", mavenCases) }
             assertContains(error.message.orEmpty(), "must share one tool commit and one model")
         }
     }
@@ -52,7 +63,7 @@ class ResultsTest {
     fun `a run that wasn't planned doesn't merge`() {
         val error =
             assertFailsWith<IllegalArgumentException> {
-                Results.merge(planned, listOf(run(RunKey("b", Mode.RECIPE_ONLY, 1))), "r", "2026-10-12")
+                Results.merge(planned, listOf(run(RunKey("b", Mode.RECIPE_ONLY, 1))), "r", "2026-10-12", mavenCases)
             }
 
         assertEquals("Runs that weren't planned: RunKey(case=b, mode=RECIPE_ONLY, repetition=1)", error.message)
@@ -60,7 +71,7 @@ class ResultsTest {
 
     @Test
     fun `results and runs round-trip through JSON`() {
-        val results = Results.merge(planned, listOf(run(planned[0])), "r", "2026-10-12")
+        val results = Results.merge(planned, listOf(run(planned[0])), "r", "2026-10-12", mavenCases)
 
         assertEquals(results, Results.decode(results.encode()))
         assertEquals(results.runs[0], Results.decodeRun(Results.encodeRun(results.runs[0])))

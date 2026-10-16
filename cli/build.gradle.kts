@@ -8,6 +8,7 @@ dependencies {
     implementation(project(":recipes"))
     implementation(project(":llm"))
     implementation(project(":ecosystems:jvm"))
+    implementation(project(":ecosystems:typescript"))
     implementation(project(":sources"))
     implementation(project(":git"))
     implementation(libs.clikt)

@@ -6,7 +6,7 @@ import kotlin.test.assertFailsWith
 
 class PlanTest {
     private fun case(id: String) =
-        Case(id, SYNTHETIC, "https://github.com/example/$id.git", "a".repeat(40), "b".repeat(40), emptyList(), null)
+        Case(id, SYNTHETIC, "https://github.com/example/$id.git", "a".repeat(40), "b".repeat(40), emptyList(), null, MAVEN)
 
     private val corpus = Corpus(listOf(case("one"), case("two")))
 
@@ -27,6 +27,16 @@ class PlanTest {
             runs,
         )
         assertEquals(14, plan(corpus).size)
+    }
+
+    @Test
+    fun `a case of an ecosystem without recipes runs only the fix loop`() {
+        val npm = case("zod-4").copy(ecosystem = "npm")
+
+        assertEquals(
+            listOf(RunKey("zod-4", Mode.FIX_LOOP_ONLY, 1), RunKey("zod-4", Mode.FIX_LOOP_ONLY, 2), RunKey("zod-4", Mode.FIX_LOOP_ONLY, 3)),
+            plan(Corpus(listOf(npm))),
+        )
     }
 
     @Test

@@ -3,6 +3,7 @@ package gmbh.vanella.lector.cli
 import com.github.ajalt.clikt.testing.test
 import gmbh.vanella.lector.ecosystems.jvm.GradleAdapter
 import gmbh.vanella.lector.ecosystems.jvm.MavenAdapter
+import gmbh.vanella.lector.ecosystems.typescript.TypeScriptAdapter
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
@@ -123,8 +124,26 @@ class RootCommandTest {
         val adapters = adapters(BuildConfig(), environment)
         val withoutPlugin = adapters(BuildConfig(), mapOf("LECTOR_REWRITE_GRADLE_PLUGIN" to " "))
 
-        assertEquals(listOf(GradleAdapter::class, MavenAdapter::class), adapters.map { it::class })
+        assertEquals(listOf(GradleAdapter::class, MavenAdapter::class, TypeScriptAdapter::class), adapters.map { it::class })
         assertNotNull(adapters.first().recipeRunner)
         assertNull(withoutPlugin.first().recipeRunner, "a blank value is no plugin")
+    }
+
+    @Test
+    fun `verify detects TypeScript repositories, and refuses one without a lockfile`(
+        @TempDir repo: Path,
+    ) {
+        repo.resolve("package.json").writeText("{}")
+        repo.resolve("tsconfig.json").writeText("{}")
+
+        val result = rootCommand("1.2.3").test("verify $repo")
+
+        assertEquals(
+            "Error: $repo has no lockfile. lector-ai installs exactly what the lockfile says: commit a package-lock.json, " +
+                "pnpm-lock.yaml, or yarn.lock.\n",
+            result.stderr,
+        )
+        assertEquals("", result.stdout)
+        assertEquals(2, result.statusCode)
     }
 }

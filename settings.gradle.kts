@@ -17,4 +17,4 @@ dependencyResolutionManagement {
     }
 }
 
-include("core", "recipes", "llm", "sources", "git", "cli", "ecosystems:jvm", "benchmark")
+include("core", "recipes", "llm", "sources", "git", "cli", "ecosystems:shared", "ecosystems:jvm", "ecosystems:typescript", "benchmark")

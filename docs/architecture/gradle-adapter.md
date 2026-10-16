@@ -4,7 +4,7 @@ Milestone: [M7](../features.md#m7--gradle-) · Spec: [`m7-gradle/spec.md`](../..
 
 > **Summary for agents**
 >
-> - `GradleAdapter` (`ecosystems/jvm/…/GradleAdapter.kt`) is the second `EcosystemAdapter` in `ecosystems:jvm`, next to `MavenAdapter`. `core` didn't change for it. `adapters()` in `RootCommand.kt` registers Gradle first, then Maven. Both share the javac parser, `TestReports`, `JavapGrounding`, `ClusterKeys`, `JvmLanguageSupport`, `JvmScope`, and the `maven` namespace with `MavenVersionScheme`.
+> - `GradleAdapter` (`ecosystems/jvm/…/GradleAdapter.kt`) is the second `EcosystemAdapter` in `ecosystems:jvm`, next to `MavenAdapter`. `core` didn't change for it. `adapters()` in `RootCommand.kt` registers Gradle first, then Maven (then TypeScript, M9). Both share the javac parser, `TestReports`, `JavapGrounding`, `ClusterKeys`, `JvmLanguageSupport`, `JvmScope`, and the `maven` namespace with `MavenVersionScheme`.
 > - Every Gradle run is `<repo>/gradlew -I <lector.init.gradle> [-I <--gradle-init>] --console=plain` plus the toolchain properties, on the JDK `DaemonJdk` picks. The tasks live in the init scripts under `ecosystems/jvm/src/main/resources/…/jvm/`: `lectorQuery` (the model as JSON), `lectorCompile` (verify stage 1), `lectorTest` (stage 2). Verify never runs `check` or `build`.
 > - Tool errors (exit `2`): `pom.xml` next to the Gradle files, no `gradlew`, Gradle below 8, an Android or Kotlin Multiplatform plugin, a toolchain or daemon JVM that isn't installed. The OpenRewrite Gradle plugin's version is `rewrite-gradle-plugin` in `gradle/libs.versions.toml`; `:recipes:checkRewriteGradlePluginVersion` keeps it on the BOM's OpenRewrite. It ships as the distribution's `rewrite-gradle-plugin/` directory, found through `LECTOR_REWRITE_GRADLE_PLUGIN`.
 > - To extend it: a new Gradle-side capability is a task or a hook in `lector.init.gradle` (Groovy, Gradle 8 API), a command-line test in `GradleAdapterTest` (fake Gradle from `FakeGradleTest`), and a test with real Gradle in `GradleIntegrationTest`. New output to parse is captured from a real run into `src/test/resources/gradle-output/`.
@@ -38,14 +38,14 @@ flowchart LR
 | | `GradleModel.kt` | Parses the query's JSON into `GradleModel(versions, classpath, plugins, includedBuilds)`. |
 | | `GradleConsole.kt` | Plain console output → javac, kotlinc, and build-failure diagnostics; `missingToolchain()`. |
 | | `GradleGuardrails.kt` | `GradleScope` (`isEditable`, `isBuildFile`) and `GradleTestSkipping` (the build-file blocklist). |
-| | `TestReports.kt` | `TestReports(buildTool, layout, tool)`, with the instances `MAVEN_REPORTS` and `GRADLE_REPORTS`. |
+| | `TestReports.kt` | `TestReports(buildTool, layout, tool)`, with the instances `MAVEN_REPORTS` and `GRADLE_REPORTS`. Reads the reports with `testCases()` from `ecosystems:shared` (M9). |
 | | `JavapGrounding.kt` | Takes the JAR lookup as a function: `localRepositoryJars()` for Maven, the model's classpath for Gradle. |
 | | `ClusterKeys.kt` | `artifact:<group>:<artifact>` also from Gradle's `Could not find <group>:<artifact>:<version>.` (tool `gradle`). |
 | `recipes` | `IndexBuilder.kt` | Also reads `org.openrewrite.gradle.plugins.UpgradePluginVersion` leaves (`GRADLE_PLUGIN_LEAF`). |
 | | `build.gradle.kts` | `checkRewriteGradlePluginVersion`, next to the Maven plugin's check. |
 | `sources` | `RenovateSource.kt` | Package and datasource from the merge-confidence badge; `UNBADGED_DATASOURCES` for wrapper rows. |
 | `cli` | `RootCommand.kt` | `adapters(config, environment)`: Gradle with the init script, the JDKs, the environment, and `LECTOR_REWRITE_GRADLE_PLUGIN`; then Maven. |
-| | `RepositoryCommand.kt` | `BuildConfig(mavenSettings, gradleInit)`, `--gradle-init`, `SUPPORTED`, and `List<EcosystemAdapter>.use`, which closes the adapters after every run, failures and `Error`s included. |
+| | `RepositoryCommand.kt` | `BuildConfig(mavenSettings, gradleInit, npmrc, yarnrc)` (the last two since M9), `--gradle-init`, `SUPPORTED`, and `List<EcosystemAdapter>.use`, which closes the adapters after every run, failures and `Error`s included. |
 | | `PrCommand.kt` | `--gradle-init` / `LECTOR_GRADLE_INIT`; runs the pipeline inside `use` too. |
 | | `build.gradle.kts` | The `rewriteGradlePlugin` configuration and `syncRewriteGradlePlugin`, which put the plugin into the distribution. |
 | — | `buildSrc/src/main/kotlin/GradleFixtures.kt` | `Test.gradleFixtures()`: what the integration tests with real Gradle need (see [Tests](#tests)). |

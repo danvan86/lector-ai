@@ -7,6 +7,7 @@ import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.EcosystemAdapter
 import gmbh.vanella.lector.core.LanguageSupport
+import gmbh.vanella.lector.core.LockfileUpdate
 import gmbh.vanella.lector.core.Recipe
 import gmbh.vanella.lector.core.RecipeIndex
 import gmbh.vanella.lector.core.RecipeMatch
@@ -277,6 +278,17 @@ class MigrateCommandTest {
         override val languageSupport = LanguageSupport { _, _ -> null }
 
         override fun isEditable(file: String) = true
+
+        override fun loosening(
+            file: String,
+            before: String,
+            after: String,
+        ) = emptyList<String>()
+
+        override fun updateLockfiles(
+            repo: Path,
+            timeout: Duration,
+        ) = LockfileUpdate.Updated(emptyList())
 
         override fun testsRun(repo: Path): Int? = null
 

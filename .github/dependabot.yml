@@ -8,6 +8,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # The Node tools of the tool image: Corepack, jest-junit, and the package manager versions it pre-caches.
+  - package-ecosystem: npm
+    directory: /docker/lector/node
+    schedule:
+      interval: weekly
   # The base images of the tool and the model images. The Ollama version is also the real-model test's.
   - package-ecosystem: docker
     directories:
@@ -15,7 +20,10 @@ updates:
       - /docker/ollama
     schedule:
       interval: weekly
-    # The tool image has one stage per JDK release (17, 21, 25): a major update would turn the JDK 17 stage into 25.
+    # The tool image has one stage per JDK release (17, 21, 25) and per Node LTS line (22, 24): a major update would turn
+    # the JDK 17 stage into 25, or Node 22 into 24.
     ignore:
       - dependency-name: eclipse-temurin
+        update-types: ["version-update:semver-major"]
+      - dependency-name: node
         update-types: ["version-update:semver-major"]

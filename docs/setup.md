@@ -2,7 +2,7 @@
 
 lector-ai runs as a step in your GitHub Actions workflow. When Renovate or Dependabot opens or updates a PR, or someone
 adds the `lector` label to a dependency PR, it builds the PR and compares it with the base commit. If the update broke
-something, lector-ai applies the matching OpenRewrite recipe and lets a local model fix what is left. The fixes are
+something, lector-ai applies the matching OpenRewrite recipe (JVM projects) and lets a local model fix what is left. The fixes are
 separate commits: on the Renovate branch itself, or in a companion PR for Dependabot and labelled PRs. A comment on the
 PR reports what was done. If the PR builds, nothing changes.
 
@@ -226,6 +226,8 @@ and says why in the comment.
 | `max-changed-lines` | `50` | Lines one attempt may change before it is rejected |
 | `maven-settings` | none | A Maven settings file in the workspace, e.g. for a mirror; credentials in it can come from `MAVEN_*` variables |
 | `gradle-init` | none | A Gradle init script in the workspace, passed to every Gradle run, e.g. to point the repositories at a mirror; credentials can come from `GRADLE_*` and `ORG_GRADLE_PROJECT_*` variables |
+| `npmrc` | none | A user-level `.npmrc` in the workspace for npm, pnpm, and Yarn classic, e.g. for a registry; credentials can come from `NODE_AUTH_TOKEN`, `NPM_TOKEN`, and `NPM_CONFIG_*` variables |
+| `yarnrc` | none | A user-level `.yarnrc.yml` in the workspace for Yarn Berry, e.g. for a registry; credentials can come from `YARN_*` variables |
 
 There is no configuration file in your repository: everything is in the workflow.
 
@@ -254,6 +256,64 @@ on the runner. Cache it to skip the downloads of the distribution and the depend
           restore-keys: lector-gradle-
 ```
 
+**TypeScript and Node.** A TypeScript project needs a `package.json` and a `tsconfig.json` at the root, exactly one
+lockfile, and `typescript` as a dependency of the root or of every package with a `tsconfig.json`. Workspaces (npm,
+Yarn, `pnpm-workspace.yaml`) are built and tested as a whole: every package is type-checked and runs its tests. The
+supported lockfiles are those of the maintained package managers:
+
+| Package manager | Lockfile | Format |
+|---|---|---|
+| npm 7 and newer | `package-lock.json` | `lockfileVersion` 2 or 3 |
+| pnpm 9 to 12 | `pnpm-lock.yaml` | `lockfileVersion: '9.0'` |
+| Yarn 1 (classic) | `yarn.lock` | `# yarn lockfile v1` |
+| Yarn 4 (Berry), Plug'n'Play included | `yarn.lock` | `__metadata.version` 8 or newer |
+
+The image has Node 22 and 24. lector-ai runs the one that `.nvmrc` or `.node-version` names (a version, a major,
+`lts/*`, or an LTS codename), else the highest one `engines.node` allows, else 24; a project that needs another Node is
+refused. The package managers run through Corepack, which honours `packageManager` in `package.json`: pnpm 12, Yarn 4,
+and Yarn 1 come with the image, any other pinned version is fetched from the registry. A Yarn 4 project needs
+`packageManager` (or a `yarnPath`). The install is frozen (`npm ci`, `--frozen-lockfile`, `--immutable`) and runs the
+lifecycle scripts as your CI does. Every process runs with `CI=true`. Type checking uses the project's own `tsc`; Jest
+reports through the image's `jest-junit` and Vitest through its JUnit reporter, without a change to your
+`package.json`.
+
+Registries: your `.npmrc` and `.yarnrc.yml` apply as they are. For a mirror or a private registry that only CI knows,
+pass the `npmrc` or `yarnrc` input, and the token through the step's `env` as `NODE_AUTH_TOKEN` or `NPM_TOKEN`
+(`//npm.example.org/:_authToken=${NODE_AUTH_TOKEN}` in an `.npmrc` reads it).
+Corepack fetches package managers from npmjs.org: point `COREPACK_NPM_REGISTRY` (and `COREPACK_NPM_TOKEN` or
+`COREPACK_NPM_USERNAME` and `COREPACK_NPM_PASSWORD`) at your mirror the same way. The processes get `NODE_AUTH_TOKEN`,
+`NPM_TOKEN`, and the `NPM_CONFIG_*`, `npm_config_*`, `YARN_*`, and `COREPACK_*` variables of the step, never the App
+token. Lifecycle scripts and tests run the dependencies' code, and these variables reach it: give them a token that can
+only read the registry. For GitHub Packages through `NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`, as setup-node's
+examples show, that means a job whose `permissions` grant `packages: read` and nothing it could write with:
+
+```yaml
+      - uses: danvan86/lector-ai/action@v0.1.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          bot-name: my-lector[bot]
+          bot-email: 123456+my-lector[bot]@users.noreply.github.com
+          npmrc: .github/lector.npmrc
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          COREPACK_NPM_REGISTRY: https://npm.example.org
+```
+
+The package managers keep their stores in the home directory, `/github/home` in the action's container. Cache the ones
+your project uses with a step before lector-ai:
+
+```yaml
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ${{ runner.temp }}/_github_home/.npm
+            ${{ runner.temp }}/_github_home/.local/share/pnpm/store
+            ${{ runner.temp }}/_github_home/.cache/yarn
+            ${{ runner.temp }}/_github_home/.yarn/berry/cache
+          key: lector-node-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}
+          restore-keys: lector-node-
+```
+
 ## 4. Runners and models
 
 | Ollama image | Runner | Status |
@@ -265,14 +325,19 @@ With the 30B image, set `model: qwen3-coder:30b` in the action's inputs.
 
 ## Limitations
 
-- **Maven and Gradle only**, and only at the repository root. A repository with both a `pom.xml` and Gradle build files
-  at the root is refused: lector-ai doesn't pick a build tool.
+- **Maven, Gradle, and TypeScript only**, and only at the repository root. A repository with both a `pom.xml` and Gradle
+  build files at the root is refused: lector-ai doesn't pick a build tool. A JVM build with a `package.json` and a
+  `tsconfig.json` next to it is built as a JVM project.
 - **Gradle:** no Android or Kotlin Multiplatform builds (the image has no Android SDK), no Gradle 7 or older, no build
   without a wrapper. Groovy sources (Spock tests) are never edited: their failures are reported, but the model can only
   fix the Java or Kotlin code they call. Linters bound to `check` (Spotless, Checkstyle, detekt) don't run: verify
   compiles every source set and runs every `Test` task. Test reports are read from `build/test-results/` in each
   project's directory, Gradle's default: with another build directory, failing tests count as a build failure. PRs that
   only update the Gradle wrapper are skipped.
+- **TypeScript:** no recipe step (OpenRewrite's JavaScript recipes run only in the Moderne CLI), so the model does all
+  the fixing. Only Jest and Vitest report per test: any other `test` script passes or fails as a whole package. The
+  package managers' workspaces are used, not Nx, Turborepo, or Lerna task graphs. No Bun or Deno, and no Node older than
+  22. PRs that only update Node (`.nvmrc`, `.node-version`, `engines`, `setup-node`) are skipped.
 - **GitHub only.**
 - **Unsigned commits.** If your branches require signed commits, the push is rejected.
 - **The token is not isolated from the build.** Builds and tests run without the token in their environment, but in the

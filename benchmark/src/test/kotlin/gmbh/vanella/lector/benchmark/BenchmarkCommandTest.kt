@@ -36,7 +36,7 @@ class BenchmarkCommandTest {
         origin.resolve("pom.xml").writeText("$LIB 2.0\n")
         git(origin, "commit", "--quiet", "-am", "bump")
         val head = git(origin, "rev-parse", "HEAD").trim()
-        corpus = Corpus(listOf(Case("lib-2", SYNTHETIC, origin.toString(), base, head, listOf(Change(LIB, "1.0", "2.0")), null)))
+        corpus = Corpus(listOf(Case("lib-2", SYNTHETIC, origin.toString(), base, head, listOf(Change(LIB, "1.0", "2.0")), null, MAVEN)))
     }
 
     private fun command() =
@@ -115,7 +115,7 @@ class BenchmarkCommandTest {
         runs
             .resolve(
                 "one.json",
-            ).writeText(Results.encodeRun(RunResult(key.case, key.mode, 1, "abc", "m", RunStatus.VALID, null, metrics(true))))
+            ).writeText(Results.encodeRun(RunResult(key.case, key.mode, 1, "abc", "m", RunStatus.VALID, null, metrics(true), MAVEN)))
         runs.resolve("notes.txt").writeText("not a run")
         val output = dir.resolve("results/2026-10-12/results.json")
 
@@ -172,9 +172,10 @@ class BenchmarkCommandTest {
     }
 
     @Test
-    fun `the real harness loads the recipe index and the Maven adapter`() {
+    fun `the real harness loads the recipe index, the Maven adapter, and the TypeScript adapter`() {
         // Fails if the bundled recipe index or the Maven adapter can't be loaded.
         realHarness(URI("http://localhost:11434"), "m", "abc", null)
+        realHarness(URI("http://localhost:11434"), "m", "abc", null, mapOf("LECTOR_JEST_JUNIT" to "/opt/jest-junit"))
     }
 
     @Test
@@ -184,6 +185,20 @@ class BenchmarkCommandTest {
         assertEquals(0, result.statusCode)
         listOf("matrix", "run", "merge", "report").forEach { assertContains(result.stdout, it) }
         val matrix = benchmarkCommand().test("matrix").stdout
-        assertEquals(Corpus.load().cases.size * 7, Regex("\"repetition\"").findAll(matrix).count())
+        assertEquals(
+            Corpus
+                .load()
+                .cases
+                .sumOf {
+                    if (it.ecosystem ==
+                        MAVEN
+                    ) {
+                        7L
+                    } else {
+                        3L
+                    }
+                }.toInt(),
+            Regex("\"repetition\"").findAll(matrix).count(),
+        )
     }
 }

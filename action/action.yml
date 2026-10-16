@@ -55,6 +55,12 @@ inputs:
   gradle-init:
     description: Gradle init script in the workspace, passed to every Gradle run, e.g. for a mirror. Empty for none.
     default: ""
+  npmrc:
+    description: User-level .npmrc in the workspace for npm, pnpm, and Yarn classic, e.g. for a registry. Empty for none.
+    default: ""
+  yarnrc:
+    description: User-level .yarnrc.yml in the workspace for Yarn Berry, e.g. for a registry. Empty for none.
+    default: ""
 runs:
   using: docker
   image: docker://ghcr.io/danvan86/lector:0.1.0
@@ -65,6 +71,8 @@ runs:
     LECTOR_GITHUB_TOKEN: ${{ inputs.token }}
     LECTOR_MAVEN_SETTINGS: ${{ inputs.maven-settings }}
     LECTOR_GRADLE_INIT: ${{ inputs.gradle-init }}
+    LECTOR_NPMRC: ${{ inputs.npmrc }}
+    LECTOR_YARNRC: ${{ inputs.yarnrc }}
     LECTOR_DEPENDABOT_METADATA: ${{ inputs.dependabot-metadata }}
     GRADLE_USER_HOME: /github/home/.gradle
   args:
