@@ -4,7 +4,7 @@ Milestone: [M6](../features.md#m6--benchmark-) · Spec: [`m6-benchmark/spec.md`]
 
 > **Summary for agents**
 >
-> - The module `benchmark` runs the product's own code (`attribute`, `applyRecipes`, `FixLoop`, `MavenAdapter`, `OllamaClient`) on the cases in `corpus.json`, in three modes, and turns the runs into `results.json` and `report.md`. It is never shipped: `cli` doesn't depend on it, and the tool image doesn't contain it.
+> - The module `benchmark` runs the product's own code (`attribute`, `applyRecipes`, `FixLoop`, `MavenAdapter`, `TypeScriptAdapter` since M9, `OllamaClient`) on the cases in `corpus.json`, in three modes (one for an ecosystem without recipes), and turns the runs into `results.json` and `report.md`. It is never shipped: `cli` doesn't depend on it, and the tool image doesn't contain it.
 > - Four commands (`BenchmarkCommand.kt`), run through `./gradlew :benchmark:run --args="…"`: `matrix` (the workflow's job matrix as JSON on stdout), `run` (one case, one mode, one repetition → one run JSON), `merge` (the run files → `results.json`), `report` (`report.md` from `results.json` and `review.json`). `.github/workflows/benchmark.yml` runs them on `workflow_dispatch` only.
 > - The numbers come from `Stats.kt`: only valid runs of valid cases count (`counted`), a case with any `invalid` run is out (`invalidCases`), the green rate is per repetition and then mean and spread, and the 90/10 verdict is the mean recipe share of changed lines over green recipe + fix-loop runs, at `RECIPE_SHARE_THRESHOLD` (90) or more.
 > - Extend it: a new case is an entry in `corpus.json` (full commit hashes, an https repository, a PR URL or `synthetic`), checked against a real checkout to have a failure caused by the update. A new metric is a field in `Metrics` (`RunResult.kt`), set in `Harness`, shown in `Report`, and added to the fixtures under `src/test/resources/fixtures/results/`.
@@ -12,7 +12,7 @@ Milestone: [M6](../features.md#m6--benchmark-) · Spec: [`m6-benchmark/spec.md`]
 
 ## Overview
 
-The benchmark answers whether the JVM/Maven path works and which part does the work: the recipe or the fix loop ([concept section 11](../concept.md#11-success-measurement)). Each case is a real dependency update whose head commit breaks something. Each run starts from a fresh checkout of that head, verifies it against the base, and then runs one mode. The workflow runs one job per case, mode, and repetition, merges whatever the jobs left, and uploads the report. A person reviews a sample of green runs and commits the results under `benchmark/results/<date>/`.
+The benchmark answers whether the JVM/Maven path works and which part does the work: the recipe or the fix loop; since M9 also how the fix loop does on TypeScript, reported apart ([concept section 11](../concept.md#11-success-measurement)). Each case is a real dependency update whose head commit breaks something. Each run starts from a fresh checkout of that head, verifies it against the base, and then runs one mode. The workflow runs one job per case, mode, and repetition, merges whatever the jobs left, and uploads the report. A person reviews a sample of green runs and commits the results under `benchmark/results/<date>/`.
 
 ```mermaid
 flowchart LR
@@ -30,23 +30,23 @@ flowchart LR
 
 | File | Role |
 |---|---|
-| `Corpus.kt` | `Corpus`, `Case(id, origin, repository, base, head, changes, note)`, `Change(package, from, to)`. `Corpus.load()` reads `corpus.json` from the classpath; `parse()` rejects unknown and missing fields, IDs that aren't kebab-case, origins that are neither a GitHub PR URL nor `synthetic`, non-https repositories, short commit hashes, cases without changes, and duplicate IDs. |
-| `Plan.kt` | `Mode` (`recipe-only`, `fix-loop-only`, `recipe-and-fix-loop`, with `usesRecipe`, `usesFixLoop`, and `repetitions`: 3 with the fix loop, else 1), `RunKey`, and `plan(corpus, only)`: every case × mode × repetition, in corpus order. |
-| `Harness.kt` | `Harness.run(case, mode, repetition, dir): RunResult`; the ports `Checkout` and `ToolUnderTest(commit, model)`. |
+| `Corpus.kt` | `Corpus`, `Case(id, origin, repository, base, head, changes, note, ecosystem)`, `Change(package, from, to)`; `MAVEN`, and `RECIPE_ECOSYSTEMS` (only `maven`: npm has no recipes). `Corpus.load()` reads `corpus.json` from the classpath; `parse()` rejects unknown and missing fields, IDs that aren't kebab-case, origins that are neither a GitHub PR URL nor `synthetic`, non-https repositories, short commit hashes, cases without changes, an ecosystem other than `maven` or `npm`, and duplicate IDs. |
+| `Plan.kt` | `Mode` (`recipe-only`, `fix-loop-only`, `recipe-and-fix-loop`, with `usesRecipe`, `usesFixLoop`, and `repetitions`: 3 with the fix loop, else 1), `RunKey`, `plan(corpus, only)`: every case × mode × repetition, in corpus order, and `modes(ecosystem)`: every mode for `maven`, only `fix-loop-only` for an ecosystem without recipes (M9). |
+| `Harness.kt` | `Harness.run(case, mode, repetition, dir): RunResult`; the ports `Checkout` and `ToolUnderTest(commit, model)`. A repository whose detected adapter's `ecosystem` isn't the case's is a `ToolError`. |
 | `Git.kt` | `GitCheckout` (`git init`, `git fetch --depth=1 <repository> <head> <base>`, `checkout --detach <head>`) and `changedLines(repo, commit)` (added plus removed from `git show --numstat`; binary files count 0). |
-| `RunResult.kt` | `RunResult` (case, mode, repetition, tool commit, model, `RunStatus`, reason, `Metrics`), `RunStatus` (`valid`, `invalid`, `error`, `missing`), `Metrics`, `Stages`, `RecipeRecord`, `Runtime`. |
-| `Results.kt` | `Results(toolCommit, model, runner, date, runs)`: `merge`, JSON encoding and decoding of results and run files; `Review(reviewer, runs)` and `ReviewedRun(case, mode, repetition, acceptedUnchanged, reason)`. |
+| `RunResult.kt` | `RunResult` (case, mode, repetition, tool commit, model, `RunStatus`, reason, `Metrics`, the case's `ecosystem`), `RunStatus` (`valid`, `invalid`, `error`, `missing`), `Metrics`, `Stages`, `RecipeRecord`, `Runtime`. |
+| `Results.kt` | `Results(toolCommit, model, runner, date, runs)`: `merge` (a missing run gets its case's ecosystem), JSON encoding and decoding of results and run files; `Review(reviewer, runs)` and `ReviewedRun(case, mode, repetition, acceptedUnchanged, reason)`. |
 | `Stats.kt` | `counted`, `invalidCases`, `greenRate` (`Spread(mean, min, max)`), `verdict` (`Verdict(recipeShare, runs)`), `RECIPE_SHARE_THRESHOLD`. |
-| `Report.kt` | `Report.render(results, review)`: the Markdown report. |
-| `BenchmarkCommand.kt` | The Clikt commands and `realHarness()`, the composition root: `MavenAdapter` with `installedJdks(System.getenv())`, `BundledRecipeIndex.load()`, `OllamaClient`, `GitCheckout`. |
+| `Report.kt` | `Report.render(results, review)`: the Markdown report. With more than one ecosystem, each gets its own numbers under a heading of its own (JVM for `maven`, TypeScript for `npm`), JVM first. |
+| `BenchmarkCommand.kt` | The Clikt commands and `realHarness()`, the composition root: `MavenAdapter` with `installedJdks(environment)`, `TypeScriptAdapter` with `installedNodes(environment)` and `LECTOR_JEST_JUNIT` (M9), `BundledRecipeIndex.load()`, `OllamaClient`, `GitCheckout`. |
 | `Main.kt` | `main()`, excluded from coverage like the CLI's. |
 | `corpus.json` | The cases, in `src/main/resources/gmbh/vanella/lector/benchmark/`. |
 
-`benchmark` depends on `core`, `recipes`, `llm`, and `ecosystems:jvm`, plus Clikt, kotlinx-serialization-json, and SLF4J. It is the only module with the Kotlin serialization compiler plugin (`org.jetbrains.kotlin.plugin.serialization`, on the `buildSrc` classpath). The `core` pieces it needs are shared with the product, not copied: `applyRecipes()` and `RecipeGroupResult` (`RecipeGroup.kt`, used by `PrPipeline` too), `installedJdks()` (`JdkSelection.kt`), and `FixLoopResult.requestsWithDiagnosticsLeftOut` ([Fix loop](fix-loop.md#the-fix-request)).
+`benchmark` depends on `core`, `recipes`, `llm`, `ecosystems:jvm`, and `ecosystems:typescript`, plus Clikt, kotlinx-serialization-json, and SLF4J. It is the only module with the Kotlin serialization compiler plugin (`org.jetbrains.kotlin.plugin.serialization`, on the `buildSrc` classpath). The `core` pieces it needs are shared with the product, not copied: `applyRecipes()` and `RecipeGroupResult` (`RecipeGroup.kt`, used by `PrPipeline` too), `installedJdks()` (`JdkSelection.kt`), and `FixLoopResult.requestsWithDiagnosticsLeftOut` ([Fix loop](fix-loop.md#the-fix-request)).
 
 ## The corpus
 
-22 cases, all Maven: 16 historical bot PRs (12 Dependabot, 4 Renovate) and 6 synthetic bumps. A historical case's `base` and `head` are the PR's base and head commits. Where the PR is still open, or the bump is synthetic, `repository` is [`danvan86/lector-benchmark-corpus`](https://github.com/danvan86/lector-benchmark-corpus), which holds those heads. `note` says what breaks, for the curator. The harness doesn't trust the corpus: every run checks that its head has a failure caused by the update.
+25 cases: 22 Maven (16 historical bot PRs, 12 Dependabot and 4 Renovate, and 6 synthetic bumps) and, since M9, 3 TypeScript bot PRs (`ecosystem: npm`). A historical case's `base` and `head` are the PR's base and head commits. Where the PR is still open, or the bump is synthetic, `repository` is [`danvan86/lector-benchmark-corpus`](https://github.com/danvan86/lector-benchmark-corpus), which holds those heads. `note` says what breaks, for the curator. The harness doesn't trust the corpus: every run checks that its head has a failure caused by the update.
 
 ## A run
 
@@ -96,7 +96,7 @@ sequenceDiagram
 | Report section | Content |
 |---|---|
 | Header | Date, short tool commit, model, runner, cases and invalid cases; that the fix requests carry no release notes |
-| 90/10 verdict | `holds` or `doesn't hold`, the mean recipe share, the number of runs. Shares are taken per green `recipe-and-fix-loop` run that changed any line, averaged, rounded to one decimal, then compared with 90 |
+| 90/10 verdict | Only for an ecosystem with recipes; `npm` gets a `Recipe step` section that says there is none. `holds` or `doesn't hold`, the mean recipe share, the number of runs. Shares are taken per green `recipe-and-fix-loop` run that changed any line, averaged, rounded to one decimal, then compared with 90 |
 | Green rate per mode | Runs, mean and spread of the per-repetition green rate, pre-existing / flaky / unattributed failures |
 | Cases | Per case and mode `green/with result`, or `invalid`; green after recipe alone vs. after recipe + fix loop (once, always) |
 | Fix loop | Mean attempts and accepted fixes, cut requests, stop reasons per fix-loop mode |
@@ -124,7 +124,7 @@ Invalid input from Clikt's own checks (an unknown option, a bad `--date`, a miss
 |---|---|
 | `plan` | `matrix` → the job matrix |
 | `ollama-image` | Builds `docker/ollama` with `MODEL=qwen2.5-coder:7b` and pushes `ghcr.io/<owner>/lector-ollama:benchmark-qwen2.5-coder-7b`: releases can't publish it before the MSAL check |
-| `run` | Matrix, `fail-fast: false`, 120-minute timeout, the Ollama image as `services: ollama` on port 11434. JDKs 17, 21, and 25 from `setup-java` as `LECTOR_JDK_*`, `MAVEN_OPTS=-Duser.language=en -Duser.country=US`, the runner's Maven. Uploads the run file as `run-<case>-<mode>-<repetition>` |
+| `run` | Matrix, `fail-fast: false`, 120-minute timeout, the Ollama image as `services: ollama` on port 11434. JDKs 17, 21, and 25 from `setup-java` as `LECTOR_JDK_*`, Node 22 and 24 from `setup-node` as `LECTOR_NODE_*` with Corepack and `jest-junit` from `docker/lector/node` (M9), `MAVEN_OPTS=-Duser.language=en -Duser.country=US`, the runner's Maven. Uploads the run file as `run-<case>-<mode>-<repetition>` |
 | `report` | `if: always()` after `plan` succeeded: downloads `run-*`, `merge` with the runner's description and today's date, `:benchmark:report`, uploads `benchmark-<date>` |
 
 ## Tests

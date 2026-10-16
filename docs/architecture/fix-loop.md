@@ -5,8 +5,8 @@ Milestone: [M3](../features.md#m3--fix-loop-cli-only-no-ci-yet-) · Spec: [`m3-f
 > **Summary for agents**
 >
 > - `lector heal <repo> --package … --from … --to …` runs M2's recipe step, commits the recipe's result, then runs `FixLoop` in `core`: one cluster of diagnostics caused by the update per attempt, a grounded `FixRequest` to the `LlmClient` port, search/replace `Edit`s back, applied, verified, and either committed or reset. The exit code follows the final verification, like `verify`. Since M5, `lector pr` runs the same `FixLoop` for every change of a PR ([PR pipeline](pr-pipeline.md)).
-> - Ports: `LlmClient.propose(FixRequest): Proposal` and, since M6, `LlmClient.fits(FixRequest)` (`LlmClient.kt`), and on `EcosystemAdapter` `ground`, `clusterKey`, `isBuildFile`. The implementations are `OllamaClient` in the module `llm`, and `MavenAdapter` and, since M7, `GradleAdapter`, which share `ClusterKeys` and `JavapGrounding`. `core` knows no LLM vendor and no language.
-> - An attempt is accepted only if `Progress` (build errors without a location, compile errors, test failures, compared in that order) gets lower. Accepted: one local commit, as the `CommitIdentity` the loop gets (`lector` for `heal`, the GitHub App's bot for `pr`), with the edited, tracked files only. Anything else: `GitWorkingTree.reset()`, also on any exception or error inside the attempt. Since M4, every attempt passes the [guardrails](guardrails.md) before it is verified.
+> - Ports: `LlmClient.propose(FixRequest): Proposal` and, since M6, `LlmClient.fits(FixRequest)` (`LlmClient.kt`), and on `EcosystemAdapter` `ground`, `clusterKey`, `isBuildFile`, and, since M9, `updateLockfiles`. The implementations are `OllamaClient` in the module `llm`, `MavenAdapter` and, since M7, `GradleAdapter`, which share `ClusterKeys` and `JavapGrounding`, and, since M9, `TypeScriptAdapter` ([TypeScript adapter](typescript-adapter.md)). `core` knows no LLM vendor and no language.
+> - An attempt is accepted only if `Progress` (build errors without a location, compile errors, test failures, compared in that order) gets lower. Accepted: one local commit, as the `CommitIdentity` the loop gets (`lector` for `heal`, the GitHub App's bot for `pr`), with the edited, tracked files only, plus the lockfiles that followed a build-file edit (M9). Anything else: `GitWorkingTree.reset()`, also on any exception or error inside the attempt. Since M4, every attempt passes the [guardrails](guardrails.md) before it is verified.
 > - The prompt's limits live in `Prompt` (`CONTEXT_TOKENS`, `ANSWER_TOKENS`, `MAX_CHARS`), the answer's structure in `FixSchema`, the budget defaults in `Budgets`, the options and the default model `DEFAULT_MODEL` in `FixLoopOptions.kt` (shared by `heal` and `pr`), and the Ollama image for the real-model test in the `FROM` line of `docker/ollama/Dockerfile`.
 > - Easiest rules to break: never send diagnostics that aren't `causedByUpdate` to the model; never cut a diagnostic or its code: a request carries whole diagnostics, as many as fit (M6); never repair an edit that doesn't apply (rule 4); never stage more than the edited files in a fix commit (`git add --all` would take build output).
 
@@ -24,6 +24,7 @@ flowchart LR
     loop --> adapterPort["EcosystemAdapter<br/>ground, clusterKey, isBuildFile (core)"]
     maven["MavenAdapter<br/>ClusterKeys, JavapGrounding<br/>(ecosystems:jvm)"] -. implements .-> adapterPort
     gradle["GradleAdapter<br/>(ecosystems:jvm, M7)"] -. implements .-> adapterPort
+    ts["TypeScriptAdapter<br/>(ecosystems:typescript, M9)"] -. implements .-> adapterPort
     loop --> attr["attribute()<br/>(core, M1)"]
     loop --> git["GitWorkingTree<br/>commit, reset (core)"]
     cli --> report["FixLoopReport<br/>(cli)"]
@@ -35,7 +36,7 @@ flowchart LR
 |---|---|---|
 | `core` | `Edit.kt` | `Edit(file, search, replace)` and `applyEdits(repo, edits)`: returns the rejection reason, or null when every edit applied. `repoFile()` keeps edits inside the repository and out of `.git`. |
 | | `LlmClient.kt` | The port: `propose(FixRequest): Proposal`, and `fits(FixRequest)` (M6), whether the parts that are never trimmed fit into the context; `FixRequest` (with `changes`, one or a group, since M5), `PreviousAttempt`, `Proposal.Edits(edits, rationale)` and `Proposal.Invalid(reason)`. |
-| | `EcosystemAdapter.kt` | Grew by `ground(repo, change, diagnostics)`, `clusterKey(diagnostic)`, and `isBuildFile(file)`. |
+| | `EcosystemAdapter.kt` | Grew by `ground(repo, change, diagnostics)`, `clusterKey(diagnostic)`, and `isBuildFile(file)`; in M9 by `updateLockfiles(repo, timeout): LockfileUpdate` (`Updated(files)` or `Failed(reason)`). |
 | | `Cluster.kt` | `Cluster(key, diagnostics)`, `clusters(diagnostics, adapter)` in fix order, and `Progress`, the stage tuple. |
 | | `Snippet.kt` | `Snippet(file, firstLine, lastLine, text)` and `codeSnippets(repo, diagnostics, buildFiles, anchors)`: ±40 lines per error, merged per file. |
 | | `FixLoop.kt` | `FixLoop(adapter, llm, base, budgets, identity).run(repo, context, initial)`, `Budgets`, `FixContext(changes, releaseNotes, recipeDiff)`, `Attempt` (with `diagnosticsLeftOut`, M6), `AttemptOutcome` (`Accepted`, `Rejected`), `StopReason` (with its `description`), `FixLoopResult` (with `fixes`, `rejectionsPerRule()`, and `requestsWithDiagnosticsLeftOut`). |
@@ -47,22 +48,25 @@ flowchart LR
 | `ecosystems:jvm` | `ClusterKeys.kt` | Cluster keys from javac, kotlinc, Maven, and Gradle messages; `missingSymbol()` for grounding. |
 | | `JavapGrounding.kt` | `javap -public` on the new version's JARs, found by a function the adapter passes: `localRepositoryJars()` (the local Maven repository) or, for Gradle, the compile classpath its query task reported. |
 | | `MavenAdapter.kt` | Wires both, and `isBuildFile`: `pom.xml` at any depth (since M4 also `mvnw`, `mvnw.cmd`, and `.mvn/…`). Takes `localRepository` (default `~/.m2/repository`). |
-| | `GradleAdapter.kt` | The same for Gradle (M7), see [Gradle adapter](gradle-adapter.md). |
+| | `GradleAdapter.kt` | The same for Gradle (M7), see [Gradle adapter](gradle-adapter.md). Maven and Gradle have no lockfile: `updateLockfiles` changes nothing. |
+| `ecosystems:typescript` | `TypeScriptClusterKeys.kt`, `DeclarationGrounding.kt`, `NodeBuild.kt` | Cluster keys from `tsc` codes, grounding from `.d.ts` files, and the unfrozen install of `updateLockfiles` (M9), see [TypeScript adapter](typescript-adapter.md). |
 | `cli` | `HealCommand.kt` | The `heal` subcommand: clean check, recipe, recipe commit, fix loop, report. |
 | | `FixLoopOptions.kt` | The Ollama and budget options, shared by `heal` and `pr`; `DEFAULT_MODEL`; `httpUrl()`, the URL check. |
 | | `UpdateCommand.kt` | `--package`, `--from`, `--to`, and `change(adapter)`, shared by `migrate` and `heal`. Extends `RepositoryCommand`. |
 | | `FixLoopReport.kt` | The fix-loop section in text and JSON. |
-| | `RootCommand.kt` | Wires `HealCommand` with `adapters()` (`GradleAdapter`, `MavenAdapter`) and `BundledRecipeIndex.load()`; the `LlmClient` factory defaults to `::OllamaClient`. |
+| | `RootCommand.kt` | Wires `HealCommand` with `adapters()` (`GradleAdapter`, `MavenAdapter`, `TypeScriptAdapter`) and `BundledRecipeIndex.load()`; the `LlmClient` factory defaults to `::OllamaClient`. |
 
 ```mermaid
 flowchart TB
     cli["cli<br/>(composition root)"] --> llm
     cli --> recipes
     cli --> jvm["ecosystems:jvm"]
+    cli --> ts["ecosystems:typescript"]
     cli --> core
     llm --> core
     recipes --> core
     jvm --> core
+    ts --> core
 ```
 
 `llm` depends on `core`, `kotlinx-serialization-json`, and the SLF4J API. No HTTP library: the JDK client is enough for one endpoint. Testcontainers (`testcontainers-ollama`, through its BOM) is a test dependency of `cli` only.
@@ -88,8 +92,8 @@ sequenceDiagram
     loop until a StopReason
         L->>O: propose(FixRequest)
         O-->>L: Proposal
-        L->>L: apply, downgrade check, attribute(), Progress
-        L->>W: commit(edited files) or reset
+        L->>L: apply, guardrails, lockfiles, downgrade check, attribute(), Progress
+        L->>W: commit(edited files + lockfiles) or reset
     end
     L-->>H: FixLoopResult(attempts, stopReason, verification)
     H-->>P: recipe + fix loop + final verification, exit 0 / 1
@@ -117,12 +121,14 @@ flowchart TB
     apply -- "doesn't apply,<br/>or changes nothing" --> rej
     apply --> guard{"Guardrails<br/>(M4)"}
     guard -- violation --> rej
-    guard -- ok --> down{"build file touched:<br/>any package lower?"}
+    guard -- ok --> lock{"build file touched:<br/>updateLockfiles (M9)"}
+    lock -- Failed --> rej
+    lock -- ok --> down{"build file touched:<br/>any package lower?"}
     down -- yes --> rej
     down -- no --> verify["attribute(adapter, repo, base)"]
     verify --> prog{"Progress lower?"}
     prog -- no --> rej
-    prog -- yes --> acc["Accepted<br/>GitWorkingTree.commit(edited tracked files)"]
+    prog -- yes --> acc["Accepted<br/>GitWorkingTree.commit(edited tracked files + lockfiles)"]
 ```
 
 | Step | Rule | Rejection reason (also the retry's feedback) |
@@ -131,10 +137,11 @@ flowchart TB
 | Versions before | Read with `resolvedVersions` before the loop's first build-file edit, then kept | `the resolved versions can't be read, so a downgrade can't be ruled out: …` |
 | Apply | Each `search` matches exactly once: first exactly, then line by line with whitespace ignored (indentation, trailing blanks, runs of spaces). The file must exist in the repository. Edits apply in order; if one fails, nothing is written. | `<file>: no such file in the repository`, `<file>: the search text is not in the file`, `… matches n times …`, `the edits change nothing` |
 | Guardrails | Scope on the edits' paths before anything is read or written, the other rules on the written files. See [Guardrails](guardrails.md). | `the edits break the guardrails:` and one `- [rule] file:line: reason` line per violation |
+| Lockfiles | Only if an edit touched a build file (M9): `adapter.updateLockfiles(repo, timeLeft)`, before the downgrade check, so the check reads what the lockfile now resolves. The files it reports changed go into the commit. | `the lockfile can't follow the edits: …` |
 | Downgrades | Only if an edit touched a build file. `downgrades(versionChanges(before, after))`, the PR's own package included. Removing a package is not a downgrade (review D2). | `the edits move packages to lower versions: …` |
 | Verify | M1's `attribute()` with the base commit: compile stage first, tests only once compile is clean. | — |
 | Progress | `Progress.of(after) < Progress.of(before)`, stage by stage. 1/0/0 → 0/50/0 is progress; 0/0/3 → 0/1/0 is not. | `no progress: <before> -> <after>` plus the first ten errors after the edits, with their whole message |
-| Commit | Subject: the rationale's first non-blank line, else `Fix <cluster>`. Body: `Addresses:` and the diagnostics the request carried. Staged: the edited files that Git tracks (an edit to an ignored file is applied but not committed). | — |
+| Commit | Subject: the rationale's first non-blank line, else `Fix <cluster>`. Body: `Addresses:` and the diagnostics the request carried. Staged: the edited files that Git tracks (an edit to an ignored file is applied but not committed) and the lockfiles `updateLockfiles` changed. | — |
 
 Any `Throwable` inside `judge` (Maven's own one-hour timeout, a failing `git`, a parser that doesn't load) resets the tree and is rethrown: `heal` exits `2`, and the commits made so far stay. The one exception is a `ProcessTimedOut` when the time budget is used up: the attempt is rejected (`the builds ran past the time budget: …`), the tree reset, and the loop stops with `TIME_BUDGET`. A `ToolError` from `propose` (Ollama unreachable) happens before any edit.
 
@@ -172,6 +179,8 @@ The time budget is also the deadline of an attempt's builds and test runs (M5): 
 | `ground` | `JavapGrounding.ground()` | JARs: every artifact of the package's group at `toVersion` under `localRepository` (no sources, Javadoc, or test JARs); for Gradle, the JARs of that group and version on the compile classpaths of the last model, none if it couldn't be read. Classes: the erroring files' imports and qualified names in the messages, plus classes in those packages or anywhere in the JARs that declare or are named like the missing symbol, at most 300, nested classes left out. One `javap -public -cp <jars> <classes>` run, 2 min timeout; a failure is logged and yields what was parsed. Nothing is downloaded. |
 | `isBuildFile` | `MavenAdapter` | `pom.xml` or `*/pom.xml`, and since M4 `mvnw`, `mvnw.cmd`, and `.mvn/…` at the root: Maven reads them on every run, and they can set properties. |
 | `isBuildFile` | `GradleAdapter` | Build and settings scripts, `gradle.properties`, `gradle/…`, the wrapper, `buildSrc/`, `build-logic/`, and every included build ([Gradle adapter](gradle-adapter.md#guardrails)). |
+
+The TypeScript adapter's cluster keys, grounding, and build files are in [TypeScript adapter](typescript-adapter.md).
 
 Grounding is how `MoreObjects.firstNonNull` reaches the model for Guava's removed `Objects.firstNonNull`: the symbol `firstNonNull` is missing, and `MoreObjects` in the imported package declares it.
 
@@ -221,7 +230,7 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
-| Unit, `core` | `test` | The loop with a fake `LlmClient` and a fake adapter on a temporary Git repository: accept and commit, reject and reset, downgrades, progress tuple, cluster order, every budget, a build stopped by the time budget, a cluster that doesn't fit, several changes and the commit identity, temperatures, retry feedback, build output kept out of commits, reset on a `ToolError`. Edit application and snippets on temp files. | `FixLoopTest`, `ClusterTest`, `EditTest`, `SnippetTest`, `GitWorkingTreeTest` |
+| Unit, `core` | `test` | The loop with a fake `LlmClient` and a fake adapter on a temporary Git repository: accept and commit, reject and reset, downgrades, progress tuple, cluster order, every budget, a build stopped by the time budget, a cluster that doesn't fit, several changes and the commit identity, temperatures, retry feedback, build output kept out of commits, reset on a `ToolError`. Edit application and snippets on temp files. | `FixLoopTest`, `FixLoopBuildFileTest` (lockfiles and downgrades after a build-file edit, M9), `ClusterTest`, `EditTest`, `SnippetTest`, `GitWorkingTreeTest` |
 | Unit, `llm` | `test` | The client against a JDK `HttpServer`: endpoint, `format`, `num_ctx`, temperature, fences, invalid answers, status and connection errors; `fits` without a request. Prompt layout and trimming. | `OllamaClientTest`, `PromptTest` |
 | Unit, `ecosystems:jvm` | `test` | Cluster keys on captured javac, kotlinc 2 and 1.9, and Maven output (`maven-output/*.log`); grounding with the real `javap` on JARs compiled in the test (`TestJars`). | `ClusterKeysTest`, `JavapGroundingTest` |
 | Unit, `cli` | `test` | `heal` through Clikt's `test()` with a fake `LlmClient` factory: commit order, text and JSON reports, exit codes, options and their validation. | `HealCommandTest`, `FixLoopReportTest` |
