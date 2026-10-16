@@ -1,6 +1,6 @@
 # Architecture – TypeScript adapter
 
-Milestone: [M9](../features.md#m9--second-ecosystem-typescript-) · Spec: [`m9-typescript/spec.md`](../../specs/open/m9-typescript/spec.md) · Review: [`review.md`](../../specs/open/m9-typescript/review.md)
+Milestone: [M9](../features.md#m9--second-ecosystem-typescript-) · Spec: [`m9-typescript/spec.md`](../../specs/done/m9-typescript/spec.md) · Review: [`review.md`](../../specs/done/m9-typescript/review.md)
 
 > **Summary for agents**
 >
