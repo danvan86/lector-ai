@@ -27,7 +27,8 @@ private const val MAX_CLASSES = 300
  * them for a change in a repository, e.g. in the local Maven repository ([localRepositoryJars]). Nothing is downloaded.
  *
  * Shown are the classes the errors refer to: the erroring files' imports and the classes their messages name, plus
- * the classes that declare the missing symbol, in those packages or, for a class, anywhere in the JARs.
+ * the classes that declare the missing symbol, in those packages or, for a class, anywhere in the JARs. A class imported
+ * from a package that is gone is a missing class too.
  */
 internal class JavapGrounding(
     private val jars: (repo: Path, change: DependencyChange) -> List<Path>,
@@ -49,7 +50,8 @@ internal class JavapGrounding(
         val references = references(repo, diagnostics)
         val direct = references.flatMap { name -> prefixes(name).filter { it in index }.take(1) }.toSet()
         val packages = direct.map(::packageOf).toSet() + references.filter { it.endsWith(".*") }.map { it.removeSuffix(".*") }
-        val symbols = diagnostics.mapNotNull { ClusterKeys.missingSymbol(it.message) }.toSet()
+        val missing = diagnostics.flatMap { listOfNotNull(ClusterKeys.missingSymbol(it.message), ClusterKeys.missingPackage(it.message)) }
+        val symbols = missing.toSet() + moved(references, missing.toSet())
         val candidates = index.filter { packageOf(it) in packages || simpleName(it) in symbols }
         val classes = (direct + candidates).sorted().take(MAX_CLASSES)
         if (classes.isEmpty()) return ""
@@ -87,6 +89,18 @@ internal class JavapGrounding(
         val named = diagnostics.flatMap { diagnostic -> qualifiedClass.findAll(diagnostic.message).map { it.value } }
         return (imports + named).toSet()
     }
+
+    /**
+     * The simple names of the classes imported from a package that is gone (`mu.KotlinLogging` for kotlinc's 'mu', javac's
+     * `org.example.old`): the new version may have them in another package.
+     */
+    private fun moved(
+        references: Set<String>,
+        missing: Set<String>,
+    ) = references
+        .filterNot { it.endsWith(".*") }
+        .filter { ref -> prefixes(packageOf(ref)).any { it in missing || simpleName(it) in missing } }
+        .map(::simpleName)
 
     /** `a.b.C.m` → `a.b.C.m`, `a.b.C`, `a.b`, `a`: a static import names a member, so its class is a prefix. */
     private fun prefixes(name: String) = generateSequence(name) { if ('.' in it) it.substringBeforeLast('.') else null }
