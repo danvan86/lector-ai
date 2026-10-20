@@ -195,6 +195,14 @@ class FixLoop(
                     is Proposal.Edits -> proposal.edits
                     is Proposal.Invalid -> emptyList()
                 }
+            // An accepted attempt's edits are in its commit. A rejected attempt's are gone after the reset, and the
+            // reason alone doesn't tell a weak model from missing grounding.
+            if (outcome is AttemptOutcome.Rejected && edits.isNotEmpty()) {
+                logger.info(
+                    "The rejected edits:\n{}",
+                    edits.joinToString("\n") { "- ${it.file}: ${quoted(it.search)} -> ${quoted(it.replace)}" },
+                )
+            }
             attempts += Attempt(cluster.key, sent, edits, outcome, cluster.diagnostics.size - sent.size)
         }
 
@@ -325,6 +333,9 @@ private fun <T> firstThatFit(
 }
 
 private fun rejected(reason: String) = AttemptOutcome.Rejected(reason)
+
+/** [text] in quotes on one line, for the log: `"a\n  b"`. */
+private fun quoted(text: String) = "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
 
 /** Why the versions of [repo] now are no attempt to accept: some resolve lower than [before]. Null if none does. */
 private fun downgradesSince(
