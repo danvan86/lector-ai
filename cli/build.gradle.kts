@@ -138,9 +138,9 @@ tasks.register<Test>("realModelTest") {
             .map { dockerfile ->
                 dockerfile
                     .lines()
-                    .single { it.startsWith("FROM ") }
+                    .single { it.startsWith("FROM ollama/ollama:") }
                     .removePrefix("FROM ")
-                    .trim()
+                    .substringBefore(' ')
             }
     systemProperty("lector.ollamaImage", ollamaImage.get())
     // Cluster keys and grounding read the English compiler messages, as in the container image and on CI runners.

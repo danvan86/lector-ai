@@ -60,7 +60,7 @@ flowchart LR
 | | `RootCommand.kt` | `sources(options)` builds the three sources in their order; `adapters()` builds `GradleAdapter` and `MavenAdapter` with the JDKs `installedJdks()` (`JdkSelection.kt`) reads from `LECTOR_JDK_<release>`, then `TypeScriptAdapter` with `installedNodes()`, `LECTOR_JEST_JUNIT`, and `--npmrc` / `--yarnrc` (M9). |
 | — | `action/action.yml` | Docker container action on `ghcr.io/danvan86/lector:<version>`: inputs → `pr` options; token, Maven settings, Gradle init script, npmrc and yarnrc (M9), and Dependabot metadata through the environment; `GRADLE_USER_HOME=/github/home/.gradle`, so a workflow can cache it. |
 | — | `docker/lector/Dockerfile` | Tool image: `eclipse-temurin` 25 base, JDK 17 and 21 stages copied in, Maven, `git`, the installed distribution with the OpenRewrite Gradle plugin (`LECTOR_REWRITE_GRADLE_PLUGIN`), and since M9 Node 22 and 24, Corepack with pre-cached pnpm and Yarn, and `jest-junit`, pinned in `docker/lector/node/package.json`. No model, no recipe JARs, no Gradle, no OpenRewrite JavaScript. |
-| — | `docker/ollama/Dockerfile` | Ollama image: `ARG MODEL`, pulled at build time, `OLLAMA_KEEP_ALIVE=-1`. Its `FROM` is also the real-model test's Ollama. |
+| — | `docker/ollama/Dockerfile` | Ollama image: `ARG MODEL`, pulled at build time, `OLLAMA_KEEP_ALIVE=-1`. `ARG GPU` (`false` by default) keeps Ollama's GPU libraries (CUDA, MLX, Vulkan, 4.8 GB) only for an image that runs on a GPU; the final stage is `FROM scratch` with the pruned filesystem and the weights in a layer of their own. Its `FROM ollama/ollama:` line is also the real-model test's Ollama. |
 | — | `.github/workflows/release.yml` | On a `v*` tag: `check` (tag = version, MSAL check done), then `tool-image` and the `ollama-image` matrix (7B, 30B). |
 
 `sources` and `git` depend on `core` only (plus `kotlinx-serialization-json` and the SLF4J API); `cli` depends on both.
@@ -197,7 +197,7 @@ The documented workflow ([`docs/setup.md`](../setup.md), section 3) listens to `
 | Artifact | Contents | Published as |
 |---|---|---|
 | Tool image | lector on JDK 25; JDKs 17, 21, 25 as `LECTOR_JDK_17/21/25`; Maven; the OpenRewrite Gradle plugin in `/opt/lector/rewrite-gradle-plugin`; Node 22 and 24 as `LECTOR_NODE_22/24`, Corepack (`/opt/corepack`), `jest-junit` as `LECTOR_JEST_JUNIT` (M9); `git` with `safe.directory '*'`; `.dockerignore` admits only `cli/build/install/lector` and `docker/lector/node/package{,-lock}.json` | `ghcr.io/<owner>/lector:<version>` |
-| Ollama image | `ollama/ollama` with one model pulled at build time | `ghcr.io/<owner>/lector-ollama:<model-tag>` and `:<version>-<model-tag>` (`qwen2.5-coder-7b`, `qwen3-coder-30b`) |
+| Ollama image | `ollama/ollama` with one model pulled at build time; the 7B image without GPU libraries (`GPU=false`), the 30B image with them (`GPU=true`) | `ghcr.io/<owner>/lector-ollama:<model-tag>` and `:<version>-<model-tag>` (`qwen2.5-coder-7b`, `qwen3-coder-30b`) |
 
 Dependabot watches both Dockerfiles and `docker/lector/node` (npm); major updates of `eclipse-temurin` and `node` are ignored so each JDK and Node stage stays on its release line.
 
@@ -232,4 +232,5 @@ The real runs on GitHub (a Renovate PR for M5; a Dependabot PR and a labelled ma
 | Fetch uses the token too | A private repository's base commit needs it | — |
 | Builds run in the same container and as the same user as the tool | Builds don't see the token in their environment, but could read it from `/proc` | A separate user or container for builds |
 | The 30B Ollama image has a single ~19 GB layer, GHCR takes up to 10 GB | Built in its own matrix job with `fail-fast: false` | First release |
+| The CPU Ollama image copies the base image's configuration (`ENV`, `ENTRYPOINT`, `CMD`) into a `FROM scratch` stage | A service container is pulled before any step could free disk space: with the GPU libraries, the 7B image needs about 17 GB to pull, more than a standard runner has free | An Ollama update that changes its image's configuration |
 | Only GitHub; Maven, Gradle since M7, and TypeScript since M9 | Scope | Later |

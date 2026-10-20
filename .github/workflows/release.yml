@@ -58,8 +58,13 @@ jobs:
     strategy:
       # The 30B weights are one file of about 19 GB, GHCR takes layers up to 10 GB: the 7B variant must not depend on it.
       fail-fast: false
+      # The 7B image runs on a CPU runner, the 30B one on a GPU: only that one keeps Ollama's GPU libraries.
       matrix:
-        model: ["qwen2.5-coder:7b", "qwen3-coder:30b"]
+        include:
+          - model: qwen2.5-coder:7b
+            gpu: false
+          - model: qwen3-coder:30b
+            gpu: true
     steps:
       - uses: actions/checkout@v7
       - name: Name the image
@@ -81,7 +86,9 @@ jobs:
       - uses: docker/build-push-action@v7
         with:
           context: docker/ollama
-          build-args: MODEL=${{ matrix.model }}
+          build-args: |
+            MODEL=${{ matrix.model }}
+            GPU=${{ matrix.gpu }}
           push: true
           tags: |
             ghcr.io/${{ env.OWNER }}/lector-ollama:${{ env.MODEL_TAG }}
