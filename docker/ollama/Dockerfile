@@ -4,7 +4,7 @@
 #   docker build --build-arg MODEL=qwen2.5-coder:7b -t lector-ollama:qwen2.5-coder-7b docker/ollama
 #   docker build --build-arg MODEL=qwen3-coder:30b --build-arg GPU=true -t lector-ollama:qwen3-coder-30b docker/ollama
 # The Ollama version is also the one the real-model test runs (`:cli:realModelTest` reads it from here).
-FROM ollama/ollama:0.40.3 AS ollama
+FROM ollama/ollama:0.40.6 AS ollama
 
 # The weights. Pulled through a server that runs only for this step. Fail if it doesn't come up within a minute.
 FROM ollama AS model
