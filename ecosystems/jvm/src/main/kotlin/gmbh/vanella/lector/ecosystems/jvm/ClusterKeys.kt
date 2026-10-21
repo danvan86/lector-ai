@@ -30,10 +30,13 @@ internal object ClusterKeys {
             }
 
             else -> {
-                val missingPackage = javacPackage.find(diagnostic.message)?.let { it.groupValues[1] }
+                val missingPackage = missingPackage(diagnostic.message)
                 if (missingPackage != null) "package:$missingPackage" else missingSymbol(diagnostic.message)?.let { "symbol:$it" }
             }
         }
+
+    /** The package javac can't find, as `a.b.c`. */
+    fun missingPackage(message: String): String? = javacPackage.find(message)?.let { it.groupValues[1] }
 
     /** The name of the symbol a compiler can't find: a class, method, or field, without parameters. */
     fun missingSymbol(message: String): String? {

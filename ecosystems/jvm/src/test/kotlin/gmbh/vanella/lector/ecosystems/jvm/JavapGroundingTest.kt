@@ -116,6 +116,34 @@ class JavapGroundingTest {
     }
 
     @Test
+    fun `a class imported from a package kotlinc can't resolve is looked up by its name`() {
+        // kotlinc names the first segment of the import it can't resolve (kotlin-logging 3 to 5 moved `mu` away).
+        val kotlinFile = "src/main/kotlin/com/example/Texts.kt"
+        source(kotlinFile, "package com.example\n\nimport mu.Greeter\nimport org.example.gone.Farewell\nimport java.util.List\n")
+        val diagnostics =
+            listOf(
+                Diagnostic(kotlinFile, 3, 8, null, "Unresolved reference 'mu'.", Severity.ERROR, "kotlinc"),
+                Diagnostic(kotlinFile, 4, 20, null, "Unresolved reference 'gone'.", Severity.ERROR, "kotlinc"),
+            )
+
+        val text = grounding.ground(repo, change, diagnostics)
+
+        assertContains(text, "public class org.example.lib.Greeter {")
+        assertContains(text, "public class org.example.lib.Farewell {")
+        assertFalse("Unrelated" in text)
+    }
+
+    @Test
+    fun `a class imported from a package javac doesn't find is looked up by its name, a wildcard import is not`() {
+        source(app, "package com.example;\n\nimport org.example.old.Names;\nimport org.example.old.*;\n")
+
+        val text = grounding.ground(repo, change, listOf(javac(app, "package org.example.old does not exist")))
+
+        assertContains(text, "public class org.example.lib.util.Names {")
+        assertFalse("Unrelated" in text)
+    }
+
+    @Test
     fun `without JARs of the new version, or without classes the errors refer to, there is no grounding`() {
         source(app, "package com.example;\n\nimport java.util.List;\n")
         val error = javac(app, "cannot find symbol\nsymbol:   class Lisst")

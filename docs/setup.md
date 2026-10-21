@@ -318,8 +318,13 @@ your project uses with a step before lector-ai:
 
 | Ollama image | Runner | Status |
 |---|---|---|
-| `lector-ollama:qwen2.5-coder-7b` (4.7 GB of weights) | Standard GitHub-hosted `ubuntu-latest` (4 CPUs, 16 GB) | The default, and the variant the benchmark measures (M6). Runs on CPU: slow, but it fits. |
-| `lector-ollama:qwen3-coder-30b` (19 GB of weights) | A runner with more than 24 GB of memory, ideally a GPU | Not measured yet. Add `--gpus all` to the service's `options` on a GPU runner. Pushed only if the registry takes its 19 GB layer. |
+| `lector-ollama:qwen2.5-coder-7b` (4.7 GB of weights, no GPU libraries) | Standard GitHub-hosted `ubuntu-latest`: 2 CPUs and 7 GB for a private repository, 4 CPUs and 16 GB for a public one | The default, and the variant the benchmark measures (M6). Runs on CPU: slow, but it fits. A run on a private repository's runner, two Maven builds and one fix attempt included, took 15 minutes. |
+| `lector-ollama:qwen3-coder-30b` (19 GB of weights, with Ollama's GPU libraries) | A runner with more than 24 GB of memory, ideally a GPU | Not measured yet. Add `--gpus all` to the service's `options` on a GPU runner. Pushed only if the registry takes its 19 GB layer. |
+
+A standard runner had about 17 GB of free disk in a measured run, and a service container is pulled before the first
+step, so no step can make room for it. The 7B image needs about 10 GB while it is pulled; with the GPU libraries it
+needed more than the runner had. Don't add services or a job container that
+need the rest.
 
 With the 30B image, set `model: qwen3-coder:30b` in the action's inputs.
 

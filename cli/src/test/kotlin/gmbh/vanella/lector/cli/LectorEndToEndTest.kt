@@ -273,6 +273,8 @@ class LectorEndToEndTest {
 
         assertContains(run.stdout, "- [stubbing] src/main/java/App.java:3: the edits add the placeholder `return null;` in place of logic")
         assertContains(run.stdout, "  Rejections per guardrail (1):\n    - stubbing: 2\n")
+        // The rejected edits are in the log: without them, a failed run in CI can't be told from a bad prompt.
+        assertContains(run.stderr, "The rejected edits:\n- src/main/java/App.java: \"broken();\" -> \"return null;\"\n")
         assertTrue("WARNING" !in run.stderr, run.stderr)
         assertEquals(1, run.exitCode, run.stderr)
     }
