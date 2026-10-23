@@ -100,6 +100,14 @@ class ApiDiffTest {
     }
 
     @Test
+    fun `a member whose return type changed alone is no change`() {
+        val old = ApiModel(mapOf("a.Claims" to setOf(ApiMember(MemberKind.METHOD, "getAudience", emptyList(), false, "java.lang.String"))))
+        val new = ApiModel(mapOf("a.Claims" to setOf(ApiMember(MemberKind.METHOD, "getAudience", emptyList(), false, "java.util.Set"))))
+
+        assertEquals(emptyList(), ApiDiff.of(old, new, setOf("a.Claims")))
+    }
+
+    @Test
     fun `a static member moves only to a static member of the same kind, name, and parameters`() {
         val old = ApiModel(mapOf("a.Util" to setOf(method("of", "int", static = true))))
         val new =

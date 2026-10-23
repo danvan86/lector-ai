@@ -121,7 +121,8 @@ internal object ApiDiff {
         val after = new.classes.getValue(name)
         val namesBefore = before.map { it.name }.toSet()
         val namesAfter = after.map { it.name }.toSet()
-        val gone = before - after
+        // Matched by signature: a member whose return type changed alone is still there.
+        val gone = before.filter { member -> after.none { it.name == member.name && it.sameSignature(member) } }
         val changed =
             gone.map { it.name }.filter { it in namesAfter }.distinct().map { member ->
                 ApiChange(
@@ -135,7 +136,7 @@ internal object ApiDiff {
         val vanished = gone.filter { it.name !in namesAfter }
         val moved = vanished.associateWith { member -> movedTo(member, name, new) }
         val left = vanished.filter { moved[it] == null }
-        val fresh = (after - before).filter { it.name !in namesBefore }
+        val fresh = after.filter { it.name !in namesBefore }
         val renamed = left.singleOrNull()?.takeIf { gone -> fresh.singleOrNull()?.sameSignature(gone) == true }
         return changed +
             moved.mapNotNull { (member, target) ->
