@@ -9,11 +9,12 @@ import java.nio.file.Path
 private val logger = LoggerFactory.getLogger(ApiChangesGrounding::class.java)
 
 /**
- * The API changes between a change's old and new version ([ApiDiff]), for the classes the errors refer to: what the
- * messages name, the imports tied to a missing symbol or package, and the classes named like a missing symbol, looked
- * up in both versions. [newJars] finds the JARs of the change's group at the new version, by artifact ID. Only if the
- * errors refer to them, [oldJars] gets the same artifacts at the old version; it may fetch them. The diff covers the
- * artifacts both versions have. Anything that fails gives no API changes.
+ * The API changes between a change's old and new version ([ApiDiff]), for the classes the errors refer to: the erroring
+ * files' imports, the classes the messages name, and the classes named like a missing symbol, looked up in both
+ * versions. [newJars] finds the JARs of the change's group at the new version, by artifact ID. Only if the errors
+ * themselves refer to them (a plain import of an erroring file doesn't count), [oldJars] gets the same artifacts at the
+ * old version; it may fetch them. The diff covers the artifacts both versions have. Anything that fails gives no API
+ * changes.
  */
 internal class ApiChangesGrounding(
     private val newJars: (repo: Path, change: DependencyChange) -> Map<String, List<Path>>,
@@ -52,7 +53,7 @@ internal class ApiChangesGrounding(
         val old = model(artifacts.flatMap { oldJars.getValue(it) })
         val new = model(artifacts.flatMap { newJars.getValue(it) })
         val index = old.classes.keys + new.classes.keys
-        val diffed = references.classes(references.cited, index) + index.filter { simpleName(it) in references.symbols }
+        val diffed = references.classes(references.all, index) + index.filter { simpleName(it) in references.symbols }
         return ApiChangesText.render(change, ApiDiff.of(old, new, diffed))
     }
 
