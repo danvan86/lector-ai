@@ -53,6 +53,13 @@ class MavenAdapter(
     },
 ) : EcosystemAdapter {
     private val grounding = JavapGrounding(localRepositoryJars(localRepository))
+    private val apiChangesGrounding =
+        ApiChangesGrounding(
+            newJars = { _, change -> localRepositoryArtifacts(localRepository, change.group(), change.toVersion) },
+            oldJars = { _, change, artifacts ->
+                localRepositoryArtifacts(localRepository, change.group(), change.fromVersion).filterKeys { it in artifacts }
+            },
+        )
     private val jdkSelection = JdkSelection(jdks)
 
     override val ecosystem = "maven"
@@ -141,6 +148,12 @@ class MavenAdapter(
         change: DependencyChange,
         diagnostics: List<Diagnostic>,
     ) = grounding.ground(repo, change, diagnostics)
+
+    override fun apiChanges(
+        repo: Path,
+        change: DependencyChange,
+        diagnostics: List<Diagnostic>,
+    ) = apiChangesGrounding.apiChanges(repo, change, diagnostics)
 
     override fun clusterKey(diagnostic: Diagnostic) = ClusterKeys.of(diagnostic)
 

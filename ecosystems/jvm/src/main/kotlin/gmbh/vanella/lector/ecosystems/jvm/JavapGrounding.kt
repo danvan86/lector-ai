@@ -3,16 +3,16 @@ package gmbh.vanella.lector.ecosystems.jvm
 import gmbh.vanella.lector.core.DependencyChange
 import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.ProcessResult
+import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.runProcess
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.io.IOException
 import java.nio.file.Path
 import java.util.zip.ZipFile
 import kotlin.io.path.isDirectory
-import kotlin.io.path.isRegularFile
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
-import kotlin.io.path.readText
 import kotlin.time.Duration.Companion.minutes
 
 private val logger = LoggerFactory.getLogger(JavapGrounding::class.java)
@@ -36,22 +36,35 @@ internal class JavapGrounding(
         runProcess(command, workDir, JAVAP_TIMEOUT)
     },
 ) {
-    private val import = Regex("""^\s*import\s+(?:static\s+)?([\w.]+?)(\.\*)?(?:\s+as\s+\w+)?\s*;?\s*$""", RegexOption.MULTILINE)
-    private val qualifiedClass = Regex("""\b(?:[a-z_][\w]*\.)+[A-Z][\w$]*""")
     private val classEnd = Regex("""^}$""", RegexOption.MULTILINE)
 
+    /** The full API, or none if a JAR can't be read or javap can't run: grounding never ends the run. */
     fun ground(
+        repo: Path,
+        change: DependencyChange,
+        diagnostics: List<Diagnostic>,
+    ): String =
+        try {
+            javapApi(repo, change, diagnostics)
+        } catch (e: IOException) {
+            logger.info("No API of {}: can't read a JAR: {}", change.`package`, e.message)
+            ""
+        } catch (e: ToolError) {
+            logger.warn("No API of {}: {}", change.`package`, e.message)
+            ""
+        }
+
+    private fun javapApi(
         repo: Path,
         change: DependencyChange,
         diagnostics: List<Diagnostic>,
     ): String {
         val jars = jars(repo, change)
         val index = jars.flatMap(::classNames).toSet()
-        val references = references(repo, diagnostics)
-        val direct = references.flatMap { name -> prefixes(name).filter { it in index }.take(1) }.toSet()
-        val packages = direct.map(::packageOf).toSet() + references.filter { it.endsWith(".*") }.map { it.removeSuffix(".*") }
-        val missing = diagnostics.flatMap { listOfNotNull(ClusterKeys.missingSymbol(it.message), ClusterKeys.missingPackage(it.message)) }
-        val symbols = missing.toSet() + moved(references, missing.toSet())
+        val references = ErrorReferences(repo, diagnostics)
+        val direct = references.classes(references.all, index)
+        val packages = direct.map(::packageOf).toSet() + references.all.filter { it.endsWith(".*") }.map { it.removeSuffix(".*") }
+        val symbols = references.symbols
         val candidates = index.filter { packageOf(it) in packages || simpleName(it) in symbols }
         val classes = (direct + candidates).sorted().take(MAX_CLASSES)
         if (classes.isEmpty()) return ""
@@ -73,37 +86,6 @@ internal class JavapGrounding(
                 .map { it.removeSuffix(".class").replace('/', '.') }
                 .toList()
         }
-
-    /** Imports of the erroring files (`a.b.C`, `a.b.*`) and qualified class names in the messages. */
-    private fun references(
-        repo: Path,
-        diagnostics: List<Diagnostic>,
-    ): Set<String> {
-        val files =
-            diagnostics
-                .mapNotNull { it.file }
-                .toSet()
-                .map { repo.resolve(it) }
-                .filter { it.isRegularFile() }
-        val imports = files.flatMap { file -> import.findAll(file.readText()).map { it.groupValues[1] + it.groupValues[2] } }
-        val named = diagnostics.flatMap { diagnostic -> qualifiedClass.findAll(diagnostic.message).map { it.value } }
-        return (imports + named).toSet()
-    }
-
-    /**
-     * The simple names of the classes imported from a package that is gone (`mu.KotlinLogging` for kotlinc's 'mu', javac's
-     * `org.example.old`): the new version may have them in another package.
-     */
-    private fun moved(
-        references: Set<String>,
-        missing: Set<String>,
-    ) = references
-        .filterNot { it.endsWith(".*") }
-        .filter { ref -> prefixes(packageOf(ref)).any { it in missing || simpleName(it) in missing } }
-        .map(::simpleName)
-
-    /** `a.b.C.m` → `a.b.C.m`, `a.b.C`, `a.b`, `a`: a static import names a member, so its class is a prefix. */
-    private fun prefixes(name: String) = generateSequence(name) { if ('.' in it) it.substringBeforeLast('.') else null }
 
     /** One `(class, signatures)` pair per class, without the `Compiled from` line. */
     private fun javap(
@@ -130,10 +112,6 @@ internal class JavapGrounding(
             .substringBefore('(')
             .removeSuffix(" {")
             .substringAfterLast(' ')
-
-    private fun packageOf(name: String) = name.substringBeforeLast('.', "")
-
-    private fun simpleName(name: String) = name.substringAfterLast('.')
 }
 
 /**
@@ -142,16 +120,30 @@ internal class JavapGrounding(
  */
 internal fun localRepositoryJars(localRepository: Path): (Path, DependencyChange) -> List<Path> =
     { _, change ->
-        val group = localRepository.resolve(change.`package`.substringBefore(':').replace('.', '/'))
-        if (':' !in change.`package` || !group.isDirectory()) {
+        if (':' !in change.`package`) {
             emptyList()
         } else {
-            group
-                .listDirectoryEntries()
-                .map { it.resolve(change.toVersion) }
-                .filter { it.isDirectory() }
-                .flatMap { it.listDirectoryEntries("*.jar") }
-                .filter { jar -> listOf("-sources.jar", "-javadoc.jar", "-tests.jar").none { jar.name.endsWith(it) } }
-                .sorted()
+            localRepositoryArtifacts(localRepository, change.`package`.substringBefore(':'), change.toVersion).values.flatten().sorted()
         }
     }
+
+/** The JARs of every artifact of [group] at [version] in the local Maven repository at [localRepository], by artifact ID. */
+internal fun localRepositoryArtifacts(
+    localRepository: Path,
+    group: String,
+    version: String,
+): Map<String, List<Path>> {
+    val dir = localRepository.resolve(group.replace('.', '/'))
+    if (!dir.isDirectory()) return emptyMap()
+    return dir
+        .listDirectoryEntries()
+        .map { it.resolve(version) }
+        .filter { it.isDirectory() }
+        .associate { versionDir ->
+            versionDir.parent.name to
+                versionDir
+                    .listDirectoryEntries("*.jar")
+                    .filter { jar -> listOf("-sources.jar", "-javadoc.jar", "-tests.jar").none { jar.name.endsWith(it) } }
+                    .sorted()
+        }.filterValues { it.isNotEmpty() }
+}
