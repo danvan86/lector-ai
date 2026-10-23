@@ -67,7 +67,8 @@ class OldJarsTest {
 
     @Test
     fun `old artifacts are fetched once per group and version, one call each, with the run's settings, never into the repository`() {
-        val before = files(repo)
+        // After the setup: the adapter's settings file is the test's own, not a write of the fetch.
+        val before = adapter.let { files(repo) }
 
         val first = adapter.apiChanges(repo, core, listOf(error()))
         adapter.apiChanges(repo, core, listOf(error()))

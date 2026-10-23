@@ -158,6 +158,10 @@ Checked before approval: ktlint and detekt (`detektTest`) on the test code, gree
 Approved by the user as designed, with the agent decisions TQ1–TQ5 not vetoed. The files under "Test code", with the
 helpers they use (`TestJars.kt`, `FakeGradleTest.kt`), are frozen in [tests.lock](tests.lock).
 
+Changed after approval, with the user's consent: T-B1 takes its "before" snapshot after the adapter exists. Before, the
+test's own settings file, written when the lazy adapter was created, counted as a write of the fetch, so no
+implementation could pass. `tests.lock` holds the new hash.
+
 ## Decided by the agent
 
 Technical choices the tests fix, following the spec (Q10) and AGENTS.md. Veto any of them by ID.
