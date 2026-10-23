@@ -12,7 +12,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 4 | Maven: fetch missing old JARs once per run with `maven-dependency-plugin` (T-B, real Maven) | ✅ |
 | 5 | Gradle: old JARs from any model read in the run, kept apart from `isBuildFile` (T-C) | ✅ |
 | 6 | Proof cases: red at `cf183a8`, green with M10, in the benchmark corpus | ✅ |
-| 7 | Quality gates verified | ⬜ |
+| 7 | Quality gates verified | ✅ |
 | 8 | Docs in sync | ✅ |
 
 ## Judgment calls
@@ -33,6 +33,18 @@ Status: ⬜ open · 🟨 in progress · ✅ done
   static field of that name, whatever its type (spec R4 doesn't compare the return type). A search over 44 real release
   pairs showed false moves like `TypeAdapters.NUMBER → JsonToken.NUMBER` (Gson) and `Modifier.ABSTRACT →
   GeneratedJavaParserConstants.ABSTRACT` (JavaParser). Left as specified; worth a look in review or M11.
+
+## Quality gates
+
+Final check, each on its own: `ktlintCheck`, `detektMain detektTest`, `test`, `:cli:endToEndTest`, `koverVerify`, and
+`clean build --rerun-tasks --no-build-cache` (231 tasks executed), all exit 0. 910 unit tests (236 in `ecosystems:jvm`,
+208 in `core`), 21 end-to-end tests, 100 % line and branch coverage per module. Opt-in: `ApiChangesIntegrationTest`
+(`:cli:integrationTest`, real Maven) green.
+
+Probes, each reverted (`git status` clean afterwards): ktlint on bad spacing in `ApiModel.kt`; detekt on
+`System.out.println` in `ApiDiff.kt` (`ForbiddenMethodCall`) and on a 13th function in `EcosystemAdapter`
+(`TooManyFunctions`, limit 12); a broken assertion in `ApiDiffTest`; Kover on an untested function in
+`ApiChangesGrounding.kt`. Every gate task is in `build`, once (`build --dry-run`).
 
 ## Proof on real cases (AC27, AC28, AC28a)
 
