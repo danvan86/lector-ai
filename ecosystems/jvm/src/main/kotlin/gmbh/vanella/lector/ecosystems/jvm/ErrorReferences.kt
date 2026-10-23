@@ -24,7 +24,7 @@ internal class ErrorReferences(
     private val named = diagnostics.flatMap { diagnostic -> QUALIFIED_CLASS.findAll(diagnostic.message).map { it.value } }.toSet()
 
     /** The symbols and packages the compilers can't find. */
-    val missing =
+    private val missing =
         diagnostics
             .flatMap {
                 listOfNotNull(

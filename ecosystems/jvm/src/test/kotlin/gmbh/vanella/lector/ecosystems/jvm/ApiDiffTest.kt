@@ -100,6 +100,24 @@ class ApiDiffTest {
     }
 
     @Test
+    fun `a static member moves only to a static member of the same kind, name, and parameters`() {
+        val old = ApiModel(mapOf("a.Util" to setOf(method("of", "int", static = true))))
+        val new =
+            ApiModel(
+                mapOf(
+                    "a.Util" to emptySet(),
+                    "b.Field" to setOf(ApiMember(MemberKind.FIELD, "of", emptyList(), true, "int")),
+                    "c.Instance" to setOf(method("of", "int")),
+                    "d.Params" to setOf(method("of", "long", static = true)),
+                    "e.Other" to setOf(method("other", "int", static = true)),
+                    "f.Target" to setOf(method("of", "int", static = true)),
+                ),
+            )
+
+        assertEquals(listOf("a.Util.of(int) → f.Target.of(int)"), ApiDiff.of(old, new, setOf("a.Util")).map { it.render() })
+    }
+
+    @Test
     fun `classes of a package whose old package lives on, or that moved apart, are no renamed package`() {
         val old =
             ApiModel(mapOf("a.X" to emptySet(), "a.Y" to emptySet(), "a.Kept" to emptySet(), "c.P" to emptySet(), "c.Q" to emptySet()))

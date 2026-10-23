@@ -29,6 +29,9 @@ internal data class ApiMember(
         }
 
     fun parameterList() = parameters.joinToString(", ", "(", ")")
+
+    /** Whether [other] has the same signature, whatever its name: kind, parameters, and static-ness. */
+    fun sameSignature(other: ApiMember) = kind == other.kind && parameters == other.parameters && static == other.static
 }
 
 /**

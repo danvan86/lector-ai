@@ -12,6 +12,7 @@ import gmbh.vanella.lector.core.ResolvedVersions
 import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.runProcess
+import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.deleteIfExists
@@ -19,9 +20,13 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.TimeSource
 
+private val logger = LoggerFactory.getLogger(MavenAdapter::class.java)
+
 private val MAVEN_TIMEOUT = 1.hours
+private val FETCH_TIMEOUT = 2.minutes
 private const val OUTPUT_TAIL_LINES = 20
 
 // A surefire filter that matches no test class.
@@ -36,12 +41,14 @@ private const val NO_UNIT_TESTS = "lector.NoUnitTests"
  * Maven runs in two stages, both in batch mode with fail-at-end, so every module reports its problems: first
  * `test-compile`, and only if that is clean, `verify`.
  *
- * Grounding reads the JARs in [localRepository]. A `localRepository` set in the Maven settings is not followed.
+ * Grounding reads the JARs in [localRepository]. A `localRepository` set in the Maven settings is not followed. For the
+ * API changes, it may fetch the old version's JARs into it with the dependency plugin, through the project's Maven and
+ * settings: only the artifacts the new version's grounding has, without their dependencies, once per run.
  */
 class MavenAdapter(
     private val settings: Path? = null,
-    plugins: MavenPlugins = MavenPlugins.load(),
-    localRepository: Path = Path.of(System.getProperty("user.home"), ".m2", "repository"),
+    private val plugins: MavenPlugins = MavenPlugins.load(),
+    private val localRepository: Path = Path.of(System.getProperty("user.home"), ".m2", "repository"),
     jdks: Map<Int, Path> = emptyMap(),
     private val run: (
         command: List<String>,
@@ -56,10 +63,11 @@ class MavenAdapter(
     private val apiChangesGrounding =
         ApiChangesGrounding(
             newJars = { _, change -> localRepositoryArtifacts(localRepository, change.group(), change.toVersion) },
-            oldJars = { _, change, artifacts ->
-                localRepositoryArtifacts(localRepository, change.group(), change.fromVersion).filterKeys { it in artifacts }
-            },
+            oldJars = ::oldJars,
         )
+
+    // The old version's JARs of each group and version, by artifact ID: looked up once per run, failures included.
+    private val oldJars = mutableMapOf<Pair<String, String>, Map<String, List<Path>>>()
     private val jdkSelection = JdkSelection(jdks)
 
     override val ecosystem = "maven"
@@ -184,6 +192,57 @@ class MavenAdapter(
         content: String,
         line: Int,
     ) = MavenTestSkipping.reason(content, line)
+
+    /**
+     * The JARs of [artifacts] of [change]'s group at the old version, from the local repository, or fetched into it. The
+     * first fetch that fails or times out ends the lookup: the next would likely fail the same way.
+     */
+    private fun oldJars(
+        repo: Path,
+        change: DependencyChange,
+        artifacts: Set<String>,
+    ) = oldJars.getOrPut(change.group() to change.fromVersion) {
+        val root = repo.toRealPath()
+        val found = mutableMapOf<String, List<Path>>()
+        for (artifact in artifacts.sorted()) {
+            val jars = localJars(change, artifact) ?: fetch(root, change, artifact) ?: break
+            found[artifact] = jars
+        }
+        found
+    }
+
+    private fun localJars(
+        change: DependencyChange,
+        artifact: String,
+    ) = localRepositoryArtifacts(localRepository, change.group(), change.fromVersion)[artifact]
+
+    /** Fetches one artifact at the old version into the local repository, without its dependencies, and returns its JARs. */
+    private fun fetch(
+        root: Path,
+        change: DependencyChange,
+        artifact: String,
+    ): List<Path>? {
+        val coordinates = "${change.group()}:$artifact:${change.fromVersion}"
+        val goals =
+            listOf(
+                "${plugins.dependency}:get",
+                "-N",
+                "-Dartifact=$coordinates",
+                "-Dtransitive=false",
+                "-Dmaven.repo.local=$localRepository",
+            )
+        val result =
+            try {
+                maven(root, goals, FETCH_TIMEOUT)
+            } catch (e: ToolError) {
+                ProcessResult(-1, e.message)
+            }
+        if (result.exitCode != 0) {
+            logger.info("Can't fetch {} for the API changes: {}", coordinates, failure(result))
+            return null
+        }
+        return localJars(change, artifact)
+    }
 
     /** Runs Maven and collects the problems from its output and the test reports. */
     private fun problems(

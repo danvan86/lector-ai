@@ -136,7 +136,7 @@ internal object ApiDiff {
         val moved = vanished.associateWith { member -> movedTo(member, name, new) }
         val left = vanished.filter { moved[it] == null }
         val fresh = (after - before).filter { it.name !in namesBefore }
-        val renamed = left.singleOrNull()?.takeIf { gone -> fresh.singleOrNull()?.let { sameSignature(gone, it) } == true }
+        val renamed = left.singleOrNull()?.takeIf { gone -> fresh.singleOrNull()?.sameSignature(gone) == true }
         return changed +
             moved.mapNotNull { (member, target) ->
                 target?.let { ApiChange(ApiChangeKind.MOVED_MEMBER, name, it.first, listOf(member), listOf(it.second)) }
@@ -160,18 +160,9 @@ internal object ApiDiff {
         return new.classes
             .filterKeys { it != owner }
             .mapNotNull { (name, members) ->
-                members
-                    .firstOrNull { it.static && it.kind == member.kind && it.name == member.name && it.parameters == member.parameters }
-                    ?.let {
-                        name to it
-                    }
+                members.firstOrNull { it.name == member.name && it.sameSignature(member) }?.let { name to it }
             }.singleOrNull()
     }
-
-    private fun sameSignature(
-        a: ApiMember,
-        b: ApiMember,
-    ) = a.kind == b.kind && a.parameters == b.parameters && a.static == b.static
 }
 
 /**
