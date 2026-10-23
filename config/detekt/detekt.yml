@@ -17,9 +17,11 @@ potential-bugs:
 
 complexity:
   # An adapter implements every member of its port (EcosystemAdapter), which grows with the milestones. Those overrides
-  # are the port's size, not the class's.
+  # are the port's size, not the class's. The port itself is the one interface that large: one function per capability
+  # the concept gives an ecosystem.
   TooManyFunctions:
     ignoreOverridden: true
+    allowedFunctionsPerInterface: 12
 
 style:
   # The migration steps are chains of checks that each may stop the run. Early exits keep them flat.
