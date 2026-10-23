@@ -87,10 +87,18 @@ class GradleAdapter(
     private val variables = environment.filterKeys { name -> GRADLE_VARIABLES.any { name.startsWith(it) } }
     private val daemonJdk = DaemonJdk(installed)
     private val grounding = JavapGrounding(::classpathJars)
+    private val apiChangesGrounding =
+        ApiChangesGrounding(::newJars) { _, change, artifacts ->
+            classpathArtifacts(classpaths, change.group(), change.fromVersion).filterKeys { it in artifacts }
+        }
 
     // The repositories Gradle ran in, for close(), and the last model read in each, for grounding.
     private val roots = linkedSetOf<Path>()
     private val models = mutableMapOf<Path, GradleModel>()
+
+    // The compile classpaths of every model read in the run, the base commit's included: the old versions for the API
+    // changes. Kept apart from the models, whose included builds are the head's build files.
+    private val classpaths = mutableSetOf<ClasspathJar>()
     private val scripts = GradleInitScripts()
 
     override val ecosystem = "maven"
@@ -192,6 +200,13 @@ class GradleAdapter(
         diagnostics: List<Diagnostic>,
     ) = grounding.ground(repo, change, diagnostics)
 
+    /** The API changes, with the old version's JARs from a model read in the run, like the base commit's. Starts no Gradle. */
+    override fun apiChanges(
+        repo: Path,
+        change: DependencyChange,
+        diagnostics: List<Diagnostic>,
+    ) = apiChangesGrounding.apiChanges(repo, change, diagnostics)
+
     override fun clusterKey(diagnostic: Diagnostic) = ClusterKeys.of(diagnostic)
 
     /**
@@ -269,6 +284,7 @@ class GradleAdapter(
                 throw e
             }
         output.deleteIfExists()
+        classpaths += model.classpath
         return supported(model)
     }
 
@@ -282,15 +298,13 @@ class GradleAdapter(
     private fun classpathJars(
         repo: Path,
         change: DependencyChange,
-    ): List<Path> {
-        val group = change.`package`.substringBefore(':')
-        val model = models[repo.toRealPath()] ?: return emptyList()
-        return model.classpath
-            .filter { it.module.substringBefore(':') == group && it.version == change.toVersion && it.file.isRegularFile() }
-            .map { it.file }
-            .distinct()
-            .sorted()
-    }
+    ) = newJars(repo, change).values.flatten().sorted()
+
+    /** The JARs of the change's group at its new version on the compile classpaths of the last model of [repo], by artifact ID. */
+    private fun newJars(
+        repo: Path,
+        change: DependencyChange,
+    ) = classpathArtifacts(models[repo.toRealPath()]?.classpath.orEmpty(), change.group(), change.toVersion)
 
     /** Runs Gradle and collects the problems from its output and the test reports. */
     private fun problems(
@@ -366,3 +380,13 @@ private fun removeTestResults(root: Path) {
                 .toList()
         }.forEach { it.deleteRecursively() }
 }
+
+/** The JARs of [group] at [version] among [jars], by artifact ID. */
+private fun classpathArtifacts(
+    jars: Collection<ClasspathJar>,
+    group: String,
+    version: String,
+) = jars
+    .filter { it.module.substringBefore(':') == group && it.version == version && it.file.isRegularFile() }
+    .groupBy({ it.module.substringAfter(':') }, { it.file })
+    .mapValues { (_, files) -> files.distinct().sorted() }
