@@ -194,8 +194,9 @@ class MavenAdapter(
     ) = MavenTestSkipping.reason(content, line)
 
     /**
-     * The JARs of [artifacts] of [change]'s group at the old version, from the local repository, or fetched into it. The
-     * first fetch that fails or times out ends the lookup: the next would likely fail the same way.
+     * The JARs of [artifacts] of [change]'s group at the old version, from the local repository, or fetched into it, the
+     * change's own artifact first. An artifact the old version doesn't have is skipped; a fetch that times out or can't
+     * run ends the lookup, as the next would likely fail the same way.
      */
     private fun oldJars(
         repo: Path,
@@ -203,10 +204,14 @@ class MavenAdapter(
         artifacts: Set<String>,
     ) = oldJars.getOrPut(change.group() to change.fromVersion) {
         val root = repo.toRealPath()
+        val own = change.`package`.substringAfter(':')
         val found = mutableMapOf<String, List<Path>>()
-        for (artifact in artifacts.sorted()) {
-            val jars = localJars(change, artifact) ?: fetch(root, change, artifact) ?: break
-            found[artifact] = jars
+        try {
+            for (artifact in artifacts.sortedBy { if (it == own) "" else it }) {
+                (localJars(change, artifact) ?: fetch(root, change, artifact))?.let { found[artifact] = it }
+            }
+        } catch (e: ToolError) {
+            logger.info("Stopped fetching the old version of {}: {}", change.group(), e.message)
         }
         found
     }
@@ -216,7 +221,10 @@ class MavenAdapter(
         artifact: String,
     ) = localRepositoryArtifacts(localRepository, change.group(), change.fromVersion)[artifact]
 
-    /** Fetches one artifact at the old version into the local repository, without its dependencies, and returns its JARs. */
+    /**
+     * Fetches one artifact at the old version into the local repository, without its dependencies, and returns its JARs,
+     * or null if Maven can't get it. Fails with a [ToolError] if Maven times out or can't run.
+     */
     private fun fetch(
         root: Path,
         change: DependencyChange,
@@ -231,12 +239,7 @@ class MavenAdapter(
                 "-Dtransitive=false",
                 "-Dmaven.repo.local=$localRepository",
             )
-        val result =
-            try {
-                maven(root, goals, FETCH_TIMEOUT)
-            } catch (e: ToolError) {
-                ProcessResult(-1, e.message)
-            }
+        val result = maven(root, goals, FETCH_TIMEOUT)
         if (result.exitCode != 0) {
             logger.info("Can't fetch {} for the API changes: {}", coordinates, failure(result))
             return null
