@@ -13,7 +13,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 5 | Gradle: old JARs from any model read in the run, kept apart from `isBuildFile` (T-C) | ✅ |
 | 6 | Proof cases: red at `cf183a8`, green with M10, in the benchmark corpus | ✅ |
 | 7 | Quality gates verified | ⬜ |
-| 8 | Docs in sync | ⬜ |
+| 8 | Docs in sync | ✅ |
 
 ## Judgment calls
 

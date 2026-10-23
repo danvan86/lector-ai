@@ -158,12 +158,32 @@ opt-in.
 
 **Done when:** a TypeScript repo runs through without changes to `core`. If `core` had to change, that's the lesson.
 
+## M10 – API diff as grounding ✅
+
+**Goal:** the model learns what changed between the old and the new version's API, not only what the new version has.
+
+- `EcosystemAdapter.apiChanges(repo, change, diagnostics)`, default none; the fix loop puts the API changes of every change before every full API, each distinct text once, so trimming cuts the full APIs first. The prompt's section is `API`
+- JVM (Maven and Gradle): the public API of both versions read from class files with the JDK's ClassFile API; seven kinds, decided in order: renamed package, moved class, removed class, changed signature, moved member (static, same name and erased parameters, searched in the whole group), rename candidate, removed member. Ambiguous changes are removed, never guessed. A typed value with every entry; limits only in the text
+- Old JARs: Maven fetches the missing artifacts with `maven-dependency-plugin` `dependency:get` (one call per artifact, `-N`, no transitive dependencies, the run's settings, 2 minutes), once per group and version and run; Gradle reads them from any model read in the run, like the base commit's, without another Gradle run. Only when the errors refer to the group. Any failure means no API changes, never a failed run
+- TypeScript: unchanged (a later milestone)
+- Proof: PDFBox 2 → 3 (`PDDocument.load(File)` moved to `PDFParser.load(File)`) and SnakeYAML 1.33 → 2.3 (`Constructor(Class)` became `Constructor(Class, LoaderOptions)`) are red with qwen2.5-coder:7b before M10 and green with it; both joined the benchmark corpus
+
+**Done when:** the two proof cases go from red to green through the API changes alone.
+
+## M11 – Generated rewrite rules ⬜
+
+**Goal:** fix the mechanical part of an update without the model.
+
+- Turn the unambiguous entries of M10's typed API diff (moved class, renamed package, moved member) into generated ast-grep rules and run them before the fix loop
+- Needs the diff before the fix loop: today it is built from the errors of each attempt
+
 ## Later ⬜
 
-Not planned in detail yet. Prioritize after M9 based on demand and benchmark results.
+Not planned in detail yet. Prioritize after M11 based on demand and benchmark results.
 
 - More ecosystems: Python, .NET, Terraform, config files (YAML/XML/properties)
 - GitLab CI support
 - Embedding fallback for recipes without structured metadata
-- Better error clustering and smarter grounding (migration-guide index per dependency)
+- Better error clustering, and grounding from a migration-guide index per dependency
+- API changes for TypeScript (old vs. new `.d.ts`)
 - Linters bound to Maven `verify` can block the last fix attempt, the same problem M7 Q17 solved for Gradle
