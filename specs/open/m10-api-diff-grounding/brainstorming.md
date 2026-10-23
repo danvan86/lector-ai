@@ -234,3 +234,12 @@ A fresh agent critiqued `spec.md` against the docs and the code (proof cases che
 | R3 + R4 | A moved member needs every class of the group, and Guava's move changes the return type; instance moves are unsafe | A · Static members only, matched by name and erased parameters, not the return type; class files read in-process with the JDK's ClassFile API (no new dependency); `javap` stays for the prompt's API |
 | R9 | The port's KDoc says grounding never downloads | A · KDoc change in `core` allowed |
 | R13 | With several changes, the diff-first priority held only per change; same-group diffs repeated | B · `core` changes: the port gets a second grounding capability (the API changes) with a default of none; `FixLoop` puts all distinct diffs before all distinct full APIs. `FixRequest`, `LlmClient`, the TypeScript adapter unchanged |
+
+## Decisions during implementation
+
+| # | Finding | Decision |
+|---|---|---|
+| R19 | A changed signature's new form is always in today's prompt: Maven's javac names the class fully qualified, and the erroring file's imports are grounded, so their full API is sent. AC28a could only hold for a changed signature if trimming cut that class | The user: keep the SnakeYAML case (red at `cf183a8`, green with M10); for a changed signature, AC28a asks that today's prompt doesn't state the change |
+| R20 | The test design's T-B5 (an error about `java.util` in a file that imports a class of the group starts no fetch) conflicts with diffing every import of the erroring files | The agent: the old version is looked up only when the errors themselves refer to the group (the classes the messages name, the imports tied to a missing symbol or package, the classes named like a missing symbol); once it is, every import is diffed, as section 3 says |
+| R21 | A major release adds artifacts that have no old version (PDFBox 3 added `pdfbox-io`) | The agent: a fetch Maven can't resolve skips only that artifact; a timeout ends the lookup; the change's own artifact is fetched first |
+

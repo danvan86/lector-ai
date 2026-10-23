@@ -110,10 +110,10 @@ class CorpusTest {
     }
 
     @Test
-    fun `the corpus has 20 to 25 cases, historical PRs and synthetic bumps`() {
+    fun `the corpus has 20 to 30 cases, historical PRs and synthetic bumps`() {
         val corpus = Corpus.load()
 
-        assertTrue(corpus.cases.size in 20..25, "${corpus.cases.size} cases")
+        assertTrue(corpus.cases.size in 20..30, "${corpus.cases.size} cases")
         assertTrue(corpus.cases.any { it.origin == SYNTHETIC })
         assertTrue(corpus.cases.any { it.origin != SYNTHETIC })
     }

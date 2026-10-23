@@ -80,7 +80,7 @@ The result is a typed value: per entry the category, the old and new fully quali
 
 ### 6. Proof on real cases
 
-- At least two cases, chosen during implementation by this criterion (R1): `heal` with `qwen2.5-coder:7b` is red at `cf183a8`, no recipe in the bundled index matches, and the fix is not visible in today's prompt (the replacement's class or signature isn't in the `javap -public` output sent). One case is a moved class or member, one a changed signature. The criterion is checked before a case is committed. Versions and the JDK are pinned in the case.
+- At least two cases, chosen during implementation by this criterion (R1): `heal` with `qwen2.5-coder:7b` is red at `cf183a8`, no recipe in the bundled index matches, and the fix is not visible in today's prompt: for a moved class or member, the replacement's class or signature isn't in the `javap -public` output sent; for a changed signature, today's prompt doesn't state the change (Maven's javac names the class fully qualified, so its full API, with the new signature, is always sent; user decision R19). One case is a moved class or member, one a changed signature. The criterion is checked before a case is committed. Versions and the JDK are pinned in the case.
 - The cases go into the benchmark corpus as synthetic bumps; their heads live in `danvan86/lector-benchmark-corpus`.
 - The proof runs `lector heal` with `qwen2.5-coder:7b`: red at `cf183a8`, green with M10, recorded in `progress.md` (Q4). `heal` has no switch to skip the recipe, so each case must have no matching recipe in the bundled index; `progress.md` shows the `No recipe for …` line (R16). A benchmark run on GitHub is optional.
 
@@ -154,7 +154,7 @@ The review agent checks every criterion and reports it as *met*, *not met*, or *
 | AC26 | The prompt has no JSON for the diff, no overload pairs, and no cross-class rename candidates | Don't | Rendering tests on an overloaded and a cross-class case |
 | AC27 | The proof cases are in `corpus.json`, `CorpusTest` accepts the new count, and their head commits exist in `danvan86/lector-benchmark-corpus` | 6 | `CorpusTest`; `git fetch` of the head commits from that repository (needs network) |
 | AC28 | `heal` with `qwen2.5-coder:7b` is red at `cf183a8` and green with M10 for each proof case, with no recipe matching | 6 | `progress.md` records the commands, the diff block sent, the `No recipe for …` line, and both outcomes. Can't be re-run without Ollama |
-| AC28a | For each proof case, the replacement's class or signature is absent from the prompt sent at `cf183a8` | 6 | `progress.md` quotes the grounding sent at `cf183a8` and names the missing replacement |
+| AC28a | For the moved case, the replacement's class or signature is absent from the prompt sent at `cf183a8`; for the changed-signature case, that prompt doesn't state the change (R19) | 6 | `progress.md` quotes the grounding sent at `cf183a8` and names the missing replacement or statement |
 | AC29 | `docs/features.md` lists M10 and M11 before "Later" | 7 | File content |
 | AC30 | Every doc under "Docs to update" is updated | Docs | Each file names the old-JAR lookup or the diff as stated below |
 
