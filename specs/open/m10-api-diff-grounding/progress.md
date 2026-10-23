@@ -7,7 +7,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | # | Step | Status |
 |---|---|---|
 | 1 | Port `apiChanges` with a default, `FixLoop` puts all distinct API changes first, prompt heading `API` (T-D, T-E) | ✅ |
-| 2 | API model from class files with the ClassFile API | ⬜ |
+| 2 | API model from class files with the ClassFile API | ✅ |
 | 3 | API diff (seven categories) and its rendering, Maven with old JARs in the local repository (T-A) | ⬜ |
 | 4 | Maven: fetch missing old JARs once per run with `maven-dependency-plugin` (T-B, real Maven) | ⬜ |
 | 5 | Gradle: old JARs from any model read in the run, kept apart from `isBuildFile` (T-C) | ⬜ |
