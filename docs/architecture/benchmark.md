@@ -46,7 +46,7 @@ flowchart LR
 
 ## The corpus
 
-25 cases: 22 Maven (16 historical bot PRs, 12 Dependabot and 4 Renovate, and 6 synthetic bumps) and, since M9, 3 TypeScript bot PRs (`ecosystem: npm`). A historical case's `base` and `head` are the PR's base and head commits. Where the PR is still open, or the bump is synthetic, `repository` is [`danvan86/lector-benchmark-corpus`](https://github.com/danvan86/lector-benchmark-corpus), which holds those heads. `note` says what breaks, for the curator. The harness doesn't trust the corpus: every run checks that its head has a failure caused by the update.
+27 cases: 24 Maven (16 historical bot PRs, 12 Dependabot and 4 Renovate, and 8 synthetic bumps, two of them, `pdfbox-3` and `snakeyaml-2`, M10's proof cases for the [API changes](api-changes.md)) and, since M9, 3 TypeScript bot PRs (`ecosystem: npm`). A historical case's `base` and `head` are the PR's base and head commits. Where the PR is still open, or the bump is synthetic, `repository` is [`danvan86/lector-benchmark-corpus`](https://github.com/danvan86/lector-benchmark-corpus), which holds those heads. `note` says what breaks, for the curator. The harness doesn't trust the corpus: every run checks that its head has a failure caused by the update.
 
 ## A run
 

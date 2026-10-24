@@ -220,11 +220,15 @@ class FixLoop(
                 changes = context.changes,
                 diagnostics = diagnostics,
                 snippets = codeSnippets(repo, diagnostics, buildFiles, context.changes.map { it.toVersion }),
+                // The API changes of every change come first, so trimming cuts the full APIs before any of them. Changes
+                // of one group often ground the same: each text is told once.
                 grounding =
                     if (grounded) {
-                        context.changes
-                            .map { adapter.ground(repo, it, diagnostics) }
-                            .filter { it.isNotEmpty() }
+                        (
+                            context.changes.map { adapter.apiChanges(repo, it, diagnostics) } +
+                                context.changes.map { adapter.ground(repo, it, diagnostics) }
+                        ).filter { it.isNotEmpty() }
+                            .distinct()
                             .joinToString("\n\n")
                     } else {
                         ""

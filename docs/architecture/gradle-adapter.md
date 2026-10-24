@@ -39,7 +39,7 @@ flowchart LR
 | | `GradleConsole.kt` | Plain console output → javac, kotlinc, and build-failure diagnostics; `missingToolchain()`. |
 | | `GradleGuardrails.kt` | `GradleScope` (`isEditable`, `isBuildFile`) and `GradleTestSkipping` (the build-file blocklist). |
 | | `TestReports.kt` | `TestReports(buildTool, layout, tool)`, with the instances `MAVEN_REPORTS` and `GRADLE_REPORTS`. Reads the reports with `testCases()` from `ecosystems:shared` (M9). |
-| | `JavapGrounding.kt` | Takes the JAR lookup as a function: `localRepositoryJars()` for Maven, the model's classpath for Gradle. |
+| | `JavapGrounding.kt` | Takes the JAR lookup as a function: `localRepositoryJars()` for Maven, the model's classpath for Gradle. `ApiChangesGrounding` (M10) takes the new and the old JARs the same way. |
 | | `ClusterKeys.kt` | `artifact:<group>:<artifact>` also from Gradle's `Could not find <group>:<artifact>:<version>.` (tool `gradle`). |
 | `recipes` | `IndexBuilder.kt` | Also reads `org.openrewrite.gradle.plugins.UpgradePluginVersion` leaves (`GRADLE_PLUGIN_LEAF`). |
 | | `build.gradle.kts` | `checkRewriteGradlePluginVersion`, next to the Maven plugin's check. |
@@ -119,11 +119,13 @@ Paths are relative to the repository root, also in multi-project builds.
 | Field | Content | Used by |
 |---|---|---|
 | `versions` | `group:artifact` → every version any resolvable configuration resolves to, buildscript classpaths included, in every project. Plugins appear under their marker coordinates `<id>:<id>.gradle.plugin`. The highest by `MavenVersionScheme` wins. | `resolvedVersions` (M2's downgrade rules) |
-| `classpath` | `{module, version, file}` per JAR on each source set's compile classpath (external modules only, lenient) | Grounding: the JARs of the change's group at its new version, from the last model of the repository |
+| `classpath` | `{module, version, file}` per JAR on each source set's compile classpath (external modules only, lenient) | Grounding: the JARs of the change's group at its new version, from the last model of the repository. Since M10 also the API changes' old JARs: the group's JARs at its old version from the classpath of any model read in the run, the base commit's included ([API changes](api-changes.md#old-jars)) |
 | `plugins` | IDs of the applied plugins, from the `META-INF/gradle-plugins/<id>.properties` of their JARs | `com.android.*` or `org.jetbrains.kotlin.multiplatform` → `ToolError` |
 | `includedBuilds` | Directories of the included builds inside the repository, relative to it | `isBuildFile` (review F3) |
 
 `resolvedVersions` runs the query on its own (with the hour as timeout); a failure there is a `ToolError`, so the recipe step reports `versionsUnreadable`.
+
+Every model read, by `verify` or `resolvedVersions`, in the head or the base commit's worktree, adds its `classpath` to `GradleAdapter.classpaths` (M10). That set is kept apart from `models`, the last model per repository: `models` feeds `isBuildFile` with its `includedBuilds`, and a base commit's included build must not become a build file of the head. `apiChanges` reads `classpaths` and starts no Gradle.
 
 ## Recipe runner
 

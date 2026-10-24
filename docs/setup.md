@@ -211,7 +211,8 @@ There is no configuration file in your repository: everything is in the workflow
 
 **Maven and Java.** The tool image has JDKs 17, 21, and 25 and Maven 3.10. lector-ai builds with the smallest JDK that is
 at least `maven.compiler.release` (or `<java.version>`) of the root POM, 21 if none is set. A project's Maven wrapper
-(`mvnw`) is used if it has one. Maven downloads dependencies and recipes from your repositories as usual.
+(`mvnw`) is used if it has one. Maven downloads dependencies and recipes from your repositories as usual. For the
+API changes the model gets, it also fetches the updated package's old version (its JARs only, no dependencies), the same way.
 
 **Gradle and Java.** A Gradle build needs its wrapper (`gradlew` and `gradle/wrapper/`) committed, and Gradle 8 or newer.
 lector-ai always runs the wrapper, so the image has no Gradle: the wrapper downloads the distribution its

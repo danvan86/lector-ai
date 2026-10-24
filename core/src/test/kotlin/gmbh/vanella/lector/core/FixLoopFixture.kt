@@ -107,6 +107,9 @@ open class FixLoopFixture {
     ) : EcosystemAdapter {
         var verifyCalls = 0
 
+        // The API changes the adapter tells, if set; unset, it keeps the port's default, like an adapter without any.
+        var apiChanges: ((DependencyChange) -> String)? = null
+
         override val ecosystem = "test"
 
         override fun isEditable(file: String) = true
@@ -147,6 +150,12 @@ open class FixLoopFixture {
             change: DependencyChange,
             diagnostics: List<Diagnostic>,
         ) = grounding(change) ?: "API of ${change.`package`} ${change.toVersion} for ${diagnostics.size} diagnostics"
+
+        override fun apiChanges(
+            repo: Path,
+            change: DependencyChange,
+            diagnostics: List<Diagnostic>,
+        ) = apiChanges?.invoke(change) ?: super.apiChanges(repo, change, diagnostics)
 
         override fun clusterKey(diagnostic: Diagnostic) = diagnostic.code
 

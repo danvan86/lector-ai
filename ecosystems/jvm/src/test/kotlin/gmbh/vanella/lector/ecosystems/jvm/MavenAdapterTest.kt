@@ -413,6 +413,11 @@ class MavenAdapterTest {
     }
 
     private companion object {
-        val PLUGINS = MavenPlugins("org.openrewrite.maven:rewrite-maven-plugin:9.9.9", "org.apache.maven.plugins:maven-help-plugin:8.8.8")
+        val PLUGINS =
+            MavenPlugins(
+                "org.openrewrite.maven:rewrite-maven-plugin:9.9.9",
+                "org.apache.maven.plugins:maven-help-plugin:8.8.8",
+                "org.apache.maven.plugins:maven-dependency-plugin:7.7.7",
+            )
     }
 }

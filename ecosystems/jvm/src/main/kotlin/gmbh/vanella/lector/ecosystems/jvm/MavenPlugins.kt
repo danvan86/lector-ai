@@ -9,6 +9,7 @@ import java.util.Properties
 data class MavenPlugins(
     val rewrite: String,
     val help: String,
+    val dependency: String,
 ) {
     companion object {
         fun load(resource: String = "maven-plugins.properties"): MavenPlugins {
@@ -16,7 +17,7 @@ data class MavenPlugins(
             val properties = stream.use { Properties().apply { load(it) } }
 
             fun plugin(name: String) = checkNotNull(properties.getProperty(name)) { "$resource has no $name plugin" }
-            return MavenPlugins(rewrite = plugin("rewrite"), help = plugin("help"))
+            return MavenPlugins(rewrite = plugin("rewrite"), help = plugin("help"), dependency = plugin("dependency"))
         }
     }
 }

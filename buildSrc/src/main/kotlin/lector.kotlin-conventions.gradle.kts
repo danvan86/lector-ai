@@ -14,6 +14,11 @@ val libs = versionCatalogs.named("libs")
 
 kotlin {
     jvmToolchain(25)
+    // No Java code calls the modules, so a default method in an interface needs no `DefaultImpls` copy for it. Coverage
+    // would count that copy, which nothing can call.
+    compilerOptions {
+        jvmDefault = org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode.NO_COMPATIBILITY
+    }
 }
 
 dependencies {

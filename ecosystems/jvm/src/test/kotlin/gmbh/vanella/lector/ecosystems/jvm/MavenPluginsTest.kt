@@ -12,6 +12,10 @@ class MavenPluginsTest {
 
         assertTrue(plugins.rewrite.matches(Regex("""org\.openrewrite\.maven:rewrite-maven-plugin:\d+\.\d+\.\d+""")), plugins.rewrite)
         assertTrue(plugins.help.matches(Regex("""org\.apache\.maven\.plugins:maven-help-plugin:\d+\.\d+\.\d+""")), plugins.help)
+        assertTrue(
+            plugins.dependency.matches(Regex("""org\.apache\.maven\.plugins:maven-dependency-plugin:\d+\.\d+\.\d+""")),
+            plugins.dependency,
+        )
     }
 
     @Test
