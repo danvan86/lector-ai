@@ -98,6 +98,7 @@ internal object FixLoopReport {
             StopReason.TIME_BUDGET -> "timeBudget"
             StopReason.NO_PROGRESS -> "noProgress"
             StopReason.CLUSTER_BUDGETS -> "clusterBudgets"
+            StopReason.MODEL_UNANSWERED -> "modelUnanswered"
         }
 
     private fun list(

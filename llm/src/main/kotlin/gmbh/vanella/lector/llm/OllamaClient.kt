@@ -62,7 +62,12 @@ class OllamaClient(
                     add(message("user", prompt))
                 }
             }
-        val response = send(body.toString())
+        val response = send(body.toString()) ?: return Proposal.Unanswered("Ollama at $url did not answer within $timeout")
+        return proposal(response)
+    }
+
+    /** The edits in Ollama's [response]. An error status is a tool error: Ollama is misconfigured, e.g. the model is missing. */
+    private fun proposal(response: HttpResponse<String>): Proposal {
         val status = response.statusCode()
         if (status != HTTP_OK) throw ToolError("Ollama at $url answered with status $status: ${response.body()}")
         val content = messageContent(response.body()) ?: return Proposal.Invalid("Ollama's reply has no message content")
@@ -70,7 +75,8 @@ class OllamaClient(
         return FixSchema.parse(content)
     }
 
-    private fun send(body: String): HttpResponse<String> {
+    /** Ollama's response, or null if it didn't answer within the timeout. */
+    private fun send(body: String): HttpResponse<String>? {
         val request =
             HttpRequest
                 .newBuilder(endpoint)
@@ -81,7 +87,8 @@ class OllamaClient(
         return try {
             http.send(request, HttpResponse.BodyHandlers.ofString())
         } catch (e: HttpTimeoutException) {
-            throw ToolError("Ollama at $url did not answer within $timeout", e)
+            logger.warn("Ollama at {} did not answer within {}: {}", url, timeout, e.toString())
+            null
         } catch (e: IOException) {
             throw ToolError("Ollama is not reachable at $url: $e", e)
         }

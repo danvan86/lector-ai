@@ -225,12 +225,12 @@ class OllamaClientTest {
     }
 
     @Test
-    fun `an Ollama that doesn't answer in time is a tool error`() {
+    fun `an Ollama that doesn't answer in time is no answer, not a tool error`() {
         delayMillis = 2_000
 
-        val error = assertFailsWith<ToolError> { OllamaClient(url, "m", timeout = 1.seconds).propose(request) }
+        val proposal = OllamaClient(url, "m", timeout = 1.seconds).propose(request)
 
-        assertContains(error.message, "Ollama at $url did not answer within 1s")
+        assertEquals(Proposal.Unanswered("Ollama at $url did not answer within 1s"), proposal)
     }
 
     private fun chatResponse(content: String) =

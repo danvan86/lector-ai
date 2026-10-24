@@ -307,6 +307,9 @@ need the rest.
 
 With the 30B image, set `model: qwen3-coder:30b` in the action's inputs.
 
+If the model takes longer than 15 minutes to answer one request, which a large request can on a CPU runner, lector-ai
+stops the fix loop and reports what is left, as for any other budget. A larger runner answers faster.
+
 ## Advanced setup
 
 Use the action directly, instead of the reusable workflow, for what the reusable workflow can't do: tokens for private
