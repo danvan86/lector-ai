@@ -67,7 +67,7 @@ class MavenAdapter(
         )
 
     // The old version's JARs of each group and version, by artifact ID: looked up once per run, failures included.
-    private val oldJars = mutableMapOf<Pair<String, String>, Map<String, List<Path>>>()
+    private val oldJarsCache = mutableMapOf<Pair<String, String>, Map<String, List<Path>>>()
     private val jdkSelection = JdkSelection(jdks)
 
     override val ecosystem = "maven"
@@ -202,7 +202,7 @@ class MavenAdapter(
         repo: Path,
         change: DependencyChange,
         artifacts: Set<String>,
-    ) = oldJars.getOrPut(change.group() to change.fromVersion) {
+    ) = oldJarsCache.getOrPut(change.group() to change.fromVersion) {
         val root = repo.toRealPath()
         val own = change.`package`.substringAfter(':')
         val found = mutableMapOf<String, List<Path>>()

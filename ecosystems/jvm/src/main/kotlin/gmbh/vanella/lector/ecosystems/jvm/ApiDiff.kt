@@ -101,14 +101,7 @@ internal object ApiDiff {
                 .filterValues { it != null }
         return renamed.map { (pkg, target) -> ApiChange(ApiChangeKind.RENAMED_PACKAGE, pkg, target) } +
             gone.filter { packageOf(it) !in renamed }.map { name ->
-                val successor = successors[name]
-                if (successor ==
-                    null
-                ) {
-                    ApiChange(ApiChangeKind.REMOVED_CLASS, name)
-                } else {
-                    ApiChange(ApiChangeKind.MOVED_CLASS, name, successor)
-                }
+                successors[name]?.let { ApiChange(ApiChangeKind.MOVED_CLASS, name, it) } ?: ApiChange(ApiChangeKind.REMOVED_CLASS, name)
             }
     }
 
@@ -202,16 +195,8 @@ internal object ApiChangesText {
                 val shown = lines.take(room.getValue(limit))
                 room[limit] = room.getValue(limit) - shown.size
                 val more = lines.size - shown.size
-                (
-                    listOf(kind.heading) + shown.map { "- $it" } +
-                        if (more >
-                            0
-                        ) {
-                            listOf("- … and $more more")
-                        } else {
-                            emptyList()
-                        }
-                ).joinToString("\n")
+                val count = if (more > 0) listOf("- … and $more more") else emptyList()
+                (listOf(kind.heading) + shown.map { "- $it" } + count).joinToString("\n")
             }
         return "API changes of ${change.`package`} from ${change.fromVersion} to ${change.toVersion}\n\n" + blocks.joinToString("\n\n")
     }
