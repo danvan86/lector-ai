@@ -74,6 +74,8 @@ on:
 
 permissions:
   contents: read
+  # dependabot/fetch-metadata lists the PR's commits, which a private repository allows only with this.
+  pull-requests: read
 
 jobs:
   lector-ai:
@@ -83,7 +85,8 @@ jobs:
       app-private-key: ${{ secrets.LECTOR_APP_PRIVATE_KEY }}
 ```
 
-Don't add `concurrency` to this file. The reusable workflow keeps one run per PR itself, and a caller job in the same
+`pull-requests: read` lets `dependabot/fetch-metadata` read a Dependabot PR's commits in a private repository; the
+reusable workflow can't have more permissions than this file grants. Don't add `concurrency` to this file. The reusable workflow keeps one run per PR itself, and a caller job in the same
 group would be cancelled with it.
 
 The reusable workflow runs lector-ai only on same-repository PRs by Renovate or Dependabot, or with the `lector` label,
@@ -320,6 +323,8 @@ on:
 
 permissions:
   contents: read
+  # dependabot/fetch-metadata lists the PR's commits, which a private repository allows only with this.
+  pull-requests: read
 
 # One run per PR. A push or a label by a person or one of the bots, and closing the PR, cancel the run still working on
 # the PR. Another app's events don't, lector-ai's own push and label included: that run still has to post its comment.

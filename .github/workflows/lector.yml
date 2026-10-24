@@ -107,6 +107,8 @@ on:
 
 permissions:
   contents: read
+  # dependabot/fetch-metadata lists the PR's commits, which a private repository allows only with this.
+  pull-requests: read
 
 jobs:
   heal:

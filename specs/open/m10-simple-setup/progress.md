@@ -43,6 +43,12 @@ AC1–AC26 met: the frozen tests (AC1–AC9, AC11–AC12), reading the files (AC
 `UpdateSource.name` lost its example; AC19–AC19c: the probes above; AC20: the clean build; AC26: only a task in
 `build.gradle.kts`, no dependency or plugin).
 
+## Found in the first real runs (lector-sample-app)
+
+- `dependabot/fetch-metadata` fails with 403 "Resource not accessible by integration" in a private repository when the
+  token can't read pull requests. The setup guide's workflow had the same gap since M8 (only `contents: read`). The
+  reusable workflow and every documented caller now grant `pull-requests: read` (spec 3 said `contents: read` only).
+
 ## Open
 
 - AC27: the run in a test repository on github.com with only the short setup. Needs a published release (blocked by the
