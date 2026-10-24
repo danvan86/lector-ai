@@ -76,17 +76,6 @@ internal class JavapGrounding(
         return "javap -public of ${change.`package`} ${change.toVersion}:\n\n" + blocks.joinToString("\n\n") { it.second }
     }
 
-    private fun classNames(jar: Path): List<String> =
-        ZipFile(jar.toFile()).use { zip ->
-            zip
-                .entries()
-                .asSequence()
-                .map { it.name }
-                .filter { it.endsWith(".class") && '$' !in it && !it.endsWith("-info.class") }
-                .map { it.removeSuffix(".class").replace('/', '.') }
-                .toList()
-        }
-
     /** One `(class, signatures)` pair per class, without the `Compiled from` line. */
     private fun javap(
         repo: Path,
@@ -113,6 +102,18 @@ internal class JavapGrounding(
             .removeSuffix(" {")
             .substringAfterLast(' ')
 }
+
+/** The top-level classes in [jar], by their entries: cheap enough for every JAR of every change. */
+internal fun classNames(jar: Path): List<String> =
+    ZipFile(jar.toFile()).use { zip ->
+        zip
+            .entries()
+            .asSequence()
+            .map { it.name }
+            .filter { it.endsWith(".class") && '$' !in it && !it.endsWith("-info.class") }
+            .map { it.removeSuffix(".class").replace('/', '.') }
+            .toList()
+    }
 
 /**
  * Every JAR of the package's group at the new version in the local Maven repository at [localRepository], without

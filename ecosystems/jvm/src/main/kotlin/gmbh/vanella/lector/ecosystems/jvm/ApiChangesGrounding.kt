@@ -47,7 +47,10 @@ internal class ApiChangesGrounding(
     ): String {
         val newJars = newJars(repo, change)
         val references = ErrorReferences(repo, diagnostics)
-        if (!refersTo(references, model(newJars.values.flatten()).classes.keys)) return ""
+        // The JARs' entries tell whether the errors refer to the change. Parsing every changed JAR would cost seconds and
+        // hundreds of MB of models for a PR with hundreds of changes.
+        val names = newJars.values.flatten().flatMap(::classNames)
+        if (!refersTo(references, names.toSet())) return ""
         val oldJars = oldJars(repo, change, newJars.keys)
         val artifacts = newJars.keys.intersect(oldJars.keys).sorted()
         val old = model(artifacts.flatMap { oldJars.getValue(it) })
