@@ -14,6 +14,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 6 | Proof cases: red at `cf183a8`, green with M10, in the benchmark corpus | ✅ |
 | 7 | Quality gates verified | ✅ |
 | 8 | Docs in sync | ✅ |
+| 9 | Review and fixes ([review.md](review.md)) | ✅ |
 
 ## Judgment calls
 
@@ -32,7 +33,8 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 - **Moved fields match by name alone.** Fields have no parameters, so a static field moves to the one other class with a
   static field of that name, whatever its type (spec R4 doesn't compare the return type). A search over 44 real release
   pairs showed false moves like `TypeAdapters.NUMBER → JsonToken.NUMBER` (Gson) and `Modifier.ABSTRACT →
-  GeneratedJavaParserConstants.ABSTRACT` (JavaParser). Left as specified; worth a look in review or M11.
+  GeneratedJavaParserConstants.ABSTRACT` (JavaParser). Left as specified; worth a look in review or M11. Changed in the
+  review (F1, R22): a field moves only to a field of the same type.
 
 ## Quality gates
 
@@ -40,6 +42,10 @@ Final check, each on its own: `ktlintCheck`, `detektMain detektTest`, `test`, `:
 `clean build --rerun-tasks --no-build-cache` (231 tasks executed), all exit 0. 910 unit tests (236 in `ecosystems:jvm`,
 208 in `core`), 21 end-to-end tests, 100 % line and branch coverage per module. Opt-in: `ApiChangesIntegrationTest`
 (`:cli:integrationTest`, real Maven) green.
+
+After the review ([review.md](review.md)): `clean build --rerun-tasks --no-build-cache` exit 0 (222 tasks executed),
+911 unit tests (237 in `ecosystems:jvm`), 21 end-to-end tests, 100 % line and branch coverage per module;
+`ApiChangesIntegrationTest` green again.
 
 Probes, each reverted (`git status` clean afterwards): ktlint on bad spacing in `ApiModel.kt`; detekt on
 `System.out.println` in `ApiDiff.kt` (`ForbiddenMethodCall`) and on a 13th function in `EcosystemAdapter`

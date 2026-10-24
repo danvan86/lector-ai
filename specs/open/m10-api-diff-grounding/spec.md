@@ -46,7 +46,7 @@ Categories, decided in this order; the first that applies wins (R11):
 | **Moved class** | A class is gone, and exactly one class with the same simple name is new in another package |
 | **Removed class** | A class is gone and neither of the above applies |
 | **Changed signature** (Q8) | A member name of a class exists in both versions, and at least one of its old signatures is gone: one line, old overloads → new overloads |
-| **Moved member** (Q3, R3, R4) | A static member is gone from its class, and exactly one other class of the group's new JARs (all of them, not only the diffed classes) has a static member with the same name and erased parameter types. The return type is not compared (Guava's `toStringHelper` returns a different nested type in `MoreObjects`) |
+| **Moved member** (Q3, R3, R4) | A static member is gone from its class, and exactly one other class of the group's new JARs (all of them, not only the diffed classes) has a static member with the same name and erased parameter types. The return type is not compared (Guava's `toStringHelper` returns a different nested type in `MoreObjects`); a field's type is, as it is all a field's signature has (R22) |
 | **Rename candidate** (Q7) | In the same class, exactly one member is gone and exactly one is new, of the same kind and signature |
 | **Removed member** | A member is gone and none of the above applies |
 
