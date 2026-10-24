@@ -62,7 +62,7 @@ interface SourceContext {
 
 /** The extension point for whoever opens dependency PRs (concept section 3), one adapter per bot, plus the fallback. */
 interface UpdateSource {
-    /** The name the `source` option selects this source by, e.g. `renovate`. */
+    /** The name the `source` option selects this source by, the bot's or `fallback`. */
     val name: String
 
     /** Where the fixes go unless the run's mode says otherwise. */

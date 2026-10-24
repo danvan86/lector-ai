@@ -29,9 +29,10 @@ object ReusableWorkflow {
             problems += "lector.yml's ollama-image default must be $image, not ${workflowInputs["ollama-image"]}"
         }
         for ((name, default) in actionInputs - FILLED) {
-            when (name) {
-                !in workflowInputs -> problems += "lector.yml lacks the action's input $name"
-                else -> if (workflowInputs[name] != default) problems += "lector.yml's $name default is ${workflowInputs[name]}, the action's $default"
+            val ours = workflowInputs[name]
+            when {
+                ours == null -> problems += "lector.yml lacks the action's input $name"
+                ours != default -> problems += "lector.yml's $name default is $ours, the action's $default"
             }
         }
         for ((file, text) in docs) {
@@ -61,7 +62,13 @@ object ReusableWorkflow {
                 current = it.groupValues[1]
                 result[current] = ""
             }
-            default.find(line)?.let { result[current] = it.groupValues[1].trim().removeSurrounding("\"").removeSurrounding("'") }
+            default.find(line)?.let {
+                result[current] =
+                    it.groupValues[1]
+                        .trim()
+                        .removeSurrounding("\"")
+                        .removeSurrounding("'")
+            }
         }
         return result
     }
