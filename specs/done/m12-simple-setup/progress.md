@@ -1,4 +1,4 @@
-# Progress – M10 Simple setup
+# Progress – M12 Simple setup
 
 Spec: [`spec.md`](spec.md) · Tests: [`tests.md`](tests.md)
 

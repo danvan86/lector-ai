@@ -1,6 +1,6 @@
-# M10 – Simple setup · Brainstorming
+# M12 – Simple setup · Brainstorming
 
-Milestone: M10 in [features.md](../../../docs/features.md) (new) · Status: **Closed**
+Milestone: M12 in [features.md](../../../docs/features.md) (built as M10; main took that number for the API diff) · Status: **Closed**
 
 **How to answer:** the agent asks these questions in chat; this file has the full options and records the answers. The recommended option is preselected with `[x]`.
 

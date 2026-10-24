@@ -1,4 +1,4 @@
-# M10 – Simple setup · Tests
+# M12 – Simple setup · Tests
 
 Spec: [spec.md](spec.md) · Decisions: [brainstorming.md](brainstorming.md) · Status: **Approved, frozen (tests.lock)**
 

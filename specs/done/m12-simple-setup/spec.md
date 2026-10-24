@@ -1,6 +1,6 @@
-# M10 – Simple setup · Spec
+# M12 – Simple setup · Spec
 
-Milestone: M10 in [features.md](../../../docs/features.md) (new) · Decisions: [brainstorming.md](brainstorming.md) (including the spec critique) · Status: **Ready to implement**
+Milestone: M12 in [features.md](../../../docs/features.md) (built as M10; main took that number for the API diff) · Decisions: [brainstorming.md](brainstorming.md) (including the spec critique) · Status: **Ready to implement**
 
 ## Goal
 

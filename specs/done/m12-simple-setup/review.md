@@ -1,4 +1,4 @@
-# Review – M10 Simple setup
+# Review – M12 Simple setup
 
 Scope: commits `b54f346..460e954` (the M10 commits on top of `cf183a8`) against [`spec.md`](spec.md).
 Method: read every changed source, test, build, workflow, and doc file; ran `./gradlew clean build --no-build-cache`
