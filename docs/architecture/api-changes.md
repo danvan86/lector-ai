@@ -1,6 +1,6 @@
 # Architecture – API changes
 
-Milestone: [M10](../features.md#m10--api-diff-as-grounding-) · Spec: [`m10-api-diff-grounding/spec.md`](../../specs/open/m10-api-diff-grounding/spec.md) · Review: [`review.md`](../../specs/open/m10-api-diff-grounding/review.md)
+Milestone: [M10](../features.md#m10--api-diff-as-grounding-) · Spec: [`m10-api-diff-grounding/spec.md`](../../specs/done/m10-api-diff-grounding/spec.md) · Review: [`review.md`](../../specs/done/m10-api-diff-grounding/review.md)
 
 > **Summary for agents**
 >
