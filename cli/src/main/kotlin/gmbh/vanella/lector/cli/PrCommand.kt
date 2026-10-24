@@ -191,7 +191,7 @@ internal class PrCommand(
         if (slug.isNotEmpty() && name.isEmpty() && email.isEmpty()) return lookUp(slug)
         if (slug.isEmpty() && name.isNotEmpty() && email.isNotEmpty()) return { _ -> CommitIdentity(name, email) }
         val nothing = slug.isEmpty() && name.isEmpty() && email.isEmpty()
-        throw UsageError(
+        throw usageError(
             if (nothing) {
                 "missing option --bot-name and --bot-email, or --app-slug"
             } else {
@@ -203,13 +203,16 @@ internal class PrCommand(
     /** The bot of the App [slug], looked up with the token. Only on github.com, whose noreply domain is known. */
     private fun lookUp(slug: String): (token: String) -> CommitIdentity {
         if (serverUrl.scheme != "https" || !serverUrl.host.equals(GITHUB_HOST, ignoreCase = true)) {
-            throw UsageError(
+            throw usageError(
                 "--app-slug works on $GITHUB_HOST only, where the bot's email is known. On $serverUrl, name the bot " +
                     "with --bot-name and --bot-email.",
             )
         }
         return { token -> appIdentity(apiUrl, token, slug) }
     }
+
+    // Thrown from run(), not while parsing: without the context, Clikt prints the root command's usage.
+    private fun usageError(message: String) = UsageError(message).apply { context = currentContext }
 
     private fun outcome(bot: (token: String) -> CommitIdentity): PrOutcome {
         val token = currentContext.readEnvvar(TOKEN_VARIABLE).orEmpty()

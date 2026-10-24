@@ -501,6 +501,20 @@ class PrCommandTest {
         }
     }
 
+    @Test
+    fun `a bot named the wrong way prints the usage of pr, like every other usage error of pr`() {
+        listOf(
+            "$repo --event $event",
+            "$repo --event $event --app-slug my-lector --bot-name lector-ai[bot]",
+            "$repo --event $event --app-slug my-lector --github-server-url https://ghe.example.com",
+        ).forEach { args ->
+            val run = LectorCommand("1.2.3").subcommands(command()).executeInProcess("pr", *split(args))
+
+            assertContains(run.stderr, "Usage: lector pr [<options>] [<repo>]", message = args)
+            assertEquals(2, run.exitCode, args)
+        }
+    }
+
     private fun split(args: String) =
         Regex("""'[^']*'|\S+""")
             .findAll(args)
