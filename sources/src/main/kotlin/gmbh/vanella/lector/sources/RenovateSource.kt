@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.sources
 
 import gmbh.vanella.lector.core.BranchPolicy
+import gmbh.vanella.lector.core.CommitIdentity
 import gmbh.vanella.lector.core.PackageUpdate
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.SourceContext
@@ -60,6 +61,11 @@ class RenovateSource(
     override val branchPolicy = BranchPolicy.IN_PLACE
 
     override fun recognizes(pr: PullRequest) = pr.author in botLogins && pr.headBranch.startsWith(BRANCH_PREFIX)
+
+    // Renovate stops updating a branch that has commits by anyone else (concept 3.1).
+    override fun setupHint(identity: CommitIdentity) =
+        "Renovate: add ${identity.email} to gitIgnoredAuthors in the Renovate configuration, " +
+            "or Renovate stops updating a branch once lector-ai has pushed to it."
 
     override fun read(
         pr: PullRequest,

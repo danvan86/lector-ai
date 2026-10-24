@@ -34,6 +34,7 @@ git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
 benchmark/     benchmark harness and report (M6); uses core and the adapters, never shipped
 action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
+.github/workflows/lector.yml   the reusable workflow repositories call; wraps the action (not a Gradle module)
 docker/        Dockerfiles of the tool image and the Ollama image, and the image's Node toolchain versions (not Gradle modules)
 ```
 
@@ -60,7 +61,9 @@ docker build -f docker/lector/Dockerfile -t lector .   # tool image, after :cli:
 docker build --build-arg MODEL=qwen2.5-coder:7b -t lector-ollama docker/ollama   # Ollama image with the model baked in
 ```
 
-The setup for users is in [`docs/setup.md`](docs/setup.md). A version tag (`v<version>`) publishes both images to GHCR
+The setup for users is in [`docs/setup.md`](docs/setup.md): a GitHub App, two secrets, and a short workflow that calls the
+reusable workflow `.github/workflows/lector.yml`. `checkReusableWorkflow` (part of `build`) keeps it, the action, and the
+docs on one version. A version tag (`v<version>`) publishes both images to GHCR
 (`.github/workflows/release.yml`); it is refused until the MSAL check in [`docs/licensing.md`](docs/licensing.md) is done.
 
 The build uses a JDK 25 toolchain; Gradle downloads it if it's missing.
@@ -83,7 +86,7 @@ These come from the concept. Don't break them without updating the concept first
 - Small, focused classes and functions. Name things after domain terms from the concept (`DependencyChange`, `Diagnostic`, `Edit`, `EcosystemAdapter`).
 - Prefer immutable data classes and pure functions. Keep I/O (processes, HTTP, Git) at the edges.
 - Every external process gets a timeout, and its stdout and stderr are drained (or redirected to files). Otherwise a full pipe or a stuck process hangs the run.
-- Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors, unexpected exceptions, and `Error`s included (an uncaught `Error`, like a native library that doesn't load, ends the JVM with `1`). Otherwise the pipeline blames the update for a tool bug. Validate option values completely when parsing (a URL's scheme and host, a file's existence, not only the syntax), so a bad value fails before minutes of build.
+- Exit `1` means "the update caused a problem". Any other failure exits with `2`, usage errors, unexpected exceptions, and `Error`s included (an uncaught `Error`, like a native library that doesn't load, ends the JVM with `1`). Otherwise the pipeline blames the update for a tool bug. Validate option values completely when parsing (a URL's scheme and host, a file's existence, not only the syntax), so a bad value fails before minutes of build. A Clikt `UsageError` thrown after parsing (from `run`, for a rule across options) gets `currentContext`, or Clikt prints the root command's usage.
 - What the tool reads back from the Git host as its own (the report comment, later a companion PR or branch) is matched by the bot's identity, not by a marker or a name alone: anyone who can comment on a PR can write the marker.
 - A PR can carry hundreds of changes: a labelled PR lists every transitive one. Per-change work reads what the changes share once per run, decides whether a change matters from the cheapest read (a JAR's entry names, not its parsed classes: 60 JARs took 3 s and 240 MB), and every list for a person or the model names the first few and counts the rest.
 - The repository under repair is the user's. Commit only the files a step changed: a build leaves output in the tree, and test fixtures ignore `target/`, so `git add --all` looks fine in tests and isn't. Reset the working tree on every way out of a failed step, exceptions and errors included.
@@ -92,7 +95,7 @@ These come from the concept. Don't break them without updating the concept first
 - After `detect`, what an edit or a slow tool causes is a problem of the attempt, never a `ToolError`: an adapter that re-reads the project in `verify`, `updateLockfiles`, or `ground` turns an unreadable file into a `Diagnostic` or a failed update, and a timeout in grounding into no grounding. Otherwise a trailing comma from the model ends the run with exit `2`.
 - The process allowlist strips the environment. The variables a build tool reads credentials from (Maven `MAVEN_*`, Gradle `GRADLE_*` and `ORG_GRADLE_PROJECT_*`) are passed by its adapter, not added to `core`, and the setup guide names them.
 - Values from Java APIs are platform types. Check for null where Java can return it, and fail with a clear message instead of a `NullPointerException`.
-- All library and plugin versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Base image versions live in the `FROM` lines of the Dockerfiles under `docker/`. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs. A version pinned to a release line on purpose (a JDK per image stage) gets an `ignore` for major updates in `.github/dependabot.yml`: Dependabot proposes major Docker tags by default.
+- All library and plugin versions live in `gradle/libs.versions.toml`, including BOMs for versions that would otherwise come in transitively. Base image versions live in the `FROM` lines of the Dockerfiles under `docker/`. Dependabot can only update what's declared. Versions that must match each other get a check in `./gradlew build`, not a comment: Dependabot bumps them in separate PRs. Such a check also covers where a value is used, not only where it is declared: a workflow input that is declared but never passed on is ignored without a word. A version pinned to a release line on purpose (a JDK per image stage) gets an `ignore` for major updates in `.github/dependabot.yml`: Dependabot proposes major Docker tags by default.
 - No new dependency without a short reason in the PR description.
 - English for code, comments, docs, and commits.
 

@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.sources
 
 import gmbh.vanella.lector.core.BranchPolicy
+import gmbh.vanella.lector.core.CommitIdentity
 import gmbh.vanella.lector.core.PackageUpdate
 import gmbh.vanella.lector.core.PullRequest
 import kotlin.test.Test
@@ -21,6 +22,17 @@ class RenovateSourceTest {
         assertFalse(source.recognizes(pr(branch = "dependabot/maven/org.springframework.boot-3.4.0")))
         assertFalse(source.recognizes(pr(branch = "feature/renovate/x")))
         assertFalse(source.recognizes(pr(branch = "renovate/spring-boot").copy(author = "mallory")))
+    }
+
+    @Test
+    fun `its setup hint names the bot's email for gitIgnoredAuthors`() {
+        val hint = source.setupHint(CommitIdentity("my-lector[bot]", "123+my-lector[bot]@users.noreply.github.com"))
+
+        assertEquals(
+            "Renovate: add 123+my-lector[bot]@users.noreply.github.com to gitIgnoredAuthors in the Renovate configuration, " +
+                "or Renovate stops updating a branch once lector-ai has pushed to it.",
+            hint,
+        )
     }
 
     @Test

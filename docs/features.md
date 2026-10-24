@@ -177,6 +177,32 @@ opt-in.
 - Turn the unambiguous entries of M10's typed API diff (moved class, renamed package, moved member) into generated ast-grep rules and run them before the fix loop
 - Needs the diff before the fix loop: today it is built from the errors of each attempt
 
+## M12 – Simple setup 🟨
+
+**Goal:** a repository on github.com gets lector-ai in three steps instead of an 80-line workflow.
+
+- Reusable workflow `.github/workflows/lector.yml` (`workflow_call`): the trigger conditions, one run per PR (no bot name
+  needed), the Ollama service, `fetch-metadata`, the App token, the checkout, the action, and the cleanup job; the
+  action's inputs plus `runs-on`, `ollama-image`, `timeout-minutes`; the App's client ID and key as declared secrets
+- The bot's identity from the App's slug: `lector pr --app-slug` and the action's `app-slug` input look up
+  `<slug>[bot]` on github.com and build its noreply email. `--bot-name`/`--bot-email` stay for GitHub Enterprise
+- Every run on a Renovate PR logs the value for `gitIgnoredAuthors`, the first one included
+- `./gradlew build` checks that the reusable workflow, the action, the Ollama image, and the docs name the same version,
+  and that the workflow offers the action's inputs with the same defaults
+- Documentation: the [setup guide](setup.md) and the README lead with the short setup (a pre-filled link that creates
+  the App, `gh secret set`, ten lines of workflow); the full workflow stays as the advanced setup
+- Still open: the run in a test repository on github.com with only the short setup (Renovate, Dependabot, a labelled PR,
+  closing, cancelling), and opening the pre-filled App link once
+
+**Changes to `core` in M12:**
+
+| Change | Reason |
+|---|---|
+| `UpdateSource.setupHint(identity)`, logged by the pipeline once a source takes the PR | Renovate needs the bot's email in its configuration before lector-ai's first push. The text is the source's, so `core` names no bot |
+
+**Done when:** a Renovate PR and a Dependabot PR in a test repository, set up only with the short setup, get the same
+result as with the M8 workflow.
+
 ## Later ⬜
 
 Not planned in detail yet. Prioritize after M11 based on demand and benchmark results.
@@ -187,3 +213,13 @@ Not planned in detail yet. Prioritize after M11 based on demand and benchmark re
 - Better error clustering, and grounding from a migration-guide index per dependency
 - API changes for TypeScript (old vs. new `.d.ts`)
 - Linters bound to Maven `verify` can block the last fix attempt, the same problem M7 Q17 solved for Gradle
+- From the first runs on lector-sample-app (October 2026):
+  - A minor version past the newest recipe (Spring Boot 4.1.1, `rewrite-recipe-bom` 3.37.0 has `UpgradeSpringBoot_4_0`)
+    gets no recipe, because a recipe matches only if its target contains the PR's target (concept section 4). Running
+    the closest lower recipe of the same major as a first step would change that rule. A newer BOM may simply have the
+    recipe
+  - The model sends edits with empty search text to append to a file (`application.properties`). They are rejected, as
+    the edit format says; the prompt could say so, or the format could allow appending
+  - The 7B model on a 2-CPU runner can take longer than the 15-minute request timeout for a large first request. Such a
+    run now ends with its report (`modelUnanswered`); a configurable timeout or less grounding on the first request
+    would let it try

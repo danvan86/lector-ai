@@ -487,6 +487,22 @@ class FixLoopTest : FixLoopFixture() {
     }
 
     @Test
+    fun `a model that doesn't answer in time ends the loop with a report, and its attempt is rejected`() {
+        val adapter = FakeAdapter()
+        val silent = ScriptedLlm({ Proposal.Unanswered("Ollama at http://ollama:11434 did not answer within 15m") })
+
+        val result = loop(adapter, silent).run(repo, context, adapter.initial())
+
+        assertEquals(StopReason.MODEL_UNANSWERED, result.stopReason, "the next request would wait as long")
+        assertEquals(
+            AttemptOutcome.Rejected("the model didn't answer: Ollama at http://ollama:11434 did not answer within 15m"),
+            result.attempts.single().outcome,
+        )
+        assertEquals(adapter.initial(), result.verification)
+        assertEquals("", git("status", "--porcelain"))
+    }
+
+    @Test
     fun `the loop stops when its time is up`() {
         val adapter = FakeAdapter()
         val slow =

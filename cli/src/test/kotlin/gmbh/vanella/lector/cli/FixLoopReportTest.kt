@@ -26,6 +26,7 @@ class FixLoopReportTest {
                 StopReason.TIME_BUDGET to ("the time budget is used up" to "timeBudget"),
                 StopReason.NO_PROGRESS to ("no progress in the last attempts" to "noProgress"),
                 StopReason.CLUSTER_BUDGETS to ("every cluster used its attempts" to "clusterBudgets"),
+                StopReason.MODEL_UNANSWERED to ("the model didn't answer in time" to "modelUnanswered"),
             )
         expected.forEach { (reason, texts) ->
             val result = FixLoopResult(emptyList(), reason, Verification())

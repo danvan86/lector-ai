@@ -1,18 +1,22 @@
 # The GitHub Action: runs `lector pr` in the tool image of the same version, on the PR the workflow was started for.
-# The workflow provides the checkout of the PR's head, the Ollama sidecar, the GitHub App token, and for Dependabot PRs the
-# output of dependabot/fetch-metadata (docs/setup.md).
+# The workflow provides the checkout of the PR's head, the Ollama sidecar, the GitHub App token and slug, and for Dependabot
+# PRs the output of dependabot/fetch-metadata (docs/setup.md). The reusable workflow .github/workflows/lector.yml does all
+# of it.
 name: lector-ai
 description: Fixes the build and test errors that a dependency PR causes, with OpenRewrite and a local model, and reports on the PR.
 inputs:
   token:
     description: The GitHub App's installation token (actions/create-github-app-token). Pushes with it start the PR's checks.
     required: true
+  app-slug:
+    description: The App's slug, the app-slug output of actions/create-github-app-token. lector-ai looks up its bot and the bot's email on github.com. Empty to name the bot with bot-name and bot-email instead.
+    default: ""
   bot-name:
-    description: The App's bot, the author of every commit, e.g. my-app[bot]
-    required: true
+    description: The App's bot, the author of every commit, e.g. my-app[bot]. Only without app-slug, e.g. on GitHub Enterprise Server.
+    default: ""
   bot-email:
-    description: The bot's email, <user id>+<app slug>[bot]@users.noreply.github.com
-    required: true
+    description: The bot's email, with bot-name. Only without app-slug.
+    default: ""
   bot-logins:
     description: The bots whose PRs are fixed, comma-separated
     default: renovate[bot],dependabot[bot]
@@ -77,10 +81,10 @@ runs:
     GRADLE_USER_HOME: /github/home/.gradle
   args:
     - pr
-    - --bot-name
-    - ${{ inputs.bot-name }}
-    - --bot-email
-    - ${{ inputs.bot-email }}
+    # Attached, so that an empty value stays one argument.
+    - --app-slug=${{ inputs.app-slug }}
+    - --bot-name=${{ inputs.bot-name }}
+    - --bot-email=${{ inputs.bot-email }}
     - --bot-logins
     - ${{ inputs.bot-logins }}
     - --mode=${{ inputs.mode }}

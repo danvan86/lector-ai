@@ -62,7 +62,7 @@ interface SourceContext {
 
 /** The extension point for whoever opens dependency PRs (concept section 3), one adapter per bot, plus the fallback. */
 interface UpdateSource {
-    /** The name the `source` option selects this source by, e.g. `renovate`. */
+    /** The name the `source` option selects this source by, the bot's or `fallback`. */
     val name: String
 
     /** Where the fixes go unless the run's mode says otherwise. */
@@ -79,4 +79,11 @@ interface UpdateSource {
         pr: PullRequest,
         context: SourceContext,
     ): SourceUpdate
+
+    /**
+     * What the source's own configuration must know about the bot [identity], logged on every run this source takes, the
+     * skipped ones included: e.g. that the bot's commits must not stop the source from updating its branch. `null` if
+     * nothing.
+     */
+    fun setupHint(identity: CommitIdentity): String?
 }

@@ -3,6 +3,7 @@ package gmbh.vanella.lector.cli
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
+import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.default
 import com.github.ajalt.clikt.parameters.groups.provideDelegate
@@ -27,6 +28,7 @@ import gmbh.vanella.lector.core.RecipeIndex
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.UpdateSource
 import gmbh.vanella.lector.git.GitHubHost
+import gmbh.vanella.lector.git.gitHubAppIdentity
 import gmbh.vanella.lector.llm.OllamaClient
 import gmbh.vanella.lector.sources.DependabotDependency
 import gmbh.vanella.lector.sources.DependabotSource
@@ -39,6 +41,7 @@ import kotlin.io.path.isRegularFile
 private const val TOKEN_VARIABLE = "LECTOR_GITHUB_TOKEN"
 private const val DEFAULT_API_URL = "https://api.github.com"
 private const val DEFAULT_SERVER_URL = "https://github.com"
+private const val GITHUB_HOST = "github.com"
 private const val DEFAULT_FALLBACK_LABEL = "lector"
 private val DEFAULT_BOT_LOGINS = listOf("renovate[bot]", "dependabot[bot]")
 private val SOURCE_NAMES = listOf("renovate", "dependabot", "fallback")
@@ -63,6 +66,7 @@ internal class PrCommand(
     private val index: () -> RecipeIndex,
     private val llm: (url: URI, model: String) -> LlmClient = ::OllamaClient,
     private val host: (event: Path, apiUrl: URI, serverUrl: URI, token: String, botLogin: String) -> GitHost = ::GitHubHost,
+    private val appIdentity: (apiUrl: URI, token: String, slug: String) -> CommitIdentity = ::gitHubAppIdentity,
 ) : CliktCommand(name = "pr") {
     private val repo by argument(help = "The repository, checked out at the PR's head commit").path().default(Path.of("."))
     private val event by option(
@@ -81,12 +85,18 @@ internal class PrCommand(
         help = "GitHub, for fetch and push",
     ).httpUrl()
         .default(URI(DEFAULT_SERVER_URL), defaultForHelp = DEFAULT_SERVER_URL)
-    private val botName by option("--bot-name", metavar = "<name>", help = "The GitHub App's bot, the author of every commit")
-        .required()
-        .check("must not be blank") { it.isNotBlank() }
-    private val botEmail by option("--bot-email", metavar = "<email>", help = "The bot's email")
-        .required()
-        .check("must not be blank") { it.isNotBlank() }
+    private val appSlug by option(
+        "--app-slug",
+        metavar = "<slug>",
+        help = "The GitHub App's slug: the bot `<slug>[bot]` and its email are looked up on github.com. Empty for none.",
+    ).check("must not be blank") { it.isEmpty() || it.isNotBlank() }
+    private val botName by option(
+        "--bot-name",
+        metavar = "<name>",
+        help = "The GitHub App's bot, the author of every commit, instead of --app-slug. Empty for none.",
+    ).check("must not be blank") { it.isEmpty() || it.isNotBlank() }
+    private val botEmail by option("--bot-email", metavar = "<email>", help = "The bot's email, with --bot-name. Empty for none.")
+        .check("must not be blank") { it.isEmpty() || it.isNotBlank() }
     private val botLogins by option("--bot-logins", metavar = "<logins>", help = "The bots whose PRs are fixed, comma-separated")
         .convert { logins -> logins.split(",").map { it.trim() }.filter { it.isNotEmpty() } }
         .default(DEFAULT_BOT_LOGINS, defaultForHelp = DEFAULT_BOT_LOGINS.joinToString(","))
@@ -153,9 +163,10 @@ internal class PrCommand(
     // Exit 1 means "caused by the update". Anything else that goes wrong is the tool's failure: exit 2.
     @Suppress("TooGenericExceptionCaught")
     override fun run() {
+        val bot = bot()
         val outcome =
             try {
-                outcome()
+                outcome(bot)
             } catch (e: Throwable) {
                 throw toolError(e)
             }
@@ -168,9 +179,46 @@ internal class PrCommand(
         }
     }
 
-    private fun outcome(): PrOutcome {
+    /**
+     * How the bot is named: by the App's slug, looked up on GitHub with the token, or by the typed-in pair. Exactly one way,
+     * and the slug only on github.com: the noreply domain of another GitHub isn't known. Anything else is a usage error,
+     * before anything runs. Empty values count as not given: the action passes every input.
+     */
+    private fun bot(): (token: String) -> CommitIdentity {
+        val slug = appSlug.orEmpty()
+        val name = botName.orEmpty()
+        val email = botEmail.orEmpty()
+        if (slug.isNotEmpty() && name.isEmpty() && email.isEmpty()) return lookUp(slug)
+        if (slug.isEmpty() && name.isNotEmpty() && email.isNotEmpty()) return { _ -> CommitIdentity(name, email) }
+        val nothing = slug.isEmpty() && name.isEmpty() && email.isEmpty()
+        throw usageError(
+            if (nothing) {
+                "missing option --bot-name and --bot-email, or --app-slug"
+            } else {
+                "name the bot one way: --app-slug, or both --bot-name and --bot-email"
+            },
+        )
+    }
+
+    /** The bot of the App [slug], looked up with the token. Only on github.com, whose noreply domain is known. */
+    private fun lookUp(slug: String): (token: String) -> CommitIdentity {
+        if (serverUrl.scheme != "https" || !serverUrl.host.equals(GITHUB_HOST, ignoreCase = true)) {
+            throw usageError(
+                "--app-slug works on $GITHUB_HOST only, where the bot's email is known. On $serverUrl, name the bot " +
+                    "with --bot-name and --bot-email.",
+            )
+        }
+        return { token -> appIdentity(apiUrl, token, slug) }
+    }
+
+    // Thrown from run(), not while parsing: without the context, Clikt prints the root command's usage.
+    private fun usageError(message: String) = UsageError(message).apply { context = currentContext }
+
+    private fun outcome(bot: (token: String) -> CommitIdentity): PrOutcome {
         val token = currentContext.readEnvvar(TOKEN_VARIABLE).orEmpty()
         ensure(token.isNotBlank()) { "Set $TOKEN_VARIABLE to the GitHub App's installation token" }
+        // Before anything is built or fetched: a wrong identity would make the run miss its own commits.
+        val identity = bot(token)
         ensure(repo.isDirectory()) { "$repo is not a directory" }
         // The action passes an empty value when no file is configured.
         val settings = mavenSettings?.takeIf { it.toString().isNotEmpty() }
@@ -185,13 +233,13 @@ internal class PrCommand(
             val pipeline =
                 PrPipeline(
                     // The App's bot commits under its login, so its name is also the author of the report comment.
-                    host = host(event, apiUrl, serverUrl, token, botName),
+                    host = host(event, apiUrl, serverUrl, token, identity.name),
                     sources = sources(SourceOptions(botLogins.toSet(), fallbackLabel, metadata())),
                     adapters = all,
                     index = index(),
                     llm = llm(fixLoop.ollamaUrl, fixLoop.model),
                     settings =
-                        PrSettings(CommitIdentity(botName, botEmail), fixLoop.budgets(), source?.ifEmpty { null }, mode?.let(MODES::get)),
+                        PrSettings(identity, fixLoop.budgets(), source?.ifEmpty { null }, mode?.let(MODES::get)),
                 )
             pipeline.run(repo)
         }

@@ -75,6 +75,7 @@ enum class StopReason(
     TIME_BUDGET("the time budget is used up"),
     NO_PROGRESS("no progress in the last attempts"),
     CLUSTER_BUDGETS("every cluster used its attempts"),
+    MODEL_UNANSWERED("the model didn't answer in time"),
 }
 
 /** Every attempt, why the loop stopped, and the verification of the last commit. */
@@ -131,6 +132,7 @@ class FixLoop(
         private val started = timeSource.markNow()
         private val attempts = mutableListOf<Attempt>()
         private var withoutProgress = 0
+        private var unanswered = false
         private var versionsBefore: Map<String, String>? = null
 
         // The lockfiles the adapter updated after the current attempt's build-file edits. They go into its commit.
@@ -149,6 +151,7 @@ class FixLoop(
         private fun stopReason(): StopReason? =
             when {
                 verification.causedByUpdate.isEmpty() -> StopReason.NOTHING_LEFT
+                unanswered -> StopReason.MODEL_UNANSWERED
                 attempts.size >= budgets.attempts -> StopReason.ATTEMPT_BUDGET
                 timeLeft <= Duration.ZERO -> StopReason.TIME_BUDGET
                 withoutProgress >= budgets.attemptsWithoutProgress -> StopReason.NO_PROGRESS
@@ -193,7 +196,7 @@ class FixLoop(
             val edits =
                 when (proposal) {
                     is Proposal.Edits -> proposal.edits
-                    is Proposal.Invalid -> emptyList()
+                    is Proposal.Invalid, is Proposal.Unanswered -> emptyList()
                 }
             // An accepted attempt's edits are in its commit. A rejected attempt's are gone after the reset, and the
             // reason alone doesn't tell a weak model from missing grounding.
@@ -246,8 +249,18 @@ class FixLoop(
             proposal: Proposal,
         ): AttemptOutcome =
             when (proposal) {
-                is Proposal.Invalid -> rejected("the model's answer is invalid: ${proposal.reason}")
-                is Proposal.Edits -> apply(proposal.edits) ?: verify(cluster, diagnostics, proposal)
+                is Proposal.Invalid -> {
+                    rejected("the model's answer is invalid: ${proposal.reason}")
+                }
+
+                is Proposal.Unanswered -> {
+                    unanswered = true
+                    rejected("the model didn't answer: ${proposal.reason}")
+                }
+
+                is Proposal.Edits -> {
+                    apply(proposal.edits) ?: verify(cluster, diagnostics, proposal)
+                }
             }
 
         /**

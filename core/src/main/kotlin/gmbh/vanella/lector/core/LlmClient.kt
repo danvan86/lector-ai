@@ -3,7 +3,7 @@ package gmbh.vanella.lector.core
 /**
  * The port to the language model. It turns one grounded request into search/replace edits (rule 3). Unreachable or
  * misconfigured, it fails with a [ToolError]. A reply that isn't the expected structure is [Proposal.Invalid]: a failed
- * attempt, not a tool error.
+ * attempt, not a tool error. No reply in time is [Proposal.Unanswered]: the run ends with its report, not a tool error.
  */
 interface LlmClient {
     fun propose(request: FixRequest): Proposal
@@ -46,6 +46,11 @@ sealed interface Proposal {
 
     /** The reply didn't match the expected structure. */
     data class Invalid(
+        val reason: String,
+    ) : Proposal
+
+    /** The model didn't answer in time, e.g. a large request on a CPU runner. The next request would wait as long. */
+    data class Unanswered(
         val reason: String,
     ) : Proposal
 }

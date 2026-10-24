@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.sources
 
 import gmbh.vanella.lector.core.BranchPolicy
+import gmbh.vanella.lector.core.CommitIdentity
 import gmbh.vanella.lector.core.PackageUpdate
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.SourceContext
@@ -61,6 +62,9 @@ class DependabotSource(
 
     override fun recognizes(pr: PullRequest) = pr.author in botLogins && pr.headBranch.startsWith(BRANCH_PREFIX)
 
+    // Dependabot has no setting that keeps it rebasing after foreign commits; the companion PR keeps them off its branch.
+    override fun setupHint(identity: CommitIdentity): String? = null
+
     override fun read(
         pr: PullRequest,
         context: SourceContext,
@@ -69,7 +73,7 @@ class DependabotSource(
             metadata ?: throw ToolError(
                 "The Dependabot PR comes without its metadata. Run dependabot/fetch-metadata in the workflow and pass its " +
                     "updated-dependencies-json output to the action's dependabot-metadata input, as the setup guide shows " +
-                    "(docs/setup.md, section 3).",
+                    "(docs/setup.md, \"Advanced setup\"). The reusable workflow passes it on its own.",
             )
         return SourceUpdate(dependencies.mapNotNull(::update), releaseNotes(pr.body))
     }

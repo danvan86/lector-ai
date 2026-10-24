@@ -95,6 +95,7 @@ class PrPipeline(
         if (pr.headRepository != pr.baseRepository) return skipped("the PR comes from ${pr.headRepository}, not from ${pr.baseRepository}")
         if (pr.state != PrState.OPEN) return delivery.closed(pr)
         val source = source(pr) ?: return skipped(unrecognized(pr))
+        source.setupHint(settings.identity)?.let { logger.info(it) }
         val ownCommit = ownCommit(pr, repo)
         return if (ownCommit == null) read(pr, source, repo) else skipped(ownCommit)
     }

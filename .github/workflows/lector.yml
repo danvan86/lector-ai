@@ -1,0 +1,209 @@
+# The reusable workflow for repositories that use lector-ai (docs/setup.md): everything the setup used to copy, versioned
+# with the tool. The caller runs it on pull_request (opened, synchronize, reopened, labeled, closed) and passes the
+# GitHub App's client ID and private key. The caller sets no concurrency: a caller job in the same group would be
+# cancelled with it.
+#
+# Only pull_request (concept 8.1): the PR's code never runs with the base repository's secrets.
+name: lector-ai
+
+on:
+  workflow_call:
+    inputs:
+      # The action's inputs, with its defaults (checked by ./gradlew checkReusableWorkflow). The workflow fills token,
+      # app-slug, and dependabot-metadata itself, and owns the Ollama service, so ollama-url isn't one.
+      bot-logins:
+        description: The bots whose PRs are fixed, comma-separated, without spaces
+        type: string
+        required: false
+        default: renovate[bot],dependabot[bot]
+      mode:
+        description: Where the fixes go, in-place or companion. Empty for the source's default.
+        type: string
+        required: false
+        default: ""
+      source:
+        description: The update source that must take the PR, renovate, dependabot, or fallback. Empty to try them in order.
+        type: string
+        required: false
+        default: ""
+      fallback-label:
+        description: The label that opts any other dependency PR of the repository in
+        type: string
+        required: false
+        default: lector
+      model:
+        description: The model, baked into the Ollama image
+        type: string
+        required: false
+        default: qwen2.5-coder:7b
+      max-attempts:
+        description: Fix attempts in total
+        type: string
+        required: false
+        default: "20"
+      max-attempts-per-cluster:
+        description: Fix attempts per error cluster
+        type: string
+        required: false
+        default: "3"
+      max-attempts-without-progress:
+        description: Attempts in a row without progress before the fix loop stops
+        type: string
+        required: false
+        default: "2"
+      time-limit:
+        description: Minutes before the fix loop stops
+        type: string
+        required: false
+        default: "30"
+      max-changed-lines:
+        description: Lines one attempt may change before the guardrails reject it
+        type: string
+        required: false
+        default: "50"
+      maven-settings:
+        description: Maven settings file in the workspace, e.g. for a mirror. Empty for none.
+        type: string
+        required: false
+        default: ""
+      gradle-init:
+        description: Gradle init script in the workspace, passed to every Gradle run, e.g. for a mirror. Empty for none.
+        type: string
+        required: false
+        default: ""
+      npmrc:
+        description: User-level .npmrc in the workspace for npm, pnpm, and Yarn classic, e.g. for a registry. Empty for none.
+        type: string
+        required: false
+        default: ""
+      yarnrc:
+        description: User-level .yarnrc.yml in the workspace for Yarn Berry, e.g. for a registry. Empty for none.
+        type: string
+        required: false
+        default: ""
+      # The workflow's own.
+      runs-on:
+        description: The runner of both jobs, a label or a JSON array of labels
+        type: string
+        required: false
+        default: ubuntu-latest
+      ollama-image:
+        description: The Ollama image with the model's weights, run as the job's service
+        type: string
+        required: false
+        default: ghcr.io/danvan86/lector-ollama:0.1.0-qwen2.5-coder-7b
+      timeout-minutes:
+        description: Minutes before the heal job is stopped
+        type: number
+        required: false
+        default: 120
+    secrets:
+      app-client-id:
+        description: The GitHub App's client ID
+        required: true
+      app-private-key:
+        description: A private key of the GitHub App
+        required: true
+
+permissions:
+  contents: read
+  # dependabot/fetch-metadata lists the PR's commits, which a private repository allows only with this.
+  pull-requests: read
+
+jobs:
+  heal:
+    # Same-repository PRs by one of the bots or with the label, and a labeled event only for that label. lector-ai checks
+    # all of it again and skips its own commits. The bot logins match exactly: the list and the login are wrapped in
+    # commas.
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action != 'labeled' || github.event.label.name == inputs.fallback-label) &&
+      (contains(format(',{0},', inputs.bot-logins), format(',{0},', github.event.pull_request.user.login)) ||
+       contains(github.event.pull_request.labels.*.name, inputs.fallback-label))
+    # One run per PR. A push or a label by a person or one of the bots, and closing the PR, cancel the run still working
+    # on the PR. Another app's events don't, lector-ai's own push and label included: that run still has to post its
+    # comment. Another label gets a group of its own, so it can't displace a run that is waiting.
+    concurrency:
+      group: >-
+        lector-ai-${{ github.repository }}-${{ github.event.pull_request.number }}${{
+        github.event.action == 'labeled' && github.event.label.name != inputs.fallback-label && '-other-label' || '' }}
+      cancel-in-progress: >-
+        ${{ github.event.sender.type != 'Bot' ||
+            contains(format(',{0},', inputs.bot-logins), format(',{0},', github.event.sender.login)) }}
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    services:
+      # The model, with its weights in the image. lector-ai reaches it at http://ollama:11434.
+      ollama:
+        image: ${{ inputs.ollama-image }}
+        options: >-
+          --health-cmd "ollama list"
+          --health-interval 5s
+          --health-retries 30
+    steps:
+      # What Dependabot updated. It refuses once the head commit isn't Dependabot's (lector-ai's own commit in place, the
+      # merged companion PR, a push by a person): Dependabot no longer owns the branch, and the lector-ai step is skipped.
+      - id: metadata
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        continue-on-error: true
+        uses: dependabot/fetch-metadata@v3
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.app-client-id }}
+          private-key: ${{ secrets.app-private-key }}
+      # The PR's head commit, not the merge commit. lector-ai fetches the base itself and pushes with the App token.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - if: steps.metadata.outcome != 'failure'
+        uses: danvan86/lector-ai/action@v0.1.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          app-slug: ${{ steps.app-token.outputs.app-slug }}
+          dependabot-metadata: ${{ steps.metadata.outputs.updated-dependencies-json }}
+          bot-logins: ${{ inputs.bot-logins }}
+          mode: ${{ inputs.mode }}
+          source: ${{ inputs.source }}
+          fallback-label: ${{ inputs.fallback-label }}
+          model: ${{ inputs.model }}
+          max-attempts: ${{ inputs.max-attempts }}
+          max-attempts-per-cluster: ${{ inputs.max-attempts-per-cluster }}
+          max-attempts-without-progress: ${{ inputs.max-attempts-without-progress }}
+          time-limit: ${{ inputs.time-limit }}
+          max-changed-lines: ${{ inputs.max-changed-lines }}
+          maven-settings: ${{ inputs.maven-settings }}
+          gradle-init: ${{ inputs.gradle-init }}
+          npmrc: ${{ inputs.npmrc }}
+          yarnrc: ${{ inputs.yarnrc }}
+
+  cleanup:
+    # A closed or merged PR of the bots or with the label: lector-ai closes its companion PR, if it opened one. No model
+    # and no checkout needed.
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (contains(format(',{0},', inputs.bot-logins), format(',{0},', github.event.pull_request.user.login)) ||
+       contains(github.event.pull_request.labels.*.name, inputs.fallback-label))
+    concurrency:
+      group: lector-ai-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: >-
+        ${{ github.event.sender.type != 'Bot' ||
+            contains(format(',{0},', inputs.bot-logins), format(',{0},', github.event.sender.login)) }}
+    # The heal job's runner: a repository with self-hosted runners only may have no other.
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
+    timeout-minutes: 10
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.app-client-id }}
+          private-key: ${{ secrets.app-private-key }}
+      - uses: danvan86/lector-ai/action@v0.1.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          app-slug: ${{ steps.app-token.outputs.app-slug }}
+          bot-logins: ${{ inputs.bot-logins }}
+          fallback-label: ${{ inputs.fallback-label }}
