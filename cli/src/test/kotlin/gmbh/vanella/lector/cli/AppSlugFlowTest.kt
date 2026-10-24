@@ -119,7 +119,7 @@ class AppSlugFlowTest {
         val result = run("$repo --event $event --app-slug my-lector")
 
         assertEquals(0, result.statusCode, result.stdout + result.stderr)
-        assertContains(requests.map { it.substringBeforeLast(" ") }, "PATCH /repos/acme/app/issues/comments/5")
+        assertContains(requests.map { it.substringBefore(" Bearer") }, "PATCH /repos/acme/app/issues/comments/5")
         assertFalse(requests.any { it.startsWith("POST /repos/acme/app/issues/7/comments") }, "no second report: $requests")
     }
 
