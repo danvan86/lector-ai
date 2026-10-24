@@ -13,6 +13,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 5 | Docs: README and setup guide with the short setup, features, concept, AGENTS | ✅ |
 | 6 | Quality gates verified | ✅ |
 | 7 | Acceptance criteria checked | ✅ (AC27, AC28 open) |
+| 8 | Review and fixes: [`review.md`](review.md) | ✅ |
 
 ## Notes
 
@@ -29,8 +30,8 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 ## Quality gates
 
 Final check, each on its own: `ktlintCheck`, `detektMain detektTest`, `test`, `:cli:endToEndTest`, `koverVerify` all green;
-`./gradlew clean build --rerun-tasks --no-build-cache --no-configuration-cache` green. 881 unit tests and 24 end-to-end
-tests, 0 failures; coverage 100 % lines and branches per module.
+`./gradlew clean build --rerun-tasks --no-build-cache --no-configuration-cache` green. 882 unit tests and 24 end-to-end
+tests, 0 failures (after the review); coverage 100 % lines and branches per module.
 
 Caught on the way: detekt's `ThrowsCount` in the identity lookup and in `PrCommand` (split into small functions), Kover on
 a default method in the `UpdateSource` port (made abstract like the port's other members), ktlint's line length in

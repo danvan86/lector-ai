@@ -70,11 +70,12 @@ sees a foreign commit; the comment stays for reviewers.
   inputs table says the list has no spaces. (R5)
 - Inputs: every input of `action/action.yml` except `token`, `app-slug`, `bot-name`, `bot-email`,
   `dependabot-metadata`, and `ollama-url` (R14), which the workflow fills itself, each `type: string`, not required,
-  with the action's default. Plus `runs-on` (string, default `ubuntu-latest`), `ollama-image` (string, default
+  with the action's default. Plus `runs-on` (string, default `ubuntu-latest`, the runner of both jobs: review F8), `ollama-image` (string, default
   `ghcr.io/danvan86/lector-ollama:<version>-<model>`, where `<model>` is the action's `model` default with `:` replaced
   by `-`), and `timeout-minutes` (number, default `120`, the heal job's timeout). (R6, R7)
 - Secrets: `app-client-id` and `app-private-key`, both required.
-- The jobs' `GITHUB_TOKEN` permissions are `contents: read`.
+- The jobs' `GITHUB_TOKEN` permissions are `contents: read` and `pull-requests: read` (`fetch-metadata` lists the PR's
+  commits; a private repository refuses that without it, found in the first real runs, `a604658`).
 - The action is referenced as `danvan86/lector-ai/action@v<version>`, in both jobs.
 
 **Why:** Q3, Q4, Q5, Q7. The workflow is the 80 lines users copy today; inside lector-ai it is versioned with the tool.
@@ -110,7 +111,7 @@ must reach the workflow and the docs together.
      placeholders the user replaces. Generate a private key, install the App.
   2. Store the client ID and the key as `LECTOR_APP_CLIENT_ID` and `LECTOR_APP_PRIVATE_KEY` (the names of today's
      setup, R13) with `gh secret set`, as Actions and as Dependabot secrets, for a repository and for an organization.
-  3. Add the caller workflow: `on: pull_request` with the five event types, `permissions: contents: read`, one job
+  3. Add the caller workflow: `on: pull_request` with the five event types, `permissions` `contents: read` and `pull-requests: read`, one job
      that `uses` the reusable workflow at `@v<version>` and maps `LECTOR_APP_CLIENT_ID` to `app-client-id` and
      `LECTOR_APP_PRIVATE_KEY` to `app-private-key`. No concurrency, with the reason.
   4. Renovate only: a `gh api` one-liner that prints the value for `gitIgnoredAuthors`, and the note that the first run
@@ -176,7 +177,7 @@ The review agent checks every criterion and reports it as *met*, *not met*, or *
 | AC16 | The `heal` job runs `fetch-metadata` only on Dependabot's PRs with `continue-on-error`, skips the action when it failed, checks out the head SHA with `persist-credentials: false`, and passes the token step's `app-slug` output to the action | 3 | Read the file |
 | AC17 | The `heal` job has the `ollama` service from `inputs.ollama-image` with a health check, `runs-on` and `timeout-minutes` from inputs | 3 | Read the file |
 | AC17b | The `cleanup` job passes the token step's `app-slug` output to the action, has a 10-minute timeout, no service, and no checkout | 3 | Read the file |
-| AC18 | `lector.yml` declares the required secrets `app-client-id` and `app-private-key` and `contents: read` permissions | 3 | Read the file |
+| AC18 | `lector.yml` declares the required secrets `app-client-id` and `app-private-key` and `contents: read` and `pull-requests: read` permissions | 3 | Read the file |
 | AC18b | `lector.yml` has no `ollama-url`, `bot-name`, `bot-email`, `token`, `app-slug`, or `dependabot-metadata` input | 3, Don't | Read the file |
 | AC19 | `./gradlew build` fails with a message naming the mismatch for each of: the action reference not `@v<version>`; the `ollama-image` default not exactly as defined; a non-exempt action input missing; its default different; a docs pin to another version | 4 | A test of the check, or each change in a scratch copy with the check's task, then restore |
 | AC19b | A default of `20` against the action's `"20"` passes the check | 4 | Same as AC19 |
