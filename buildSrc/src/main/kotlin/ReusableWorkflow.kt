@@ -7,7 +7,9 @@ object ReusableWorkflow {
     // Inputs the workflow fills itself: the token and the bot from the App token step, the Dependabot metadata, and the
     // URL of the Ollama service it starts.
     private val FILLED = setOf("token", "app-slug", "bot-name", "bot-email", "dependabot-metadata", "ollama-url")
-    private val DOCS_PIN = Regex("""danvan86/lector-ai/[\w./-]*@v(\S+)""")
+
+    // The repository or a path in it; the version ends in a word character, so inline code and a full stop aren't in it.
+    private val DOCS_PIN = Regex("""danvan86/lector-ai(?:/[\w./-]*)?@v([\w.-]*\w)""")
     private val DOCS_IMAGE = Regex("""lector-ollama:(\d+\.\d+\.\d+)-""")
 
     /** What is out of line, one sentence each; empty if nothing. [docs] maps a file name to its text. */
@@ -33,6 +35,9 @@ object ReusableWorkflow {
             when {
                 ours == null -> problems += "lector.yml lacks the action's input $name"
                 ours != default -> problems += "lector.yml's $name default is $ours, the action's $default"
+            }
+            if (workflow.none { it.trim() == "$name: \${{ inputs.$name }}" }) {
+                problems += "lector.yml doesn't pass its input $name to the action"
             }
         }
         for ((file, text) in docs) {
