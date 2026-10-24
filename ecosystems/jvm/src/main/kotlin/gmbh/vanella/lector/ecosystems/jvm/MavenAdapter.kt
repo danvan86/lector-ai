@@ -206,8 +206,10 @@ class MavenAdapter(
         val root = repo.toRealPath()
         val own = change.`package`.substringAfter(':')
         val found = mutableMapOf<String, List<Path>>()
+        // Not a comparator: it would see the own artifact on either side, depending on the directory listing's order.
+        val (first, rest) = artifacts.partition { it == own }
         try {
-            for (artifact in artifacts.sortedBy { if (it == own) "" else it }) {
+            for (artifact in first + rest.sorted()) {
                 (localJars(change, artifact) ?: fetch(root, change, artifact))?.let { found[artifact] = it }
             }
         } catch (e: ToolError) {
