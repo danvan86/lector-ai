@@ -193,3 +193,13 @@ Not planned in detail yet. Prioritize after M9 based on demand and benchmark res
 - Embedding fallback for recipes without structured metadata
 - Better error clustering and smarter grounding (migration-guide index per dependency)
 - Linters bound to Maven `verify` can block the last fix attempt, the same problem M7 Q17 solved for Gradle
+- From the first runs on lector-sample-app (October 2026):
+  - A minor version past the newest recipe (Spring Boot 4.1.1, `rewrite-recipe-bom` 3.37.0 has `UpgradeSpringBoot_4_0`)
+    gets no recipe, because a recipe matches only if its target contains the PR's target (concept section 4). Running
+    the closest lower recipe of the same major as a first step would change that rule. A newer BOM may simply have the
+    recipe
+  - The model sends edits with empty search text to append to a file (`application.properties`). They are rejected, as
+    the edit format says; the prompt could say so, or the format could allow appending
+  - The 7B model on a 2-CPU runner can take longer than the 15-minute request timeout for a large first request. Such a
+    run now ends with its report (`modelUnanswered`); a configurable timeout or less grounding on the first request
+    would let it try
