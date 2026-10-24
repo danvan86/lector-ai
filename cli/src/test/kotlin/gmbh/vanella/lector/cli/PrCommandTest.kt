@@ -484,6 +484,9 @@ class PrCommandTest {
             "$repo --event ${repo.resolve("missing.json")} $bot" to
                 "invalid value for --event: file \"${repo.resolve("missing.json")}\" does not exist",
             "$repo --event $repo $bot" to "invalid value for --event: file \"$repo\" is a directory",
+            "$repo --event $event --app-slug my-lector --github-server-url http://github.com" to
+                "--app-slug works on github.com only, where the bot's email is known. On http://github.com, name the bot",
+            "$repo --event $event --app-slug ' '" to "invalid value for --app-slug: must not be blank",
             "$repo --event $event $bot --bot-logins ' , '" to "invalid value for --bot-logins: must name at least one bot",
             "$repo --event $event $bot --fallback-label ' '" to "invalid value for --fallback-label: must not be blank",
             "$repo --event $event $bot --mode force" to "invalid value for --mode: must be in-place or companion",
