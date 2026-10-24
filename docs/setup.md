@@ -1,67 +1,73 @@
 # Setup – lector-ai for dependency PRs on GitHub
 
-lector-ai runs as a step in your GitHub Actions workflow. When Renovate or Dependabot opens or updates a PR, or someone
-adds the `lector` label to a dependency PR, it builds the PR and compares it with the base commit. If the update broke
-something, lector-ai applies the matching OpenRewrite recipe (JVM projects) and lets a local model fix what is left. The fixes are
+lector-ai runs in your GitHub Actions. When Renovate or Dependabot opens or updates a PR, or someone adds the `lector`
+label to a dependency PR, it builds the PR and compares it with the base commit. If the update broke something,
+lector-ai applies the matching OpenRewrite recipe (JVM projects) and lets a local model fix what is left. The fixes are
 separate commits: on the Renovate branch itself, or in a companion PR for Dependabot and labelled PRs. A comment on the
 PR reports what was done. If the PR builds, nothing changes.
 
-You need four things: a GitHub App that pushes the fixes, a setting in Renovate (if you use it), the workflow below, and
-a runner that can run the model.
+The setup takes three steps: a GitHub App that pushes the fixes, its two secrets, and a workflow of ten lines that calls
+lector-ai's reusable workflow. Renovate needs one more setting.
 
-## 1. GitHub App
+## 0. Before you start
+
+- **github.com.** The short setup finds the App's bot on github.com. On GitHub Enterprise Server or GHE.com, use the
+  [advanced setup](#advanced-setup) with `bot-name` and `bot-email`.
+- **A released version.** The workflow and the images are pinned to a release, `v0.1.0` here. The images
+  (`ghcr.io/danvan86/lector` and `ghcr.io/danvan86/lector-ollama`) must be public, or pullable by your runners.
+- **The lector-ai repository is reachable.** A reusable workflow can be called from other owners' repositories only if
+  its repository is public. While it is private, only the owner's own private repositories can call it, once the
+  repository's **Settings → Actions → General → Access** allows them.
+- **The `gh` CLI**, logged in with a user who can manage the repository's secrets, for step 2.
+
+## 1. Create the GitHub App
 
 lector-ai pushes with a GitHub App token, not with `GITHUB_TOKEN`: pushes made with `GITHUB_TOKEN` don't start
 workflow runs, so the PR's checks would never run on the fixes. And in a run that Dependabot started, `GITHUB_TOKEN` can
 only read.
 
-1. Create an App under **Settings → Developer settings → GitHub Apps → New GitHub App**, in your organization or
-   account. No webhook and no callback URL are needed.
-2. Give it these **repository permissions**:
-   - **Contents: Read and write**, to push the fix commits and to delete companion branches.
-   - **Pull requests: Read and write**, for the report comment, the `ai-assisted` label, and companion PRs.
-   - Metadata: Read-only, which GitHub adds on its own.
-3. Install the App on the repositories that lector-ai should fix.
-4. In each of these repositories (or the organization), store the App's **client ID** as the secret
-   `LECTOR_APP_CLIENT_ID` and a **private key** as the secret `LECTOR_APP_PRIVATE_KEY`, twice: as **Actions secrets**
-   and as **Dependabot secrets** (Settings → Secrets and variables → Dependabot). A workflow run that Dependabot
-   started sees only Dependabot secrets.
+1. Open the link for your account or your organization. It opens GitHub's "Register new GitHub App" form with the
+   settings filled in: no webhook, private, **Contents** and **Pull requests** read and write. Replace `<name>` with a
+   name of your own (App names are unique on GitHub), and `<org>` with your organization:
+   - Personal account:
+     `https://github.com/settings/apps/new?name=<name>&url=https://github.com/danvan86/lector-ai&public=false&webhook_active=false&contents=write&pull_requests=write`
+   - Organization:
+     `https://github.com/organizations/<org>/settings/apps/new?name=<name>&url=https://github.com/danvan86/lector-ai&public=false&webhook_active=false&contents=write&pull_requests=write`
 
-The workflow creates a short-lived token from the key with `actions/create-github-app-token`. lector-ai only ever
-sees that token, never the private key.
+   Check the permissions before you create it: **Contents: Read and write**, **Pull requests: Read and write**
+   (Metadata: Read-only comes on its own). Set one by hand if the form doesn't show it.
+2. On the App's page, note the **Client ID** and **Generate a private key**. GitHub downloads a `.pem` file.
+3. **Install App** on the repositories that lector-ai should fix.
 
-**The bot's name and email.** Every commit lector-ai makes is authored by the App's bot user:
+lector-ai only ever sees a short-lived installation token that the workflow creates from the key. It looks up the App's
+bot itself: every commit is by `<app-slug>[bot]`, with the email GitHub links to the App.
 
-- Name: `<app-slug>[bot]`, e.g. `my-lector[bot]`. The slug is in the App's URL.
-- Email: `<user-id>+<app-slug>[bot]@users.noreply.github.com`. Look up the user ID with
-  `curl -s https://api.github.com/users/<app-slug>%5Bbot%5D | jq .id`.
+## 2. Store the App's secrets
 
-## 2. Renovate
+Each secret is stored twice: as an **Actions** secret and as a **Dependabot** secret. A workflow run that Dependabot
+started sees only Dependabot secrets.
 
-Skip this section if you don't use Renovate. Dependabot needs no setting.
+For one repository:
 
-Add the bot's email to `gitIgnoredAuthors` in your Renovate configuration:
-
-```json
-{
-  "gitIgnoredAuthors": ["123456+my-lector[bot]@users.noreply.github.com"]
-}
+```sh
+gh secret set LECTOR_APP_CLIENT_ID --repo <owner>/<repo> --body <client-id>
+gh secret set LECTOR_APP_CLIENT_ID --repo <owner>/<repo> --app dependabot --body <client-id>
+gh secret set LECTOR_APP_PRIVATE_KEY --repo <owner>/<repo> < <app>.private-key.pem
+gh secret set LECTOR_APP_PRIVATE_KEY --repo <owner>/<repo> --app dependabot < <app>.private-key.pem
 ```
 
-Without it, Renovate sees lector-ai's commits as someone else's changes and stops updating the branch.
+For every repository of an organization, once: the same four commands with `--org <org> --visibility all` instead of
+`--repo <owner>/<repo>` (or `--visibility selected --repos <repo>,<repo>`).
 
-Nothing else changes in Renovate. lector-ai reads the update table and the release notes from Renovate's PR body,
-including grouped PRs (monorepo groups and the like).
+## 3. Add the workflow
 
-## 3. Workflow
-
-Save this as `.github/workflows/lector-ai.yml` and fill in the bot's name (twice) and email:
+Save this as `.github/workflows/lector-ai.yml`. Nothing in it needs filling in:
 
 ```yaml
 name: lector-ai
 
-# Only pull_request (concept 8.1): the PR's code must never run with the base repository's secrets.
-# labeled starts a run for the opt-in label, closed the cleanup of a companion PR.
+# Only pull_request (concept 8.1): the PR's code must never run with the base repository's secrets. labeled starts a run
+# for the opt-in label, closed the cleanup of a companion PR.
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, closed]
@@ -69,88 +75,76 @@ on:
 permissions:
   contents: read
 
-# One run per PR. A push by a bot or a person cancels the run that is still working on the old head, and so does closing
-# the PR. lector-ai's own push and label must not: that run still has to post its comment. The run its push starts on a
-# PR's own branch waits, then skips the bot's own commit. Another label doesn't cancel anything either.
-concurrency:
-  group: lector-ai-${{ github.event.pull_request.number }}
-  cancel-in-progress: >-
-    ${{ github.event.sender.login != 'my-lector[bot]' &&
-        (github.event.action != 'labeled' || github.event.label.name == 'lector') }}
-
 jobs:
-  heal:
-    # Renovate's and Dependabot's PRs, and PRs with the label lector, from this repository only. lector-ai checks all
-    # of it again, and skips its own commits. Another label doesn't start a run.
-    if: >-
-      github.event.action != 'closed' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      (github.event.action != 'labeled' || github.event.label.name == 'lector') &&
-      (contains(fromJSON('["renovate[bot]", "dependabot[bot]"]'), github.event.pull_request.user.login) ||
-       contains(github.event.pull_request.labels.*.name, 'lector'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    services:
-      # The model, with its weights in the image. lector-ai reaches it at http://ollama:11434.
-      ollama:
-        image: ghcr.io/danvan86/lector-ollama:qwen2.5-coder-7b
-        options: >-
-          --health-cmd "ollama list"
-          --health-interval 5s
-          --health-retries 30
-    steps:
-      # What Dependabot updated, read from its commit. Only on Dependabot's PRs. It refuses once the head commit isn't
-      # Dependabot's (lector-ai's own commit in place, the merged companion PR, a push by a person): Dependabot no longer
-      # owns the branch then, and lector-ai skips the run instead of failing it.
-      - id: metadata
-        if: github.event.pull_request.user.login == 'dependabot[bot]'
-        continue-on-error: true
-        uses: dependabot/fetch-metadata@v3
-      - id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ secrets.LECTOR_APP_CLIENT_ID }}
-          private-key: ${{ secrets.LECTOR_APP_PRIVATE_KEY }}
-      # The PR's head commit, not the merge commit that pull_request checks out by default. lector-ai fetches the base
-      # commit itself, and pushes with the App token.
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - if: steps.metadata.outcome != 'failure'
-        uses: danvan86/lector-ai/action@v0.1.0
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          bot-name: my-lector[bot]
-          bot-email: 123456+my-lector[bot]@users.noreply.github.com
-          dependabot-metadata: ${{ steps.metadata.outputs.updated-dependencies-json }}
-
-  cleanup:
-    # A closed or merged PR: lector-ai closes its companion PR, if it opened one. No model and no checkout needed.
-    if: >-
-      github.event.action == 'closed' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      (contains(fromJSON('["renovate[bot]", "dependabot[bot]"]'), github.event.pull_request.user.login) ||
-       contains(github.event.pull_request.labels.*.name, 'lector'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ secrets.LECTOR_APP_CLIENT_ID }}
-          private-key: ${{ secrets.LECTOR_APP_PRIVATE_KEY }}
-      - uses: danvan86/lector-ai/action@v0.1.0
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          bot-name: my-lector[bot]
-          bot-email: 123456+my-lector[bot]@users.noreply.github.com
+  lector-ai:
+    uses: danvan86/lector-ai/.github/workflows/lector.yml@v0.1.0
+    secrets:
+      app-client-id: ${{ secrets.LECTOR_APP_CLIENT_ID }}
+      app-private-key: ${{ secrets.LECTOR_APP_PRIVATE_KEY }}
 ```
 
-The bot logins in the two `if:` conditions and the label `lector` match the action's defaults. If you change
-`bot-logins` or `fallback-label`, change them there too.
+Don't add `concurrency` to this file. The reusable workflow keeps one run per PR itself, and a caller job in the same
+group would be cancelled with it.
 
-What happens on each run:
+The reusable workflow runs lector-ai only on same-repository PRs by Renovate or Dependabot, or with the `lector` label,
+starts the model as a service, and runs the cleanup when such a PR is closed. To change what it does, pass `with:`
+inputs:
+
+```yaml
+    uses: danvan86/lector-ai/.github/workflows/lector.yml@v0.1.0
+    with:
+      maven-settings: .github/maven-settings.xml
+      time-limit: "45"
+```
+
+| Input | Default | Meaning |
+|---|---|---|
+| `bot-logins` | `renovate[bot],dependabot[bot]` | The bots whose PRs are fixed, comma-separated, without spaces, e.g. for a self-hosted Renovate App |
+| `mode` | the source's | `in-place` or `companion`; by default Renovate's PRs are fixed in place, Dependabot's and labelled PRs in a companion PR |
+| `source` | automatic | `renovate`, `dependabot`, or `fallback` (the label): which source must take the PR. By default Renovate is tried first, then Dependabot, then the label. The source's own checks still apply. |
+| `fallback-label` | `lector` | The label that opts any other dependency PR in |
+| `model` | `qwen2.5-coder:7b` | The model, which must be in the Ollama image |
+| `max-attempts` | `20` | Fix attempts in total |
+| `max-attempts-per-cluster` | `3` | Fix attempts per group of errors with one cause |
+| `max-attempts-without-progress` | `2` | Attempts in a row without progress before the loop stops |
+| `time-limit` | `30` | Minutes before the fix loop stops |
+| `max-changed-lines` | `50` | Lines one attempt may change before it is rejected |
+| `maven-settings` | none | A Maven settings file in the repository, e.g. for a mirror |
+| `gradle-init` | none | A Gradle init script in the repository, passed to every Gradle run, e.g. to point the repositories at a mirror |
+| `npmrc` | none | A user-level `.npmrc` in the repository for npm, pnpm, and Yarn classic, e.g. for a registry |
+| `yarnrc` | none | A user-level `.yarnrc.yml` in the repository for Yarn Berry, e.g. for a registry |
+| `runs-on` | `ubuntu-latest` | The runner of the heal job: a label, or a JSON array of labels such as `'["self-hosted", "linux"]'` |
+| `ollama-image` | `ghcr.io/danvan86/lector-ollama:0.1.0-qwen2.5-coder-7b` | The Ollama image with the model's weights |
+| `timeout-minutes` | `120` | Minutes before the heal job is stopped |
+
+The inputs are strings, numbers included (`"45"`). Tokens for private registries can't be passed to a reusable
+workflow: GitHub doesn't hand the caller's environment on. Use the [advanced setup](#advanced-setup) for them, for
+caches, and for a GPU runner.
+
+## 4. Renovate
+
+Skip this section if you don't use Renovate. Dependabot needs no setting.
+
+Add the bot's email to `gitIgnoredAuthors` in your Renovate configuration. This prints it, with your App's slug (the
+last part of its URL):
+
+```sh
+gh api users/<app-slug>%5Bbot%5D --jq '"\(.id)+\(.login)@users.noreply.github.com"'
+```
+
+```json
+{
+  "gitIgnoredAuthors": ["123456+my-lector[bot]@users.noreply.github.com"]
+}
+```
+
+Without it, Renovate sees lector-ai's commits as someone else's changes and stops updating the branch. Every lector-ai
+run on a Renovate PR also names the value in its log, the first one included, before lector-ai has pushed anything.
+
+Nothing else changes in Renovate. lector-ai reads the update table and the release notes from Renovate's PR body,
+including grouped PRs (monorepo groups and the like).
+
+## What happens on a PR
 
 | Situation | What lector-ai does | Check |
 |---|---|---|
@@ -193,7 +187,7 @@ Renovate. Then Dependabot no longer rebases that PR: resolve conflicts yourself,
 a new one. A head commit that isn't Dependabot's is skipped (see the table above), so lector-ai works on each head
 Dependabot pushes, once.
 
-`dependabot/fetch-metadata` reads what Dependabot updated, every dependency of a grouped update included. Without its
+The reusable workflow runs `dependabot/fetch-metadata`, which reads what Dependabot updated, every dependency of a grouped update included. Without its
 output, a run on a Dependabot PR fails with exit code 2. lector-ai fixes `maven` and `gradle` updates;
 Dependabot's other ecosystems are skipped. The release notes come from Dependabot's PR body.
 
@@ -208,30 +202,11 @@ Only people with write access can add labels, so nobody else can start a run thi
 this repository only, not on forks. If lector-ai can't read the resolved versions of either side, it changes nothing
 and says why in the comment.
 
-**Options.** The action's inputs, besides `token`, `bot-name`, and `bot-email`:
-
-| Input | Default | Meaning |
-|---|---|---|
-| `bot-logins` | `renovate[bot],dependabot[bot]` | The bots whose PRs are fixed, comma-separated, e.g. for a self-hosted Renovate App |
-| `dependabot-metadata` | none | The `updated-dependencies-json` output of `dependabot/fetch-metadata`, as in the workflow above |
-| `mode` | the source's | `in-place` or `companion`; by default Renovate's PRs are fixed in place, Dependabot's and labelled PRs in a companion PR |
-| `source` | automatic | `renovate`, `dependabot`, or `fallback` (the label): which source must take the PR. By default Renovate is tried first, then Dependabot, then the label. The source's own checks still apply. |
-| `fallback-label` | `lector` | The label that opts any other dependency PR in |
-| `ollama-url` | `http://ollama:11434` | The Ollama service; the default is the `ollama` service above |
-| `model` | `qwen2.5-coder:7b` | The model, which must be in the Ollama image |
-| `max-attempts` | `20` | Fix attempts in total |
-| `max-attempts-per-cluster` | `3` | Fix attempts per group of errors with one cause |
-| `max-attempts-without-progress` | `2` | Attempts in a row without progress before the loop stops |
-| `time-limit` | `30` | Minutes before the fix loop stops |
-| `max-changed-lines` | `50` | Lines one attempt may change before it is rejected |
-| `maven-settings` | none | A Maven settings file in the workspace, e.g. for a mirror; credentials in it can come from `MAVEN_*` variables |
-| `gradle-init` | none | A Gradle init script in the workspace, passed to every Gradle run, e.g. to point the repositories at a mirror; credentials can come from `GRADLE_*` and `ORG_GRADLE_PROJECT_*` variables |
-| `npmrc` | none | A user-level `.npmrc` in the workspace for npm, pnpm, and Yarn classic, e.g. for a registry; credentials can come from `NODE_AUTH_TOKEN`, `NPM_TOKEN`, and `NPM_CONFIG_*` variables |
-| `yarnrc` | none | A user-level `.yarnrc.yml` in the workspace for Yarn Berry, e.g. for a registry; credentials can come from `YARN_*` variables |
+## Build tools
 
 There is no configuration file in your repository: everything is in the workflow.
 
-**Maven and Java.** The tool image has JDKs 17, 21, and 25 and Maven 3.9. lector-ai builds with the smallest JDK that is
+**Maven and Java.** The tool image has JDKs 17, 21, and 25 and Maven 3.10. lector-ai builds with the smallest JDK that is
 at least `maven.compiler.release` (or `<java.version>`) of the root POM, 21 if none is set. A project's Maven wrapper
 (`mvnw`) is used if it has one. Maven downloads dependencies and recipes from your repositories as usual.
 
@@ -244,7 +219,8 @@ another Java version (8, 11) is a tool error. The project's own repositories pro
 OpenRewrite libraries; the OpenRewrite Gradle plugin itself comes with the image.
 
 The Gradle user home is `/github/home/.gradle` in the action's container, which is `${{ runner.temp }}/_github_home/.gradle`
-on the runner. Cache it to skip the downloads of the distribution and the dependencies, with a step before lector-ai:
+on the runner. Cache it to skip the downloads of the distribution and the dependencies, with a step before lector-ai in
+the [advanced setup](#advanced-setup):
 
 ```yaml
       - uses: actions/cache@v6
@@ -278,7 +254,8 @@ reports through the image's `jest-junit` and Vitest through its JUnit reporter, 
 `package.json`.
 
 Registries: your `.npmrc` and `.yarnrc.yml` apply as they are. For a mirror or a private registry that only CI knows,
-pass the `npmrc` or `yarnrc` input, and the token through the step's `env` as `NODE_AUTH_TOKEN` or `NPM_TOKEN`
+pass the `npmrc` or `yarnrc` input, and the token through the step's `env` as `NODE_AUTH_TOKEN` or `NPM_TOKEN`, in the
+[advanced setup](#advanced-setup)
 (`//npm.example.org/:_authToken=${NODE_AUTH_TOKEN}` in an `.npmrc` reads it).
 Corepack fetches package managers from npmjs.org: point `COREPACK_NPM_REGISTRY` (and `COREPACK_NPM_TOKEN` or
 `COREPACK_NPM_USERNAME` and `COREPACK_NPM_PASSWORD`) at your mirror the same way. The processes get `NODE_AUTH_TOKEN`,
@@ -291,8 +268,7 @@ examples show, that means a job whose `permissions` grant `packages: read` and n
       - uses: danvan86/lector-ai/action@v0.1.0
         with:
           token: ${{ steps.app-token.outputs.token }}
-          bot-name: my-lector[bot]
-          bot-email: 123456+my-lector[bot]@users.noreply.github.com
+          app-slug: ${{ steps.app-token.outputs.app-slug }}
           npmrc: .github/lector.npmrc
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -300,7 +276,7 @@ examples show, that means a job whose `permissions` grant `packages: read` and n
 ```
 
 The package managers keep their stores in the home directory, `/github/home` in the action's container. Cache the ones
-your project uses with a step before lector-ai:
+your project uses with a step before lector-ai in the advanced setup:
 
 ```yaml
       - uses: actions/cache@v6
@@ -314,7 +290,7 @@ your project uses with a step before lector-ai:
           restore-keys: lector-node-
 ```
 
-## 4. Runners and models
+## Runners and models
 
 | Ollama image | Runner | Status |
 |---|---|---|
@@ -327,6 +303,109 @@ needed more than the runner had. Don't add services or a job container that
 need the rest.
 
 With the 30B image, set `model: qwen3-coder:30b` in the action's inputs.
+
+## Advanced setup
+
+Use the action directly, instead of the reusable workflow, for what the reusable workflow can't do: tokens for private
+registries in the step's `env`, cache steps before lector-ai, a GPU runner's service options, another checkout, or
+GitHub Enterprise Server and GHE.com, where the App's bot is named with `bot-name` and `bot-email` instead of
+`app-slug`. The workflow below does what the reusable workflow does:
+
+```yaml
+name: lector-ai
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, closed]
+
+permissions:
+  contents: read
+
+# One run per PR. A push or a label by a person or one of the bots, and closing the PR, cancel the run still working on
+# the PR. Another app's events don't, lector-ai's own push and label included: that run still has to post its comment.
+# Another label gets a group of its own, so it can't displace a run that is waiting.
+concurrency:
+  group: >-
+    lector-ai-${{ github.event.pull_request.number }}${{
+    github.event.action == 'labeled' && github.event.label.name != 'lector' && '-other-label' || '' }}
+  cancel-in-progress: >-
+    ${{ github.event.sender.type != 'Bot' ||
+        contains(fromJSON('["renovate[bot]", "dependabot[bot]"]'), github.event.sender.login) }}
+
+jobs:
+  heal:
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action != 'labeled' || github.event.label.name == 'lector') &&
+      (contains(fromJSON('["renovate[bot]", "dependabot[bot]"]'), github.event.pull_request.user.login) ||
+       contains(github.event.pull_request.labels.*.name, 'lector'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      # The model, with its weights in the image. lector-ai reaches it at http://ollama:11434.
+      ollama:
+        image: ghcr.io/danvan86/lector-ollama:0.1.0-qwen2.5-coder-7b
+        options: >-
+          --health-cmd "ollama list"
+          --health-interval 5s
+          --health-retries 30
+    steps:
+      # What Dependabot updated. It refuses once the head commit isn't Dependabot's: the lector-ai step is skipped then.
+      - id: metadata
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        continue-on-error: true
+        uses: dependabot/fetch-metadata@v3
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.LECTOR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.LECTOR_APP_PRIVATE_KEY }}
+      # The PR's head commit, not the merge commit. lector-ai fetches the base itself and pushes with the App token.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - if: steps.metadata.outcome != 'failure'
+        uses: danvan86/lector-ai/action@v0.1.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          app-slug: ${{ steps.app-token.outputs.app-slug }}
+          dependabot-metadata: ${{ steps.metadata.outputs.updated-dependencies-json }}
+
+  cleanup:
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (contains(fromJSON('["renovate[bot]", "dependabot[bot]"]'), github.event.pull_request.user.login) ||
+       contains(github.event.pull_request.labels.*.name, 'lector'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.LECTOR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.LECTOR_APP_PRIVATE_KEY }}
+      - uses: danvan86/lector-ai/action@v0.1.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          app-slug: ${{ steps.app-token.outputs.app-slug }}
+```
+
+The action takes the inputs of the table in section 3, except `runs-on`, `ollama-image`, and `timeout-minutes`, which
+are the job's own here, plus:
+
+| Input | Default | Meaning |
+|---|---|---|
+| `token` | required | The App's installation token |
+| `app-slug` | none | The App's slug, `steps.app-token.outputs.app-slug`. lector-ai looks up its bot on github.com |
+| `bot-name`, `bot-email` | none | The bot and its email, instead of `app-slug`: on GitHub Enterprise Server or GHE.com, `<app-slug>[bot]` and its noreply email there |
+| `dependabot-metadata` | none | The `updated-dependencies-json` output of `dependabot/fetch-metadata`, as above |
+| `ollama-url` | `http://ollama:11434` | The Ollama service |
+
+Name the bot exactly one way: `app-slug`, or both `bot-name` and `bot-email`. Anything else fails the step with exit
+code 2. If you change `bot-logins` or `fallback-label`, change the `if:` conditions and the concurrency rule to match.
 
 ## Limitations
 
@@ -343,10 +422,11 @@ With the 30B image, set `model: qwen3-coder:30b` in the action's inputs.
   the fixing. Only Jest and Vitest report per test: any other `test` script passes or fails as a whole package. The
   package managers' workspaces are used, not Nx, Turborepo, or Lerna task graphs. No Bun or Deno, and no Node older than
   22. PRs that only update Node (`.nvmrc`, `.node-version`, `engines`, `setup-node`) are skipped.
-- **GitHub only.**
+- **GitHub only.** The short setup only on github.com.
 - **Unsigned commits.** If your branches require signed commits, the push is rejected.
 - **The token is not isolated from the build.** Builds and tests run without the token in their environment, but in the
   same container as lector-ai, as the same user. A build plugin from a malicious dependency could still read it from
   the system. The token is short-lived and limited to the App's permissions on the repositories it is installed on.
 - **Many transitive changes.** A labelled PR that moves hundreds of transitive dependencies gives the model all of them
   as context. The comment lists the first ten changes without a recipe; the CI log lists every change.
+

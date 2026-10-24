@@ -158,6 +158,32 @@ opt-in.
 
 **Done when:** a TypeScript repo runs through without changes to `core`. If `core` had to change, that's the lesson.
 
+## M10 – Simple setup 🟨
+
+**Goal:** a repository on github.com gets lector-ai in three steps instead of an 80-line workflow.
+
+- Reusable workflow `.github/workflows/lector.yml` (`workflow_call`): the trigger conditions, one run per PR (no bot name
+  needed), the Ollama service, `fetch-metadata`, the App token, the checkout, the action, and the cleanup job; the
+  action's inputs plus `runs-on`, `ollama-image`, `timeout-minutes`; the App's client ID and key as declared secrets
+- The bot's identity from the App's slug: `lector pr --app-slug` and the action's `app-slug` input look up
+  `<slug>[bot]` on github.com and build its noreply email. `--bot-name`/`--bot-email` stay for GitHub Enterprise
+- Every run on a Renovate PR logs the value for `gitIgnoredAuthors`, the first one included
+- `./gradlew build` checks that the reusable workflow, the action, the Ollama image, and the docs name the same version,
+  and that the workflow offers the action's inputs with the same defaults
+- Documentation: the [setup guide](setup.md) and the README lead with the short setup (a pre-filled link that creates
+  the App, `gh secret set`, ten lines of workflow); the full workflow stays as the advanced setup
+- Still open: the run in a test repository on github.com with only the short setup (Renovate, Dependabot, a labelled PR,
+  closing, cancelling), and opening the pre-filled App link once
+
+**Changes to `core` in M10:**
+
+| Change | Reason |
+|---|---|
+| `UpdateSource.setupHint(identity)`, logged by the pipeline once a source takes the PR | Renovate needs the bot's email in its configuration before lector-ai's first push. The text is the source's, so `core` names no bot |
+
+**Done when:** a Renovate PR and a Dependabot PR in a test repository, set up only with the short setup, get the same
+result as with the M8 workflow.
+
 ## Later ⬜
 
 Not planned in detail yet. Prioritize after M9 based on demand and benchmark results.

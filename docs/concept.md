@@ -321,6 +321,8 @@ Each rule is a small `Guardrail` implementation in a list, tested on its own. Th
 ### 8.2 Tokens
 
 - Pushes made with `GITHUB_TOKEN` don't trigger new workflow runs, so required checks wouldn't run on the fix commit. Use a **GitHub App token**.
+- The bot's identity comes from the App: on github.com, the tool looks up `<app-slug>[bot]` and builds its noreply email
+  `<id>+<app-slug>[bot]@users.noreply.github.com` (M10). Elsewhere, name and email are given.
 - Prevent a loop where the bot's own commit triggers the fix job again: the tool skips a head commit by its own identity.
   So once it has pushed, its check on the PR's new head is green even when something is left. The report comment and
   the repository's own CI show what is left; the tool's exit `1` marks only the commit it worked on.
@@ -344,7 +346,8 @@ Also:
 
 ### 8.4 Infrastructure
 
-- **Orchestrator:** GitHub Actions (later GitLab CI). The tool runs as a Docker container action.
+- **Orchestrator:** GitHub Actions (later GitLab CI). The tool runs as a Docker container action. A reusable workflow
+  next to it holds everything a repository needs around the action, so a repository's own workflow is ten lines (M10).
 - **Two images**, updated independently. The **tool image** has the tool, git, Maven, JDKs 17, 21, and 25, and the OpenRewrite Gradle plugin; the tool builds each Maven project with the smallest JDK its release needs, and runs Gradle on the newest JDK the project's Gradle version supports, with toolchains from the same JDKs. It has no Gradle: a project's wrapper downloads its own distribution. The **Ollama image** has one model's weights **baked in** and runs as the job's `services:` sidecar, so nothing is downloaded per job except the project's own dependencies and, for Gradle, its distribution.
 - **Model:** a coding model that is strong across many languages (the Qwen-Coder family). The `qwen2.5-coder:7b` variant runs on standard GitHub-hosted runners, on CPU, and is the default: it is the model the benchmark measures (section 11). The `qwen3-coder:30b` variant is an option for GPU runners, not measured. Its weights are one file of about 19 GB, more than GHCR takes in one layer (10 GB), so its distribution is still open.
 - **No cloud data leakage:** source code and logs stay inside your own infrastructure.

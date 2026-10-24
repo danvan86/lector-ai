@@ -34,6 +34,7 @@ git/           Git host adapters (github, ...)
 cli/           command-line entry point; wires adapters into core
 benchmark/     benchmark harness and report (M6); uses core and the adapters, never shipped
 action/        GitHub Action: a Docker container action on the tool image (not a Gradle module)
+.github/workflows/lector.yml   the reusable workflow repositories call; wraps the action (not a Gradle module)
 docker/        Dockerfiles of the tool image and the Ollama image, and the image's Node toolchain versions (not Gradle modules)
 ```
 
@@ -60,7 +61,9 @@ docker build -f docker/lector/Dockerfile -t lector .   # tool image, after :cli:
 docker build --build-arg MODEL=qwen2.5-coder:7b -t lector-ollama docker/ollama   # Ollama image with the model baked in
 ```
 
-The setup for users is in [`docs/setup.md`](docs/setup.md). A version tag (`v<version>`) publishes both images to GHCR
+The setup for users is in [`docs/setup.md`](docs/setup.md): a GitHub App, two secrets, and a short workflow that calls the
+reusable workflow `.github/workflows/lector.yml`. `checkReusableWorkflow` (part of `build`) keeps it, the action, and the
+docs on one version. A version tag (`v<version>`) publishes both images to GHCR
 (`.github/workflows/release.yml`); it is refused until the MSAL check in [`docs/licensing.md`](docs/licensing.md) is done.
 
 The build uses a JDK 25 toolchain; Gradle downloads it if it's missing.
