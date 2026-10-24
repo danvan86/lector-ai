@@ -24,7 +24,7 @@ Automated dependency updates (Renovate, Dependabot) are routine for patch and mi
 | **Technology-agnostic** | Works for every technology OpenRewrite supports. All language-specific logic lives in ecosystem adapters. |
 | **Source-agnostic** | Works with Renovate, Dependabot, and any other PR that changes a dependency. |
 | **Deterministic where possible, AI where necessary** | Recipe selection, verification, and guardrails never depend on an LLM. |
-| **Grounded, not guessing** | The LLM always receives the real API surface of the new version and the relevant release notes. |
+| **Grounded, not guessing** | The LLM always receives the real API surface of the new version, what changed in it since the old version, and the relevant release notes. |
 | **"Green" means nothing the update broke is left** | Verification runs the full test and validation suite, not only compilation. But only failures caused by the update count: compile errors always, a failing test only if it passes on the base commit. Pre-existing and flaky failures are reported, never fixed (section 5). |
 | **Self-hosted and private** | Runs on your own CI infrastructure. Source code and build logs never leave it. |
 | **Transparent** | Every change is traceable, attributed, and reviewable. Nothing is auto-merged. |
@@ -197,6 +197,7 @@ EcosystemAdapter
   verify(repo)                       → Diagnostic[]   (build + tests/validation)
   runTests(repo, tests: Diagnostic[])→ Diagnostic[]   (only the tests of these failures: rerun, baseline)
   ground(repo, change, diagnostics)  → Context        (API surface, docs)
+  apiChanges(repo, change, diagnostics) → Context     (what changed since the old version; default none)
   clusterKey(diagnostic)             → String?        (root cause: missing symbol, package, artifact)
   isBuildFile(file)                  → bool           (pom.xml, package.json, …)
   updateLockfiles(repo)              → Updated(files) | Failed(reason)  (after a build-file edit: the lockfile follows it)
@@ -250,7 +251,8 @@ verify on the PR head
 
 A local model often doesn't know the new version of an API, because it was released after the model's training cutoff. Without context, the model guesses. So every request contains:
 
-- **The real API surface of the new version** from the ecosystem adapter (signatures, types, schemas)
+- **The API changes between the old and the new version** from the ecosystem adapter, first: moved classes and members, renamed packages, changed signatures, rename candidates, and removed classes and members of the classes the errors refer to. Computed without an LLM (the JVM reads both versions' class files; the old version is fetched through the project's own build tool if it isn't there, once per run). Ambiguous changes are reported as removed, never guessed
+- **The real API surface of the new version** from the ecosystem adapter (signatures, types, schemas). When the request is too long, it is trimmed before the API changes
 - **Release notes and the migration guide** from the update-source adapter (the PR body) plus a per-dependency index
 - **The OpenRewrite diff**, so the model can see which migration pattern has already been applied
 - **Only the relevant code section** around the error, not the whole file and not the whole project

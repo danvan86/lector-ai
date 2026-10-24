@@ -85,7 +85,7 @@ class PromptTest {
         assertContains(prompt, "The update of com.google.guava:guava from 18.0 to 21.0 broke this code.")
         assertContains(prompt, "- [javac] src/main/java/App.java:3:9: cannot find symbol\n  symbol:   method firstNonNull(String,String)")
         assertContains(prompt, "### src/main/java/App.java, lines 1-5\n```\n${snippet.text}```")
-        assertContains(prompt, "## API of the new version\n\npublic final class com.google.common.base.MoreObjects {\n}")
+        assertContains(prompt, "## API\n\npublic final class com.google.common.base.MoreObjects {\n}")
         assertContains(prompt, "## Release notes\n\nObjects.firstNonNull was removed; use MoreObjects.firstNonNull.")
         assertContains(prompt, "## Changes the recipe already made\n\n```diff\n--- a/pom.xml\n+++ b/pom.xml\n```")
         assertContains(prompt, "### Attempt 1, rejected: src/main/java/App.java: the search text is not in the file")
@@ -140,6 +140,20 @@ class PromptTest {
         assertContains(prompt, error.message.lines().last())
         assertContains(prompt, "[trimmed to fit the context]")
         assertTrue(prompt.count { it == 'g' } > prompt.count { it == 'r' }, "the API is trimmed last")
+    }
+
+    @Test
+    fun `an oversized API is cut after the API changes that come first, never through them`() {
+        val changes =
+            "API changes of com.google.guava:guava from 18.0 to 21.0\n\nMoved members:\n" +
+                "- com.google.common.base.Objects.firstNonNull(java.lang.Object, java.lang.Object) → " +
+                "com.google.common.base.MoreObjects.firstNonNull(java.lang.Object, java.lang.Object)"
+        val oversized = request.copy(grounding = changes + "\n\n" + "public final class X {\n}\n".repeat(10_000))
+
+        val prompt = Prompt.user(oversized)
+
+        assertContains(prompt, "## API\n\n$changes")
+        assertContains(prompt, "[trimmed to fit the context]")
     }
 
     @Test

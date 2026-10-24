@@ -70,7 +70,7 @@ internal object Prompt {
         var budget = MAX_CHARS - SYSTEM.length - fixed.sumOf { it.length } - SEPARATOR.length * (fixed.size + 3)
         val optional =
             listOf(
-                Triple("API of the new version", request.grounding, null),
+                Triple("API", request.grounding, null),
                 Triple("Release notes", request.releaseNotes.orEmpty(), null),
                 Triple("Changes the recipe already made", request.recipeDiff.orEmpty(), "diff"),
             ).map { (title, text, fence) ->

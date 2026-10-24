@@ -383,6 +383,38 @@
       "ecosystem": "maven"
     },
     {
+      "id": "pdfbox-3",
+      "origin": "synthetic",
+      "repository": "https://github.com/danvan86/lector-benchmark-corpus.git",
+      "base": "c79613fa5b038fed3e6a49e18e3c11dc11a464b4",
+      "head": "ce90005cfd05c016ed43b7e17549a090ba081f20",
+      "changes": [
+        {
+          "package": "org.apache.pdfbox:pdfbox",
+          "from": "2.0.32",
+          "to": "3.0.3"
+        }
+      ],
+      "note": "Fixture project written for M10 (no upstream), branch case/pdfbox-3. Compile error (moved member, no recipe): PDFBox 3 removed PDDocument.load(File); the static PDFParser.load(File) in another package replaces it (PdfPages.java). The full API of the classes the error names doesn't show it. verified locally (JDK 25, release 17): base 1 test green, head compile error.",
+      "ecosystem": "maven"
+    },
+    {
+      "id": "snakeyaml-2",
+      "origin": "synthetic",
+      "repository": "https://github.com/danvan86/lector-benchmark-corpus.git",
+      "base": "a830b6fff298a0044a4315c59ab4f851a33beeb6",
+      "head": "f67b97d4b8c4d19baf05b715a41388ca50fcf452",
+      "changes": [
+        {
+          "package": "org.yaml:snakeyaml",
+          "from": "1.33",
+          "to": "2.3"
+        }
+      ],
+      "note": "Fixture project written for M10 (no upstream), branch case/snakeyaml-2. Compile error (changed signature, no recipe): SnakeYAML 2 removed Constructor(Class), Constructor(Class, LoaderOptions) replaces it (ConfigLoader.java; incompatible types: Class cannot be converted to LoaderOptions). verified locally (JDK 25, release 17): base 1 test green, head compile error.",
+      "ecosystem": "maven"
+    },
+    {
       "id": "appinsights-detective-inquirer-12-11",
       "origin": "https://github.com/georgeOsdDev/AppInsightsDetective/pull/137",
       "repository": "https://github.com/georgeOsdDev/AppInsightsDetective.git",

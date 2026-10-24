@@ -47,13 +47,25 @@ interface EcosystemAdapter {
 
     /**
      * The API surface of [change]'s new version that [diagnostics] need (signatures, types, schemas), as text for the
-     * model. Empty if there is none. Never downloads anything: it reads what the build already resolved.
+     * model. Empty if there is none. It reads what the build already resolved.
      */
     fun ground(
         repo: Path,
         change: DependencyChange,
         diagnostics: List<Diagnostic>,
     ): String
+
+    /**
+     * What changed in the API that [diagnostics] need between [change]'s old and new version (moved classes, removed
+     * members, changed signatures), as text for the model. The model reads it before every [ground] text. Empty if there
+     * is nothing to tell, the default. To get the old version, an adapter may fetch its artifacts through the project's
+     * own build tool, once per run; a failure gives no text, never an exception.
+     */
+    fun apiChanges(
+        repo: Path,
+        change: DependencyChange,
+        diagnostics: List<Diagnostic>,
+    ): String = ""
 
     /**
      * The root cause [diagnostic] points to, e.g. a missing symbol, package, or artifact, or null if it names none.

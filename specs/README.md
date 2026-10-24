@@ -31,3 +31,4 @@ specs/
 | M7 – Gradle | [brainstorming](done/m7-gradle/brainstorming.md) · [spec](done/m7-gradle/spec.md) |
 | M8 – Dependabot and fallback | [brainstorming](done/m8-dependabot-fallback/brainstorming.md) · [spec](done/m8-dependabot-fallback/spec.md) |
 | M9 – TypeScript | [brainstorming](done/m9-typescript/brainstorming.md) · [spec](done/m9-typescript/spec.md) |
+| M10 – API diff as grounding | [brainstorming](done/m10-api-diff-grounding/brainstorming.md) · [spec](done/m10-api-diff-grounding/spec.md) · [tests](done/m10-api-diff-grounding/tests.md) |

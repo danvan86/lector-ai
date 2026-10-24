@@ -66,6 +66,12 @@ val generateMavenPluginsResource =
                 .get()
                 .toString(),
         )
+        property(
+            "dependency",
+            libs.maven.dependency.plugin
+                .get()
+                .toString(),
+        )
     }
 sourceSets.main {
     resources.srcDir(files(pluginResources).builtBy(generateMavenPluginsResource))
