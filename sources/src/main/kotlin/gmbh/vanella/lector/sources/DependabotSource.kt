@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.sources
 
 import gmbh.vanella.lector.core.BranchPolicy
+import gmbh.vanella.lector.core.CommitIdentity
 import gmbh.vanella.lector.core.PackageUpdate
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.SourceContext
@@ -60,6 +61,9 @@ class DependabotSource(
     override val branchPolicy = BranchPolicy.COMPANION
 
     override fun recognizes(pr: PullRequest) = pr.author in botLogins && pr.headBranch.startsWith(BRANCH_PREFIX)
+
+    // Dependabot has no setting that keeps it rebasing after foreign commits; the companion PR keeps them off its branch.
+    override fun setupHint(identity: CommitIdentity): String? = null
 
     override fun read(
         pr: PullRequest,

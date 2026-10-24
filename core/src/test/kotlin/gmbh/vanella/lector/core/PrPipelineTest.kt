@@ -181,6 +181,18 @@ class PrPipelineTest {
     }
 
     @Test
+    fun `the chosen source gets the bot's identity for its setup hint, also when the run skips the tool's own commit`() {
+        val chosen = FakeSource("chosen", update = SourceUpdate(listOf(lib), null))
+        val other = FakeSource("other", recognizes = { false }, update = SourceUpdate(listOf(lib), null))
+        val host = host(pr(), headAuthor = bot)
+
+        pipeline(host, sources = listOf(other, chosen)).run(repo)
+
+        assertEquals(listOf(bot), chosen.hints)
+        assertEquals(emptyList(), other.hints)
+    }
+
+    @Test
     fun `a PR without a version change is skipped without a comment`() {
         val host = host(pr())
 
@@ -791,8 +803,14 @@ class PrPipelineTest {
         private val update: SourceUpdate,
     ) : UpdateSource {
         var reads = 0
+        val hints = mutableListOf<CommitIdentity>()
 
         override fun recognizes(pr: PullRequest) = recognizes.invoke(pr)
+
+        override fun setupHint(identity: CommitIdentity): String? {
+            hints += identity
+            return if (name == "chosen") "Tell the source about ${identity.email}" else null
+        }
 
         override fun read(
             pr: PullRequest,

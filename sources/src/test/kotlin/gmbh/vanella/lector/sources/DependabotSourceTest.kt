@@ -1,6 +1,7 @@
 package gmbh.vanella.lector.sources
 
 import gmbh.vanella.lector.core.BranchPolicy
+import gmbh.vanella.lector.core.CommitIdentity
 import gmbh.vanella.lector.core.PackageUpdate
 import gmbh.vanella.lector.core.PullRequest
 import gmbh.vanella.lector.core.ToolError
@@ -38,6 +39,7 @@ class DependabotSourceTest {
 
         assertEquals("dependabot", source.name)
         assertEquals(BranchPolicy.COMPANION, source.branchPolicy)
+        assertNull(source.setupHint(CommitIdentity("my-lector[bot]", "123+my-lector[bot]@users.noreply.github.com")))
     }
 
     @Test

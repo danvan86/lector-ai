@@ -79,4 +79,11 @@ interface UpdateSource {
         pr: PullRequest,
         context: SourceContext,
     ): SourceUpdate
+
+    /**
+     * What the source's own configuration must know about the bot [identity], logged on every run this source takes, the
+     * skipped ones included: e.g. that the bot's commits must not stop the source from updating its branch. `null` if
+     * nothing.
+     */
+    fun setupHint(identity: CommitIdentity): String?
 }
