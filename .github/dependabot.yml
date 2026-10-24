@@ -8,6 +8,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # The reusable workflow runs lector-ai's own action at the tool's version: a release moves the pin, checked by
+    # ./gradlew checkReusableWorkflow, not Dependabot.
+    ignore:
+      - dependency-name: danvan86/lector-ai*
   # The Node tools of the tool image: Corepack, jest-junit, and the package manager versions it pre-caches.
   - package-ecosystem: npm
     directory: /docker/lector/node
