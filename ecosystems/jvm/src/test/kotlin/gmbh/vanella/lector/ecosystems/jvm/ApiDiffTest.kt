@@ -72,6 +72,21 @@ class ApiDiffTest {
     }
 
     @Test
+    fun `a static field moves only to a static field of the same type`() {
+        // JavaParser 2.5.1 → 3.25.8: `Position.UNKNOWN` is gone, `LineSeparator.UNKNOWN` is another constant of another type.
+        val old = ApiModel(mapOf("a.Position" to setOf(ApiMember(MemberKind.FIELD, "UNKNOWN", emptyList(), true, "a.Position"))))
+        val new =
+            ApiModel(
+                mapOf(
+                    "a.Position" to emptySet(),
+                    "b.LineSeparator" to setOf(ApiMember(MemberKind.FIELD, "UNKNOWN", emptyList(), true, "b.LineSeparator")),
+                ),
+            )
+
+        assertEquals(listOf("a.Position.UNKNOWN"), ApiDiff.of(old, new, setOf("a.Position")).map { it.render() })
+    }
+
+    @Test
     fun `one gone and one new member with other parameters are no rename candidate`() {
         val old = ApiModel(mapOf("a.Greeter" to setOf(method("hello", "java.lang.String"))))
         val new = ApiModel(mapOf("a.Greeter" to setOf(method("greet", "int"))))

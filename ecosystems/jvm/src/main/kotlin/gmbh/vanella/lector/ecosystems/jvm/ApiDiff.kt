@@ -151,7 +151,11 @@ internal object ApiDiff {
             }
     }
 
-    /** The one other class of [new] with a static member of the same kind, name, and parameters as the static [member], and that member. */
+    /**
+     * The one other class of [new] with a static member of the same kind, name, and parameters as the static [member], and
+     * that member. A method's return type may differ (Guava's `toStringHelper`); a field's type is all its signature has,
+     * so it must match (JavaParser's `Position.UNKNOWN` is no `LineSeparator.UNKNOWN`).
+     */
     private fun movedTo(
         member: ApiMember,
         owner: String,
@@ -161,9 +165,14 @@ internal object ApiDiff {
         return new.classes
             .filterKeys { it != owner }
             .mapNotNull { (name, members) ->
-                members.firstOrNull { it.name == member.name && it.sameSignature(member) }?.let { name to it }
+                members.firstOrNull { it.name == member.name && it.sameSignature(member) && sameFieldType(it, member) }?.let { name to it }
             }.singleOrNull()
     }
+
+    private fun sameFieldType(
+        candidate: ApiMember,
+        member: ApiMember,
+    ) = member.kind != MemberKind.FIELD || candidate.returnType == member.returnType
 }
 
 /**
