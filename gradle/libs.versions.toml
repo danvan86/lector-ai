@@ -7,7 +7,7 @@ kover = "0.9.11"
 clikt = "5.1.0"
 slf4j = "2.0.20"
 junit = "6.1.3"
-kotlinx-serialization = "1.11.0"
+kotlinx-serialization = "1.12.0"
 maven-artifact = "3.10.0"
 # tree-sitter-ng: the parser and prebuilt grammars for the guardrails. The grammars bring in older parser versions; the
 # parser declared here wins.
