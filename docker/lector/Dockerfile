@@ -11,7 +11,7 @@
 #   docker build -f docker/lector/Dockerfile -t lector .
 FROM eclipse-temurin:17.0.20.1_1-jdk-noble AS jdk17
 FROM eclipse-temurin:21.0.12.1_1-jdk-noble AS jdk21
-FROM maven:3.10.0-eclipse-temurin-25-noble AS maven
+FROM maven:3-eclipse-temurin-26-noble AS maven
 FROM node:22.23.3-bookworm-slim AS node22
 FROM node:24.21.0-bookworm-slim AS node24
 
