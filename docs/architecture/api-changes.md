@@ -54,8 +54,8 @@ sequenceDiagram
     L->>M: apiChanges(repo, change, diagnostics)
     M->>G: apiChanges(…)
     G->>G: fromVersion and toVersion set and different?
-    G->>R: references of the erroring files and messages
     G->>G: new JARs of the group at toVersion, by artifact
+    G->>R: references of the erroring files and messages
     G->>G: do the errors refer to a class or package in them? (entry names only)
     G->>M: oldJars(repo, change, artifacts)
     M->>M: cached for (group, fromVersion)?
