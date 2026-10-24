@@ -292,7 +292,7 @@ the job that calls it.
 | `gradle-init` | | Gradle init script in the repository, e.g. for a mirror |
 | `npmrc` | | User-level `.npmrc` for npm, pnpm, and Yarn classic |
 | `yarnrc` | | User-level `.yarnrc.yml` for Yarn Berry |
-| `runs-on` | `ubuntu-latest` | The heal job's runner: a label or a JSON array of labels |
+| `runs-on` | `ubuntu-latest` | The runner of both jobs (heal and cleanup): a label or a JSON array of labels |
 | `ollama-image` | `ghcr.io/danvan86/lector-ollama:0.1.0-qwen2.5-coder-7b` | The Ollama image with the model |
 | `timeout-minutes` | `120` | Minutes before the heal job is stopped |
 

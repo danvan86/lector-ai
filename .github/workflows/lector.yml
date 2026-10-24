@@ -9,7 +9,7 @@ name: lector-ai
 on:
   workflow_call:
     inputs:
-      # The action's inputs, with its defaults (checked by ./gradlew checkActionImage). The workflow fills token,
+      # The action's inputs, with its defaults (checked by ./gradlew checkReusableWorkflow). The workflow fills token,
       # app-slug, and dependabot-metadata itself, and owns the Ollama service, so ollama-url isn't one.
       bot-logins:
         description: The bots whose PRs are fixed, comma-separated, without spaces
@@ -83,7 +83,7 @@ on:
         default: ""
       # The workflow's own.
       runs-on:
-        description: The runner of the heal job, a label or a JSON array of labels
+        description: The runner of both jobs, a label or a JSON array of labels
         type: string
         required: false
         default: ubuntu-latest
@@ -192,7 +192,8 @@ jobs:
       cancel-in-progress: >-
         ${{ github.event.sender.type != 'Bot' ||
             contains(format(',{0},', inputs.bot-logins), format(',{0},', github.event.sender.login)) }}
-    runs-on: ubuntu-latest
+    # The heal job's runner: a repository with self-hosted runners only may have no other.
+    runs-on: ${{ startsWith(inputs.runs-on, '[') && fromJSON(inputs.runs-on) || inputs.runs-on }}
     timeout-minutes: 10
     steps:
       - id: app-token

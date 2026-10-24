@@ -116,11 +116,11 @@ inputs:
 | `gradle-init` | none | A Gradle init script in the repository, passed to every Gradle run, e.g. to point the repositories at a mirror |
 | `npmrc` | none | A user-level `.npmrc` in the repository for npm, pnpm, and Yarn classic, e.g. for a registry |
 | `yarnrc` | none | A user-level `.yarnrc.yml` in the repository for Yarn Berry, e.g. for a registry |
-| `runs-on` | `ubuntu-latest` | The runner of the heal job: a label, or a JSON array of labels such as `'["self-hosted", "linux"]'` |
+| `runs-on` | `ubuntu-latest` | The runner of both jobs, the heal job and the cleanup: a label, or a JSON array of labels such as `'["self-hosted", "linux"]'` |
 | `ollama-image` | `ghcr.io/danvan86/lector-ollama:0.1.0-qwen2.5-coder-7b` | The Ollama image with the model's weights |
 | `timeout-minutes` | `120` | Minutes before the heal job is stopped |
 
-The inputs are strings, numbers included (`"45"`). Tokens for private registries can't be passed to a reusable
+The inputs are strings, numbers included (`"45"`), except `timeout-minutes`. Tokens for private registries can't be passed to a reusable
 workflow: GitHub doesn't hand the caller's environment on. Use the [advanced setup](#advanced-setup) for them, for
 caches, and for a GPU runner.
 
