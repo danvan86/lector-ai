@@ -139,7 +139,7 @@ class PrCommandTest {
 
         assertEquals(2, result.statusCode)
         assertContains(result.stderr, "Error: The Dependabot PR comes without its metadata.")
-        assertContains(result.stderr, "dependabot-metadata input, as the setup guide shows (docs/setup.md, section 3).")
+        assertContains(result.stderr, "dependabot-metadata input, as the setup guide shows (docs/setup.md, \"Advanced setup\").")
         assertContains(host.comments.single(), "lector-ai can't tell what the PR changes, so it changed nothing: The Dependabot PR")
     }
 

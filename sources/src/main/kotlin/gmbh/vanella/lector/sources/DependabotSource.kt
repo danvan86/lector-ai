@@ -73,7 +73,7 @@ class DependabotSource(
             metadata ?: throw ToolError(
                 "The Dependabot PR comes without its metadata. Run dependabot/fetch-metadata in the workflow and pass its " +
                     "updated-dependencies-json output to the action's dependabot-metadata input, as the setup guide shows " +
-                    "(docs/setup.md, section 3).",
+                    "(docs/setup.md, \"Advanced setup\"). The reusable workflow passes it on its own.",
             )
         return SourceUpdate(dependencies.mapNotNull(::update), releaseNotes(pr.body))
     }

@@ -167,7 +167,8 @@ class DependabotSourceTest {
 
         assertEquals(
             "The Dependabot PR comes without its metadata. Run dependabot/fetch-metadata in the workflow and pass its " +
-                "updated-dependencies-json output to the action's dependabot-metadata input, as the setup guide shows (docs/setup.md, section 3).",
+                "updated-dependencies-json output to the action's dependabot-metadata input, as the setup guide shows " +
+                "(docs/setup.md, \"Advanced setup\"). The reusable workflow passes it on its own.",
             error.message,
         )
     }
