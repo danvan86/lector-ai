@@ -181,8 +181,8 @@ before them.
   error lies in a line the edits wrote, no new build error without a location, no count higher, no error an earlier
   accepted attempt removed is back. Test failures keep the counts-only rule
 - A build error without a location that the base commit has too (its checkout path aside) is pre-existing when the
-  head's verify ran tests. The base is verified at most once per run (`RunBase`); a failure or timeout there never
-  ends the run. Every Maven command skips signing (`-Dgpg.skip=true`)
+  head's verify ran tests, and in Maven skipped no module. The base is verified at most once per run (`RunBase`); a
+  failure or timeout there never ends the run. Every Maven command skips signing (`-Dgpg.skip=true`)
 - A repeated answer (same edits as a rejected attempt on the cluster since the last accepted one, any order, trailing
   whitespace ignored) is not built: the model is asked once more at temperature 0.7 with a note; a second repeat
   rejects the attempt without a build

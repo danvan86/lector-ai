@@ -15,12 +15,13 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 7 | Benchmark: `model` input, the 14B image (section 8, configuration) | ✅ |
 | 8 | Quality gates verified | ✅ |
 | 9 | Docs in sync | ✅ |
+| 10 | Review and fixes: [`review.md`](review.md) | ✅ |
 
 ## Quality gates
 
 Final check from a clean state (`./gradlew clean build --rerun-tasks --no-build-cache --no-configuration-cache`): green.
 Each gate on its own: `ktlintCheck`, `detektMain detektTest`, `test`, `:cli:endToEndTest`, `koverVerify` all exit 0.
-1000 unit tests, 24 end-to-end tests; 100 % line and branch coverage per module. `:cli:integrationTest --tests
+1002 unit tests, 24 end-to-end tests; 100 % line and branch coverage per module (after the review fixes, same clean build). `:cli:integrationTest --tests
 '*SigningIntegrationTest*'` (T-C2) passes with real Maven, and fails with the flag removed.
 
 Probes (each reverted, `git status` clean afterwards):

@@ -424,7 +424,8 @@ code 2. If you change `bot-logins` or `fallback-label`, change the `if:` conditi
   build files at the root is refused: lector-ai doesn't pick a build tool. A JVM build with a `package.json` and a
   `tsconfig.json` next to it is built as a JVM project.
 - **Maven:** lector-ai's builds skip signing (`-Dgpg.skip=true`). A plugin that fails on the base commit as well, like
-  a linter, is reported as pre-existing when the tests ran, and doesn't count against the update.
+  a linter, is reported as pre-existing when the tests ran, and doesn't count against the update. Not when Maven skipped
+  the modules that depend on the failing one: their tests didn't run, so the failure counts.
 - **Gradle:** no Android or Kotlin Multiplatform builds (the image has no Android SDK), no Gradle 7 or older, no build
   without a wrapper. Groovy sources (Spock tests) are never edited: their failures are reported, but the model can only
   fix the Java or Kotlin code they call. Linters bound to `check` (Spotless, Checkstyle, detekt) don't run: verify
