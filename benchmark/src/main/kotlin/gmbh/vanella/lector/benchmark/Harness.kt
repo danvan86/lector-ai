@@ -13,6 +13,7 @@ import gmbh.vanella.lector.core.Progress
 import gmbh.vanella.lector.core.RecipeGroupResult
 import gmbh.vanella.lector.core.RecipeIndex
 import gmbh.vanella.lector.core.RecipeOutcome
+import gmbh.vanella.lector.core.RunBase
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.Verification
 import gmbh.vanella.lector.core.applyRecipes
@@ -93,7 +94,7 @@ class Harness(
                     )
                 }
             } ?: throw ToolError("No supported ecosystem in ${case.repository}")
-        private val base: BaseCommit = GitBaseCommit.resolve(repo, case.base)
+        private val base: BaseCommit = RunBase(GitBaseCommit.resolve(repo, case.base))
         private val changes =
             case.changes.map {
                 DependencyChange(adapter.ecosystem, it.`package`, it.from, it.to, adapter.versionScheme.updateType(it.from, it.to))

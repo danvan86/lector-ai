@@ -2,6 +2,7 @@ package gmbh.vanella.lector.cli
 
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.testing.test
+import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.Edit
 import gmbh.vanella.lector.core.LlmClient
 import gmbh.vanella.lector.core.Recipe
@@ -9,6 +10,7 @@ import gmbh.vanella.lector.core.RecipeIndex
 import gmbh.vanella.lector.core.RecipeMatch
 import gmbh.vanella.lector.core.RecipeRun
 import gmbh.vanella.lector.core.RecipeSelection
+import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.runProcess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -355,6 +357,45 @@ class HealCommandTest {
         assertContains(run.stdout, "Caused by the update (1)")
         assertEquals("", run.stderr)
         assertEquals(1, run.exitCode)
+    }
+
+    @Test
+    fun `a build error the base has too is checked on the base once per run, and doesn't fail the job`() {
+        val gpg =
+            Diagnostic(
+                null,
+                null,
+                null,
+                null,
+                "Failed to execute goal maven-gpg-plugin:sign: Cannot run program \"gpg\"",
+                Severity.ERROR,
+                "maven",
+            )
+        val adapter = FakeAdapter(testsRun = { 12 }, buildErrors = listOf(gpg))
+        val noFix = Edit("App.java", "broken();", "broken(); // still")
+        val llm = ScriptedLlm(noFix, noFix.copy(replace = "broken(); // again"), noFix.copy(replace = "broken(); // once more"))
+
+        val result = command(llm = llm, adapter = adapter).test("$repo $args --base HEAD --max-attempts-without-progress 3 --format json")
+
+        val report = Json.parseToJsonElement(result.stdout).jsonObject
+        assertEquals(
+            3,
+            report
+                .getValue("fixLoop")
+                .jsonObject
+                .getValue("attempts")
+                .jsonArray.size,
+        )
+        assertEquals(1, adapter.verified.count { it != repo }, "the first verify, the recipe's, and three attempts share one")
+        assertContains(
+            report
+                .getValue("verification")
+                .jsonObject
+                .getValue("preExisting")
+                .toString(),
+            "maven-gpg-plugin",
+        )
+        assertEquals(1, result.statusCode, "the compile error is left")
     }
 
     private fun lector(llm: LlmClient = ScriptedLlm()) = LectorCommand("1.2.3").subcommands(command(llm = llm))

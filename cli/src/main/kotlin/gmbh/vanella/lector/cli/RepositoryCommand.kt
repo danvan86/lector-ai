@@ -10,6 +10,7 @@ import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.path
 import gmbh.vanella.lector.core.BaseCommit
 import gmbh.vanella.lector.core.EcosystemAdapter
+import gmbh.vanella.lector.core.RunBase
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.Verification
 import kotlinx.serialization.json.JsonObject
@@ -94,7 +95,7 @@ internal abstract class RepositoryCommand(
         return adapters(BuildConfig(mavenSettings, gradleInit, npmrc, yarnrc)).use { all ->
             val adapter = all.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in $repo. $SUPPORTED")
             // Resolve the base before the build, so a wrong ref fails in seconds, not after a full build.
-            val base = base?.let { baseCommit(repo, it) }
+            val base = base?.let { RunBase(baseCommit(repo, it)) }
             execute(adapter, base)
         }
     }

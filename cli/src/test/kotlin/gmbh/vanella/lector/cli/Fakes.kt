@@ -48,6 +48,7 @@ internal class ScriptedLlm(
  */
 internal class FakeAdapter(
     private val testsRun: (Path) -> Int? = { null },
+    private val buildErrors: List<Diagnostic> = emptyList(),
     versionsReadable: Boolean = true,
     recipeRun: (Path) -> RecipeRun = { dir ->
         dir.resolve("pom.xml").writeText("<parent>3.4.5</parent>\n")
@@ -55,6 +56,9 @@ internal class FakeAdapter(
     },
 ) : EcosystemAdapter {
     override val ecosystem = "maven"
+
+    /** The directories [verify] ran in, in order. */
+    val verified = mutableListOf<Path>()
 
     // Every `return null` is a stub.
     override val languageSupport =
@@ -110,10 +114,12 @@ internal class FakeAdapter(
     override fun verify(
         repo: Path,
         timeout: Duration,
-    ): List<Diagnostic> =
-        repo.resolve("App.java").readText().lines().withIndex().filter { "broken()" in it.value }.map { (index, _) ->
+    ): List<Diagnostic> {
+        verified.add(repo)
+        return repo.resolve("App.java").readText().lines().withIndex().filter { "broken()" in it.value }.map { (index, _) ->
             Diagnostic("App.java", index + 1, null, null, "cannot find symbol broken", Severity.ERROR, "javac")
-        }
+        } + buildErrors
+    }
 
     override fun runTests(
         repo: Path,
