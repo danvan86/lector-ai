@@ -226,6 +226,10 @@ verify on the PR head
    │
    ├── compile errors (main or test code) ─────────────────▶ caused by update
    │
+   ├── build errors without a location ──▶ head ran tests, and the base commit has the same one
+   │                                          ├── yes ──▶ pre-existing (reported, ignored)
+   │                                          └── no ───▶ caused by update
+   │
    └── failing tests ──▶ rerun once ──passes──▶ flaky (reported, ignored)
                              │ fails again
                              ▼
@@ -235,7 +239,8 @@ verify on the PR head
 ```
 
 - **Compile errors always count**, including tests that no longer compile. Code that compiled before the update and doesn't after is the update's doing.
-- **The base commit is only tested when needed:** only if the head has failing tests, and only those tests. In the common case there is no extra build.
+- **A build error without a location** (a plugin that fails, like signing without `gpg` or a linter that fails on the base too) is pre-existing if the base commit has the same one, its checkout path aside, **and the head's verify ran tests**. A build that stops before the tests could stop there on the base for another reason, and a broken update must not end green. The base commit is verified for this at most once per run, the first time a build error needs it; a base that fails to verify, or times out, leaves the build errors caused by the update and never ends the run. Messages that end with the build's output (times, timestamps) never match.
+- **The base commit is only tested when needed:** only if the head has failing tests, and only those tests, or a build error without a location after a verify that ran tests. In the common case there is no extra build.
 - **Without a known base commit**, failing tests are *unattributed*: reported, but not counted.
 - **Only failures caused by the update** reach the fix loop, fail the job, and appear as "left to fix" in the report. Everything else is listed separately, so reviewers still see it.
 
@@ -269,7 +274,7 @@ A local model often doesn't know the new version of an API, because it was relea
 
 - The LLM returns **search/replace edits**, never whole files. Small models drop lines and truncate.
 - Output is enforced through **structured output** (Ollama `format` with a JSON schema). Code fences are stripped anyway.
-- Edits that don't apply cleanly are rejected.
+- Edits that don't apply cleanly are rejected. The reason names the edit and what the committed file has instead: the most similar lines with their numbers for a search text that isn't there, the lines of the matches for one found several times, the tracked file of that name for a path that doesn't exist. A near match is never applied.
 
 ### 6.4 Budgets
 
@@ -277,7 +282,11 @@ A local model often doesn't know the new version of an API, because it was relea
 - Global limit on attempts and wall-clock time per run. The time limit is checked before each attempt: an attempt that has started runs to its end, and the CI job's timeout is the hard stop. From M5 on, an attempt's build and test runs get the remaining time as their deadline, so a run that hits it rejects the attempt and still ends with a report
 - Stop once no progress is made
 
-**Progress** is measured stage by stage. The failures caused by the update are counted as the tuple (build errors without a location, compile errors, test failures), and an attempt counts as progress only if this tuple gets lower, comparing the stages in that order. So fixing a missing artifact counts even if it unmasks 50 compile errors, and a new compile error never counts as progress while fixing tests. An attempt without progress is rejected and rolled back.
+**Progress** is measured stage by stage. The failures caused by the update are counted as the tuple (build errors without a location, compile errors, test failures), and an attempt counts as progress if this tuple gets lower, comparing the stages in that order. So fixing a missing artifact counts even if it unmasks 50 compile errors, and a new compile error never counts as progress while fixing tests. An attempt without progress is rejected and rolled back.
+
+**Uncovered compile errors** are progress too, with the counts equal. javac reports one error per call chain, so a correct fix can bring up the next one. An attempt that was sent only compile errors is kept if every one of them is gone (same tool, file, test, and message; the line may move), no new error lies in a line its edits wrote, no new build error without a location came up, no count rose, and no error an earlier accepted attempt removed is back. A wrong fix leaves its error in its own lines, and errors swapped back and forth stay rejected. Test failures keep the counts-only rule: one fixed and another broken is no progress.
+
+**A repeated answer is asked again, not built.** An answer with the same edits as a rejected attempt on the cluster since the last accepted one (any order, whitespace at line ends ignored) is not applied: the model is asked once more at a higher temperature, with a note that names the repeated attempt and why it failed. A second repeat rejects the attempt without a build. Every request on a cluster carries every earlier failed attempt on it, of every kind, with its edits and reason, never trimmed.
 
 **No downgrades by the LLM.** After an attempt that touched a build file, the adapter first brings the files the build tool derives from it, like a lockfile, in line (they go into the attempt's commit), and the resolved versions are read again. If any package resolves lower than before the fix loop, including the PR's own package, the attempt is rejected. So is an attempt after which the PR's own package no longer resolves at all. Reverting the bump is the easiest way to make a build green.
 
@@ -343,7 +352,8 @@ A grouped PR gets one commit per **distinct** recipe, in the order of the PR's t
 
 Also:
 - Label the PR that carries the commits `ai-assisted` when something was pushed: the bot's PR in place, the companion PR otherwise. **It is never auto-merged.**
-- **Partial results:** the recipe commits **and** every accepted fix commit are pushed: accepted fixes passed the guardrails and made measurable progress. The remaining diagnostics are reported.
+- **Partial results:** the recipe commits **and** every accepted fix commit are pushed: accepted fixes passed the guardrails and made measurable progress, which for uncovered compile errors can leave the counts equal (section 6.4). The remaining diagnostics are reported.
+- **A suggestion:** a run that ends with failures caused by the update left shows the rejected attempt that got furthest on its last commit (built, guardrail-clean, the lowest counts) as a diff, marked "not applied, needs review", collapsed in the report. It is never committed.
 - **One report comment** per PR, found by a hidden marker and updated on every run: recipes, fixes, what is left, what isn't the update's fault, and the guardrail rejections per rule. It stays on the source PR in companion mode too, and links the companion PR, whose description has the same summary.
 
 ### 8.4 Infrastructure

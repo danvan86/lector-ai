@@ -162,7 +162,9 @@ including grouped PRs (monorepo groups and the like).
 
 After lector-ai pushes to a PR's own branch, the run on its own commit skips, so its check on the PR's latest commit is
 green even when something is left. Your own build workflow runs on that commit too, and the comment lists what is left:
-those are what to look at before merging. The red check of exit code 1 stays on the commit lector-ai worked on.
+those are what to look at before merging. The red check of exit code 1 stays on the commit lector-ai worked on. When
+something is left, the comment may also show a suggestion, collapsed: the diff of the rejected attempt that got
+furthest, marked "not applied, needs review". It is never committed; take it over by hand if it helps.
 
 lector-ai never merges, approves, or requests reviews.
 
@@ -421,6 +423,8 @@ code 2. If you change `bot-logins` or `fallback-label`, change the `if:` conditi
 - **Maven, Gradle, and TypeScript only**, and only at the repository root. A repository with both a `pom.xml` and Gradle
   build files at the root is refused: lector-ai doesn't pick a build tool. A JVM build with a `package.json` and a
   `tsconfig.json` next to it is built as a JVM project.
+- **Maven:** lector-ai's builds skip signing (`-Dgpg.skip=true`). A plugin that fails on the base commit as well, like
+  a linter, is reported as pre-existing when the tests ran, and doesn't count against the update.
 - **Gradle:** no Android or Kotlin Multiplatform builds (the image has no Android SDK), no Gradle 7 or older, no build
   without a wrapper. Groovy sources (Spock tests) are never edited: their failures are reported, but the model can only
   fix the Java or Kotlin code they call. Linters bound to `check` (Spotless, Checkstyle, detekt) don't run: verify

@@ -170,12 +170,33 @@ opt-in.
 
 **Done when:** the two proof cases go from red to green through the API changes alone.
 
-## M11 – Generated rewrite rules ⬜
+## M11 – Fix-loop yield 🟨
 
-**Goal:** fix the mechanical part of an update without the model.
+**Goal:** the fix loop keeps correct partial fixes, doesn't count environment failures against the update, and stops
+spending builds on answers it already rejected. A local comparison of 7B, 14B, and 30B models found the model's size
+barely mattered: correct fixes were rejected by the count-only progress check, and 12 of 16 retries repeated the attempt
+before them.
 
-- Turn the unambiguous entries of M10's typed API diff (moved class, renamed package, moved member) into generated ast-grep rules and run them before the fix loop
-- Needs the diff before the fix loop: today it is built from the errors of each attempt
+- Uncovered compile errors count as progress with equal counts: every sent error is a compile error and gone, no new
+  error lies in a line the edits wrote, no new build error without a location, no count higher, no error an earlier
+  accepted attempt removed is back. Test failures keep the counts-only rule
+- A build error without a location that the base commit has too (its checkout path aside) is pre-existing when the
+  head's verify ran tests. The base is verified at most once per run (`RunBase`); a failure or timeout there never
+  ends the run. Every Maven command skips signing (`-Dgpg.skip=true`)
+- A repeated answer (same edits as a rejected attempt on the cluster since the last accepted one, any order, trailing
+  whitespace ignored) is not built: the model is asked once more at temperature 0.7 with a note; a second repeat
+  rejects the attempt without a build
+- An edit that can't be applied names its number and file, and shows the most similar lines of the committed file, the
+  lines of several matches, or the tracked file of a guessed path (a failed edit, not a scope violation)
+- A run that ends red suggests the built, guardrail-clean rejected attempt on its last commit with the lowest counts,
+  as a diff marked "not applied, needs review": in `heal`'s text and JSON reports and in the PR comment, never committed
+- The Benchmark workflow takes a `model` input (default `qwen2.5-coder:7b`)
+- Still open: the benchmark runs `7b-before` (tool commit `2f543e1`), `7b-after`, and `14b-after` on GitHub-hosted
+  runners, the review of both 7B runs, and the 14B's outcome for the default-model choice
+
+**Done when:** on the cases valid in both 7B runs, the fix-loop modes have more green runs after than before, no case
+and mode green before is red in all three repetitions after, and the share of reviewed runs accepted unchanged is not
+lower.
 
 ## M12 – Simple setup 🟨
 
@@ -203,16 +224,26 @@ opt-in.
 **Done when:** a Renovate PR and a Dependabot PR in a test repository, set up only with the short setup, get the same
 result as with the M8 workflow.
 
+## M13 – Generated rewrite rules ⬜
+
+**Goal:** fix the mechanical part of an update without the model.
+
+- Turn the unambiguous entries of M10's typed API diff (moved class, renamed package, moved member) into generated ast-grep rules and run them before the fix loop
+- Needs the diff before the fix loop: today it is built from the errors of each attempt
+
 ## Later ⬜
 
-Not planned in detail yet. Prioritize after M11 based on demand and benchmark results.
+Not planned in detail yet. Prioritize after M13 based on demand and benchmark results.
 
 - More ecosystems: Python, .NET, Terraform, config files (YAML/XML/properties)
 - GitLab CI support
 - Embedding fallback for recipes without structured metadata
 - Better error clustering, and grounding from a migration-guide index per dependency
 - API changes for TypeScript (old vs. new `.d.ts`)
-- Linters bound to Maven `verify` can block the last fix attempt, the same problem M7 Q17 solved for Gradle
+- A linter bound to Maven `verify` that fails only on the model's code still blocks the attempt (one that fails on the
+  base too is pre-existing since M11)
+- From M11: the full class name of a missing class as a hint; mapping a failing test without a location to its source
+  file (per adapter); the budget defaults (attempts without progress stays 2), measured again on M11's benchmark
 - From the first runs on lector-sample-app (October 2026):
   - A minor version past the newest recipe (Spring Boot 4.1.1, `rewrite-recipe-bom` 3.37.0 has `UpgradeSpringBoot_4_0`)
     gets no recipe, because a recipe matches only if its target contains the PR's target (concept section 4). Running
