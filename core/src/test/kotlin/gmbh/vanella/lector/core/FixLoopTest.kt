@@ -109,11 +109,13 @@ class FixLoopTest : FixLoopFixture() {
     fun `the guardrails see the diagnostics caused by the update before the attempt`() {
         val rename = Edit("App.java", "void run()", "void start()")
         val overrides = Diagnostic("App.java", 2, 5, "override", "method does not override a method", Severity.ERROR, "javac")
+        // The error stays, so the verified attempt makes no progress.
+        val staying = FakeAdapter(problems = { compileErrors(it) + overrides })
         val adapter = FakeAdapter()
 
         val pointedInto =
-            loop(adapter, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, Verification(listOf(overrides)))
-        val verifiedOnce = adapter.verifyCalls
+            loop(staying, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, Verification(listOf(overrides)))
+        val verifiedOnce = staying.verifyCalls
         val elsewhere = loop(adapter, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, adapter.initial())
 
         assertEquals(emptyList(), (pointedInto.attempts.single().outcome as AttemptOutcome.Rejected).violations, "verified, no progress")

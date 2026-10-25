@@ -154,6 +154,9 @@ class FixLoop(
         // The lines the current attempt's replace texts occupy, per file.
         private var changedLines = emptyMap<String, Set<Int>>()
 
+        // The errors the accepted attempts removed. One that comes back was not uncovered.
+        private val removed = mutableSetOf<ErrorKey>()
+
         fun run(): FixLoopResult {
             while (true) {
                 stopReason()?.let { return FixLoopResult(attempts.toList(), it, verification) }
@@ -334,7 +337,10 @@ class FixLoop(
             val after = attribute(adapter, repo, base) { timeLeft }
             val progressBefore = Progress.of(verification.causedByUpdate)
             val progressAfter = Progress.of(after.causedByUpdate)
-            if (progressAfter >= progressBefore) return rejected(noProgress(progressBefore, after.causedByUpdate))
+            val progress =
+                progressAfter < progressBefore ||
+                    uncovers(diagnostics, verification.causedByUpdate, after.causedByUpdate, changedLines, removed)
+            if (!progress) return rejected(noProgress(progressBefore, after.causedByUpdate))
             val subject =
                 proposal.rationale
                     .lines()
@@ -342,6 +348,8 @@ class FixLoop(
                     .firstOrNull { it.isNotEmpty() } ?: "Fix $cluster"
             val body = "Addresses:\n" + diagnostics.joinToString("\n", transform = ::describe)
             val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", (edited(repo, proposal.edits) + lockfiles).distinct(), identity)
+            val left = after.causedByUpdate.map { it.key }.toSet()
+            removed += verification.causedByUpdate.map { it.key }.filter { it !in left }
             verification = after
             return AttemptOutcome.Accepted(commit, subject, progressBefore, progressAfter)
         }
