@@ -50,7 +50,7 @@ internal abstract class RepositoryCommand(
     private val base by option(
         "--base",
         metavar = "<git-ref>",
-        help = "The commit before the update. Failing tests are run there too, to tell new failures from old ones.",
+        help = "The commit before the update. Failing tests and build errors are checked there too, to tell new failures from old ones.",
     )
     private val format by option("--format", help = "Report format").choice("text", "json").default("text")
     private val mavenSettings by option("--maven-settings", metavar = "<file>", help = "Maven settings file, passed to Maven").path()

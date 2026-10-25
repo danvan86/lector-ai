@@ -194,7 +194,7 @@ Fidelity check (fresh agent, step 4b): 15 findings, all resolved. Five let a wro
 
 ### Harness (not frozen)
 
-Frozen in commit `996527f`. Repairs and extensions allowed; a change that makes a test easier to pass needs the user's consent (review-spec checks the diff).
+Frozen in commit `8b7d14a` (`996527f` before the rebase onto `origin/main`). Repairs and extensions allowed; a change that makes a test easier to pass needs the user's consent (review-spec checks the diff).
 
 | File | Role |
 |---|---|
