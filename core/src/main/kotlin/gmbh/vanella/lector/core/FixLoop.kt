@@ -187,21 +187,12 @@ class FixLoop(
         // is a rejected attempt, and the loop stops on time with its report.
         @Suppress("TooGenericExceptionCaught")
         private fun attempt(cluster: Cluster) {
-            // A repeat of a rejected attempt is never built: the model is asked once more, with a note (concept section 6.4).
-            val first = ask(cluster, note = null)
-            val repeated = attempts.repeatOf(cluster.key, first.proposal)
-            val answer = if (repeated == null) first else ask(cluster, attempts.note(repeated))
-            val repeatedAgain = repeated?.let { attempts.repeatOf(cluster.key, answer.proposal) }
+            val asked = askAvoidingRepeats(cluster)
+            val answer = asked.answer
             lockfiles = emptyList()
             val judged =
                 try {
-                    if (repeatedAgain == null) {
-                        judge(cluster.key, answer.sent, answer.proposal)
-                    } else {
-                        rejected(
-                            "the first answer repeated attempt $repeated, and the second repeated attempt $repeatedAgain; neither was built",
-                        )
-                    }
+                    if (asked.unbuilt != null) rejected(asked.unbuilt) else judge(cluster.key, answer.sent, answer.proposal)
                 } catch (e: ProcessTimedOut) {
                     if (timeLeft > Duration.ZERO) {
                         GitWorkingTree.reset(repo)
@@ -213,8 +204,10 @@ class FixLoop(
                     throw e
                 }
             val outcome =
-                if (repeated != null && repeatedAgain == null && judged is AttemptOutcome.Rejected) {
-                    judged.copy(reason = "the first answer repeated attempt $repeated, and the second was rejected: ${judged.reason}")
+                if (asked.repeated != null && asked.unbuilt == null && judged is AttemptOutcome.Rejected) {
+                    judged.copy(
+                        reason = "the first answer repeated attempt ${asked.repeated}, and the second was rejected: ${judged.reason}",
+                    )
                 } else {
                     judged
                 }
@@ -238,17 +231,32 @@ class FixLoop(
         }
 
         /**
-         * Asks the model about [cluster], with the [note] on a repeated answer, if any. The first diagnostics that fit into
-         * one request go, each with its code. The rest come back in a later round: clusters are rebuilt after every
-         * accepted attempt (concept section 6.2). Grounding is trimmed to fit, so the checks leave it out: it can take a
-         * process per change to read.
+         * Asks the model about [cluster]. A repeat of a rejected attempt is never built: the model is asked once more,
+         * with a note (concept section 6.4), unless the time budget is used up. A model call takes minutes on a CPU
+         * runner, so the loop ends on time instead.
+         *
+         * Each request carries the first diagnostics that fit into it, each with its code. The rest come back in a later
+         * round: clusters are rebuilt after every accepted attempt (concept section 6.2). Grounding is trimmed to fit, so
+         * the checks leave it out: it can take a process per change to read.
          */
-        private fun ask(
-            cluster: Cluster,
-            note: PreviousAttempt?,
-        ): Answer {
-            val sent = firstThatFit(cluster.diagnostics) { llm.fits(request(cluster.key, it, note, grounded = false)) }
-            return Answer(sent, llm.propose(request(cluster.key, sent, note)))
+        private fun askAvoidingRepeats(cluster: Cluster): Asked {
+            fun ask(note: PreviousAttempt?): Answer {
+                val sent = firstThatFit(cluster.diagnostics) { llm.fits(request(cluster.key, it, note, grounded = false)) }
+                return Answer(sent, llm.propose(request(cluster.key, sent, note)))
+            }
+
+            val first = ask(note = null)
+            val repeated = attempts.repeatOf(cluster.key, first.proposal) ?: return Asked(first, null, null)
+            val second = if (timeLeft > Duration.ZERO) ask(attempts.note(repeated)) else null
+            val unbuilt =
+                if (second == null) {
+                    "the first answer repeated attempt $repeated, and no time was left to ask again"
+                } else {
+                    attempts.repeatOf(cluster.key, second.proposal)?.let {
+                        "the first answer repeated attempt $repeated, and the second repeated attempt $it; neither was built"
+                    }
+                }
+            return Asked(second ?: first, repeated, unbuilt)
         }
 
         private fun request(
@@ -391,6 +399,13 @@ class FixLoop(
             versionsBefore?.let { Result.success(it) } ?: readVersions(adapter, repo).onSuccess { versionsBefore = it }
     }
 }
+
+/** The [answer] to judge, the attempt the first answer [repeated], if it did, and why the answer isn't built, if it isn't. */
+private class Asked(
+    val answer: Answer,
+    val repeated: Int?,
+    val unbuilt: String?,
+)
 
 /** The model's answer to one request, and the diagnostics it was [sent]. */
 private class Answer(

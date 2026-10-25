@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 
 /** How a repeated answer is asked again: the note counts in the fit check, and the second answer is judged as usual. */
 class FixLoopReaskTest : FixLoopFixture() {
@@ -39,6 +40,22 @@ class FixLoopReaskTest : FixLoopFixture() {
             rejected.reason,
         )
         assertEquals(emptyList(), result.attempts[1].edits)
+    }
+
+    @Test
+    fun `a repeat that arrives after the time budget is not asked again, and the loop stops on time`() {
+        val adapter = FakeAdapter()
+        val slowRepeat: (FixRequest) -> Proposal = { edits(noProgress)(it).also { time += 31.minutes } }
+        val llm = ScriptedLlm(edits(noProgress), slowRepeat, edits(fix))
+
+        val result = loop(adapter, llm, Budgets(attemptsWithoutProgress = 3)).run(repo, context, adapter.initial())
+
+        assertEquals(2, llm.requests.size, "no third model call after the budget")
+        assertEquals(1, adapter.verifyCalls, "the repeat isn't built")
+        val rejected = assertIs<AttemptOutcome.Rejected>(result.attempts[1].outcome)
+        assertEquals("the first answer repeated attempt 1, and no time was left to ask again", rejected.reason)
+        assertEquals(listOf(noProgress), result.attempts[1].edits)
+        assertEquals(StopReason.TIME_BUDGET, result.stopReason)
     }
 
     @Test
