@@ -7,7 +7,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | # | Step | Status |
 |---|---|---|
 | 1 | Maven doesn't sign: `-Dgpg.skip=true` on the shared command line (section 3) | ✅ |
-| 2 | Edits: changed lines, precise feedback, a missing file as a failed edit (section 5) | ⬜ |
+| 2 | Edits: changed lines, precise feedback, a missing file as a failed edit (section 5) | ✅ |
 | 3 | Progress: unmasked compile errors, the returning-error check (section 1) | ⬜ |
 | 4 | Repeated answers asked again; every failed attempt in the history (sections 4, 6) | ⬜ |
 | 5 | Build errors checked on the base commit, once per run: `RunBase` (section 2) | ⬜ |

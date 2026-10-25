@@ -328,7 +328,7 @@ class FixLoopTest : FixLoopFixture() {
 
         val result = loop(adapter, llm).run(repo, context, adapter.initial())
 
-        val reason = "App.java: the search text is not in the file"
+        val reason = "edit 1 (App.java): the search text is not in the file"
         assertEquals(AttemptOutcome.Rejected(reason), result.attempts.first().outcome)
         assertIs<AttemptOutcome.Accepted>(result.attempts.last().outcome)
         val retry = llm.requests.last()

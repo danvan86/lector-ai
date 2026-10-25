@@ -48,6 +48,15 @@ data class Attempt(
     val diagnosticsLeftOut: Int = 0,
 )
 
+/**
+ * The rejected attempt that got furthest on the run's last commit, as the unified [diff] of its edits: never applied or
+ * committed, shown to the reviewer to finish by hand (concept section 8.3). [attempt] is its number in the run, from 1.
+ */
+data class Suggestion(
+    val attempt: Int,
+    val diff: String,
+)
+
 sealed interface AttemptOutcome {
     /** The attempt made progress and became [commit], with [rationale] as its subject. */
     data class Accepted(
@@ -78,11 +87,15 @@ enum class StopReason(
     MODEL_UNANSWERED("the model didn't answer in time"),
 }
 
-/** Every attempt, why the loop stopped, and the verification of the last commit. */
+/**
+ * Every attempt, why the loop stopped, and the verification of the last commit. A run that ends with failures caused by
+ * the update left may have a [suggestion] for the reviewer.
+ */
 data class FixLoopResult(
     val attempts: List<Attempt>,
     val stopReason: StopReason,
     val verification: Verification,
+    val suggestion: Suggestion? = null,
 ) {
     /** The accepted attempts, in order. */
     val fixes get() = attempts.map { it.outcome }.filterIsInstance<AttemptOutcome.Accepted>()
@@ -137,6 +150,9 @@ class FixLoop(
 
         // The lockfiles the adapter updated after the current attempt's build-file edits. They go into its commit.
         private var lockfiles = emptyList<String>()
+
+        // The lines the current attempt's replace texts occupy, per file.
+        private var changedLines = emptyMap<String, Set<Int>>()
 
         fun run(): FixLoopResult {
             while (true) {
@@ -268,7 +284,9 @@ class FixLoop(
          * checked before anything is read or written: a reset doesn't restore ignored files.
          */
         private fun apply(edits: List<Edit>): AttemptOutcome.Rejected? {
-            if (edits.isEmpty()) return rejected("the model proposed no edits")
+            // A guessed path is a failed edit the model can correct, not a guardrail rejection.
+            val failed = if (edits.isEmpty()) "the model proposed no edits" else missingFile(repo, edits, GitWorkingTree.trackedFiles(repo))
+            if (failed != null) return rejected(failed)
             val outOfScope = guardrails.checkScope(repo, edits.map { it.file })
             if (outOfScope.isNotEmpty()) return violated(outOfScope)
             val touchesBuildFile = edited(repo, edits).any(adapter::isBuildFile)
@@ -280,19 +298,15 @@ class FixLoop(
         private fun write(edits: List<Edit>): AttemptOutcome.Rejected? {
             val files = edited(repo, edits)
             val before = files.associateWith { repo.resolve(it).readText() }
-            val failure = applyEdits(repo, edits)
-            val violations =
-                if (failure == null) {
-                    val changes = files.map { FileChange(it, before.getValue(it), repo.resolve(it).readText(), adapter.languageSupport) }
-                    guardrails.check(changes, verification.causedByUpdate)
-                } else {
-                    emptyList()
+            val applied =
+                when (val result = applyEdits(repo, edits)) {
+                    is EditResult.Failed -> return rejected(result.reason)
+                    is EditResult.Applied -> result
                 }
-            return when {
-                failure != null -> rejected(failure)
-                violations.isNotEmpty() -> violated(violations)
-                else -> null
-            }
+            changedLines = applied.changedLines
+            val changes = files.map { FileChange(it, before.getValue(it), repo.resolve(it).readText(), adapter.languageSupport) }
+            val violations = guardrails.check(changes, verification.causedByUpdate)
+            return if (violations.isEmpty()) null else violated(violations)
         }
 
         /** After a build-file edit, the lockfiles follow it. Then nothing may resolve lower than [before]. Returns the rejection, or null. */

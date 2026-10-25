@@ -161,6 +161,7 @@ class FixLoopBuildFileTest : FixLoopFixture() {
     fun `an attempt out of scope is rejected for its scope before the versions are read`() {
         val raise = Edit("pom.xml", "org.example:other 3.0", "org.example:other 3.1")
         val adapter = FakeAdapter(versions = { throw ToolError("resolution failed") })
+        repo.resolve("untracked.txt").writeText("a")
 
         val result =
             loop(adapter, ScriptedLlm(edits(raise, Edit("untracked.txt", "a", "b"))), Budgets(attempts = 1))

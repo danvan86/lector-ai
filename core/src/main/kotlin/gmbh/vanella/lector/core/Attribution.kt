@@ -11,6 +11,13 @@ interface BaseCommit {
     fun <T> checkout(block: (Path) -> T): T
 }
 
+/** The base commit of one run. Stub until M11 step 5. */
+class RunBase(
+    private val base: BaseCommit,
+) : BaseCommit {
+    override fun <T> checkout(block: (Path) -> T): T = base.checkout(block)
+}
+
 /**
  * Verifies [repo] and decides which problems the update caused (concept section 5, "Attribution").
  *
