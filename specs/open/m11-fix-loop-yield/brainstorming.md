@@ -234,6 +234,6 @@ Escalated and answered by the user in chat:
 | # | Question | Decision |
 |---|---|---|
 | R1 | A build error on both commits that stops the build before the tests would end the run green | Pre-existing only if the head's verification ran tests; otherwise caused by the update, as today (section 2, AC9) |
-| R15 | More permissive progress could raise green runs with worse fixes | The user reviews both 7B runs (`review.json`); the share accepted unchanged must not fall (AC27, AC30) |
+| R15 | More permissive progress could raise green runs with worse fixes | The user reviews both 7B runs (`review.json`); the share accepted unchanged must not fall (AC27, AC30). **Changed by the user on 2026-10-25, after the implementation:** an independent review agent writes both `review.json`, blind to M11 and to which run a sample comes from (section 8, AC27). The implementing agent doesn't review its own loop's output |
 | R16 | The 14B may not produce data on CPU runners | Informational; below half valid is recorded as "doesn't fit CPU runners"; no rerun (section 8) |
 | Size | 32 criteria against a target of about 15; only the suggestion could ship alone | Keep it in M11 |

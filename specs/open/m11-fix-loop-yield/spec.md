@@ -94,7 +94,7 @@ The fix loop keeps correct partial fixes, doesn't count environment failures aga
   - `7b-before`: the 7B at tool commit `2f543e1`;
   - `7b-after`: the 7B at a tool commit with every production change of the milestone;
   - `14b-after`: the 14B at the same tool commit as `7b-after`.
-- Both 7B runs get a `review.json` by the user, following M6's procedure (R15, user).
+- Both 7B runs get a `review.json` by an independent review agent, following M6's procedure (R15, changed by the user after the implementation): a fresh agent that has not seen M11's code, spec, or brainstorming, and gets only each sampled green run's case (the update and its errors) and diff. It reviews the samples of both runs together, without being told which run a sample comes from. `reviewer` names the agent and its model.
 - The 14B run is informational: whatever share of its runs is valid is its result for the default-model choice. Below half valid, `report.md` or the milestone's docs record that the 14B doesn't fit CPU runners. It is not rerun (R16, user).
 
 **Why:** no benchmark result is on record yet; only a before/after with the same model shows the milestone's effect apart from the model. The new progress rule keeps more attempts, so green runs alone can't tell better from more permissive: the review can (R15). The repository is public, so the runners are free and have 16 GB, where the 14B should fit, but 4 CPUs may be too slow for it (R16).
@@ -152,7 +152,7 @@ The review agent checks every criterion and reports it as *met*, *not met*, or *
 | AC24 | The suggestion is never committed, and a green run has no suggestion | 7, Don't | A `core` unit test: after a red run, no commit contains the suggested edits; a green run's three reports have no suggestion |
 | AC25 | The Benchmark workflow has a `model` input defaulting to `qwen2.5-coder:7b`, used for the image and the runs | 8 | `.github/workflows/benchmark.yml` contains the input, and `MODEL` comes from it |
 | AC26 | `benchmark/results/` has `*-7b-before`, `*-7b-after`, `*-14b-after`, each with `results.json` and `report.md` from GitHub-hosted runners; `7b-before`'s tool commit is `2f543e1`; the two after runs share a tool commit that has every production change | 8 | The directories exist; `toolCommit` and `runner` in each `results.json`; `git diff --exit-code <after toolCommit> HEAD -- '*/src/main/**'` |
-| AC27 | Both 7B runs have a `review.json` by the user that `:benchmark:report` accepts | 8 | The files exist; `./gradlew :benchmark:report -Presults=<dir>` succeeds for both |
+| AC27 | Both 7B runs have a `review.json` by the independent review agent that `:benchmark:report` accepts | 8 | The files exist; `./gradlew :benchmark:report -Presults=<dir>` succeeds for both |
 | AC28 | On the cases valid in both 7B runs, the green runs in the fix-loop modes (fix-loop-only and recipe-and-fix-loop) are more after than before | 8 | Count `green: true` per mode over cases valid in both `results.json` |
 | AC29 | No case and fix-loop mode that was green in at least one repetition before is red in all three repetitions after | 8 | Compare the two 7B `results.json` per case and mode |
 | AC30 | The share of reviewed runs accepted unchanged is not lower after than before | 8 | Compare `acceptedUnchanged` in the two `review.json` |
