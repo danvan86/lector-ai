@@ -124,7 +124,7 @@ Invalid input from Clikt's own checks (an unknown option, a bad `--date`, a miss
 |---|---|
 | `plan` | `matrix` → the job matrix |
 | `ollama-image` | Builds `docker/ollama` with `MODEL=qwen2.5-coder:7b` and pushes `ghcr.io/<owner>/lector-ollama:benchmark-qwen2.5-coder-7b`: releases can't publish it before the MSAL check |
-| `run` | Matrix, `fail-fast: false`, 120-minute timeout, the Ollama image as `services: ollama` on port 11434. JDKs 17, 21, and 25 from `setup-java` as `LECTOR_JDK_*`, Node 22 and 24 from `setup-node` as `LECTOR_NODE_*` with Corepack and `jest-junit` from `docker/lector/node` (M9), `MAVEN_OPTS=-Duser.language=en -Duser.country=US`, the runner's Maven. Uploads the run file as `run-<case>-<mode>-<repetition>` |
+| `run` | Matrix, `fail-fast: false`, 120-minute timeout, the Ollama image as `services: ollama` on port 11434. JDKs 17, 21, and 25 from `setup-java` as `LECTOR_JDK_*`, Node 22 and 24 from `setup-node` as `LECTOR_NODE_*` with Corepack and `jest-junit` from `docker/lector/node` (M9), `MAVEN_OPTS=-Duser.language=en -Duser.country=US`, the runner's Maven. Checks the case out under `$RUNNER_TEMP/work` and saves what the tool committed on top of the head as `<case>-<mode>-<repetition>.diff` for the manual review. Uploads the run file and the diff as `run-<case>-<mode>-<repetition>` |
 | `report` | `if: always()` after `plan` succeeded: downloads `run-*`, `merge` with the runner's description and today's date, `:benchmark:report`, uploads `benchmark-<date>` |
 
 ## Tests
