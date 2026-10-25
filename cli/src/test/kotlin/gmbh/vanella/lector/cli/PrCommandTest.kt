@@ -75,7 +75,7 @@ class PrCommandTest {
         host.pr = host.pr.copy(body = table(PARENT, "3.3.5", "3.4.1"))
         val miss = Edit("App.java", "nowhere", "x")
 
-        val result = command(llm = ScriptedLlm(miss, miss)).test("$repo --event $event $bot", envvars = token)
+        val result = command(llm = ScriptedLlm(miss, miss.copy(replace = "y"))).test("$repo --event $event $bot", envvars = token)
 
         assertEquals(1, result.statusCode, result.stderr)
         assertContains(result.stdout, "**1 problem caused by the update is left to fix.**")

@@ -80,7 +80,7 @@ class HealCommandTest {
             """
             Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
               Attempts (2):
-                1. symbol:broken, 1 diagnostics: rejected: App.java: the search text is not in the file
+                1. symbol:broken, 1 diagnostics: rejected: edit 1 (App.java): the search text is not in the file
                 2. symbol:broken, 1 diagnostics: accepted: 0 build errors, 1 compile errors, 0 test failures -> 0 build errors, 0 compile errors, 0 test failures
               Fixes (1):
                 - $fixCommit Call fixed() instead of broken()
@@ -133,7 +133,7 @@ class HealCommandTest {
         listOf(FakeAdapter { RecipeRun.Failed("plugin crashed") }, FakeAdapter { RecipeRun.Applied }).forEach { adapter ->
             val result =
                 command(
-                    llm = ScriptedLlm(Edit("App.java", "nowhere", "x"), Edit("App.java", "nowhere", "x")),
+                    llm = ScriptedLlm(Edit("App.java", "nowhere", "x"), Edit("App.java", "nowhere", "y")),
                     adapter = adapter,
                 ).test("$repo $args")
 
@@ -153,7 +153,7 @@ class HealCommandTest {
         assertEquals("nothingLeft", loop.getValue("stopReason").jsonPrimitive.content)
         val attempts = loop.getValue("attempts").jsonArray.map { it.jsonObject }
         assertEquals(listOf("rejected", "accepted"), attempts.map { it.getValue("outcome").jsonPrimitive.content })
-        assertEquals("App.java: the search text is not in the file", attempts[0].getValue("reason").jsonPrimitive.content)
+        assertEquals("edit 1 (App.java): the search text is not in the file", attempts[0].getValue("reason").jsonPrimitive.content)
         assertEquals(JsonNull, attempts[0].getValue("commit"))
         assertEquals(git("rev-parse", "HEAD").trim(), attempts[1].getValue("commit").jsonPrimitive.content)
         assertEquals("Call fixed() instead of broken()", attempts[1].getValue("rationale").jsonPrimitive.content)
@@ -241,7 +241,7 @@ class HealCommandTest {
     @Test
     fun `the budgets can be set, and a used-up budget stops the loop`() {
         val miss = Edit("App.java", "nowhere", "x")
-        val llm = ScriptedLlm(miss, miss, miss)
+        val llm = ScriptedLlm(miss, miss.copy(replace = "y"), miss.copy(replace = "z"))
 
         val result =
             command(llm = llm).test(
@@ -349,7 +349,7 @@ class HealCommandTest {
     @Test
     fun `run through the root command, what is left exits with 1`() {
         val run =
-            lector(ScriptedLlm(Edit("App.java", "nowhere", "x"), Edit("App.java", "nowhere", "x")))
+            lector(ScriptedLlm(Edit("App.java", "nowhere", "x"), Edit("App.java", "nowhere", "y")))
                 .executeInProcess("heal", repo.toString(), *args.split(" ").toTypedArray())
 
         assertContains(run.stdout, "Caused by the update (1)")

@@ -80,7 +80,8 @@ class FixLoopTest : FixLoopFixture() {
     @Test
     fun `an attempt that breaks a guardrail is reset, counted, never verified, and the retry learns what it broke`() {
         val stub = Edit("App.java", "broken();", "return null;")
-        val llm = ScriptedLlm(edits(stub), edits(stub))
+        // Another answer that breaks the same rule in the same line; the same one again would be asked again.
+        val llm = ScriptedLlm(edits(stub), edits(Edit("App.java", "        broken();", "        return null;")))
         val adapter = FakeAdapter()
 
         val result = loop(adapter, llm).run(repo, context, adapter.initial())
@@ -343,7 +344,7 @@ class FixLoopTest : FixLoopFixture() {
     fun `an attempt without progress is rejected and the working tree is reset to the last commit`() {
         val worse = Edit("App.java", "broken();", "broken();\n        missing();")
         val adapter = FakeAdapter()
-        val llm = ScriptedLlm(edits(worse), edits(worse))
+        val llm = ScriptedLlm(edits(worse), edits(worse.copy(replace = "broken();\n        missing(); // again")))
 
         val result = loop(adapter, llm).run(repo, context, adapter.initial())
 
@@ -524,7 +525,8 @@ class FixLoopTest : FixLoopFixture() {
         repo.resolve("App.java").writeText(app.replace("broken();", "broken();\n        broken(); // second"))
         git("commit", "--quiet", "-am", "two errors")
         val miss = edits(Edit("App.java", "nowhere", "x"))
-        val llm = ScriptedLlm(miss, edits(Edit("App.java", "broken(); // second", "fixed();")), miss, miss)
+        val llm =
+            ScriptedLlm(miss, edits(Edit("App.java", "broken(); // second", "fixed();")), miss, edits(Edit("App.java", "elsewhere", "x")))
         val adapter = FakeAdapter()
 
         val result = loop(adapter, llm, Budgets(attemptsPerCluster = 5)).run(repo, context, adapter.initial())
