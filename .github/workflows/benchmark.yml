@@ -1,5 +1,5 @@
 # Runs the benchmark (M6) on demand: every case of the corpus in three modes, on standard GitHub-hosted runners with
-# the 7B model on CPU. One job per case, mode, and repetition, each well within the job time limit. Never on push, pull
+# the model of the `model` input on CPU (the 7B by default; M11 compares it with the 14B). One job per case, mode, and repetition, each well within the job time limit. Never on push, pull
 # requests, or a schedule. The artifact holds results.json and report.md. A person adds review.json, generates the report
 # again (`./gradlew :benchmark:report`), and commits the directory under benchmark/results/<date>/.
 name: Benchmark
@@ -11,12 +11,16 @@ on:
         description: Only these cases, comma-separated (empty for all)
         required: false
         default: ""
+      model:
+        description: The Ollama model, baked into the job's Ollama image
+        required: false
+        default: qwen2.5-coder:7b
 
 permissions:
   contents: read
 
 env:
-  MODEL: qwen2.5-coder:7b
+  MODEL: ${{ inputs.model }}
 
 jobs:
   plan:
@@ -39,7 +43,7 @@ jobs:
         env:
           CASES: ${{ inputs.cases }}
 
-  # The Ollama image with the 7B model baked in (M5), as the jobs' sidecar. Releases publish it, but no release may
+  # The Ollama image with the model baked in (M5), as the jobs' sidecar. Releases publish it, but no release may
   # happen before the MSAL check, so the benchmark builds its own tag.
   ollama-image:
     runs-on: ubuntu-latest
