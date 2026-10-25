@@ -14,7 +14,7 @@ Category: `domain` · `robustness` · `gate` · `test` · `design` · `docs`. Ea
 ## Summary
 
 - 27 of 32 acceptance criteria are met, AC9 with a caveat (F1). AC26–AC30 can't be verified: they need the three
-  benchmark runs on GitHub-hosted runners and the user's `review.json`.
+  benchmark runs on GitHub-hosted runners and the independent review agent's `review.json` (R15 as changed in `1de1ae8`).
 - The main issue is in the spec's rule, not the code: in a Maven multi-module build, a pre-existing build error in one
   module makes Maven skip the modules that depend on it, so their tests never run, yet the head "ran tests" and the
   update ends green with exit `0` (F1).
