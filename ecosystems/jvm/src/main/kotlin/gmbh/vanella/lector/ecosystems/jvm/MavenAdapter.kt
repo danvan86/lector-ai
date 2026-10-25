@@ -71,6 +71,10 @@ class MavenAdapter(
 
     // The old version's JARs of each group and version, by artifact ID: looked up once per run, failures included.
     private val oldJarsCache = mutableMapOf<Pair<String, String>, Map<String, List<Path>>>()
+
+    // The checkouts whose last verify skipped a module after another failed: the skipped module's tests never ran.
+    private val skippedModules = mutableSetOf<Path>()
+
     private val jdkSelection = JdkSelection(jdks)
 
     override val ecosystem = "maven"
@@ -118,13 +122,22 @@ class MavenAdapter(
     ): List<Diagnostic> {
         val root = repo.toRealPath()
         val started = TimeSource.Monotonic.markNow()
+        skippedModules.remove(root)
         return problems(root, listOf("clean", "test-compile"), timeout).ifEmpty {
-            problems(root, listOf("verify"), timeout - started.elapsedNow())
+            val result = maven(root, listOf("verify"), timeout - started.elapsedNow())
+            if (MavenConsole.skippedModule(result.output)) skippedModules.add(root)
+            problems(root, result)
         }
     }
 
-    /** The test cases in the surefire and failsafe reports that the last verify left. */
-    override fun testsRun(repo: Path) = MAVEN_REPORTS.count(repo.toRealPath())
+    /**
+     * The test cases in the surefire and failsafe reports that the last verify left. Unknown if it skipped a module: a
+     * build error in one module would otherwise hide what the update did to the tests of the modules after it.
+     */
+    override fun testsRun(repo: Path): Int? {
+        val root = repo.toRealPath()
+        return if (root in skippedModules) null else MAVEN_REPORTS.count(root)
+    }
 
     /**
      * Reruns the classes of the given tests: unit tests with surefire (up to `test`), integration tests with failsafe
@@ -257,8 +270,13 @@ class MavenAdapter(
         root: Path,
         goals: List<String>,
         timeout: Duration,
+    ): List<Diagnostic> = problems(root, maven(root, goals, timeout))
+
+    /** The problems in the output of the Maven run that left [result], and in the test reports. */
+    private fun problems(
+        root: Path,
+        result: ProcessResult,
     ): List<Diagnostic> {
-        val result = maven(root, goals, timeout)
         val problems = MavenConsole.parse(result.output, root) + MAVEN_REPORTS.parse(root)
         if (result.exitCode != 0 && problems.isEmpty()) return listOf(unexplainedFailure(result))
         return problems

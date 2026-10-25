@@ -264,6 +264,47 @@ class MavenAdapterTest {
     }
 
     @Test
+    fun `the tests run are unknown after a verify that skipped a module, until a verify skips none`() {
+        repo
+            .resolve("a/target/surefire-reports/TEST-a.ATest.xml")
+            .createParentDirectories()
+            .writeText("<testsuite><testcase name=\"one\"/></testsuite>")
+        // Real Maven 3.9 output: `a` failed an enforcer rule in `verify`, so `b`, which depends on it, never ran its tests.
+        val skipped =
+            """
+            [INFO] Reactor Summary for parent 1:
+            [INFO]
+            [INFO] parent ............................................. SUCCESS [  0.000 s]
+            [INFO] a .................................................. FAILURE [  0.599 s]
+            [INFO] b .................................................. SKIPPED
+            [INFO] ------------------------------------------------------------------------
+            [INFO] BUILD FAILURE
+            """.trimIndent()
+        var verifyOutput = skipped
+        val adapter =
+            MavenAdapter(plugins = PLUGINS) { command, _, _, _ ->
+                ProcessResult(
+                    0,
+                    if ("verify" in
+                        command
+                    ) {
+                        verifyOutput
+                    } else {
+                        ""
+                    },
+                )
+            }
+
+        adapter.verify(repo, 1.hours)
+        val afterSkip = adapter.testsRun(repo)
+        verifyOutput = skipped.replace("SKIPPED", "SUCCESS [  0.412 s]")
+        adapter.verify(repo, 1.hours)
+
+        assertEquals(null, afterSkip, "a build error before b's tests would hide what the update did to them")
+        assertEquals(1, adapter.testsRun(repo))
+    }
+
+    @Test
     fun `doesn't run the tests when the code doesn't compile`() {
         val diagnostics =
             adapter(
