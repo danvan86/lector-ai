@@ -51,15 +51,6 @@ data class Attempt(
     val diagnosticsLeftOut: Int = 0,
 )
 
-/**
- * The rejected attempt that got furthest on the run's last commit, as the unified [diff] of its edits: never applied or
- * committed, shown to the reviewer to finish by hand (concept section 8.3). [attempt] is its number in the run, from 1.
- */
-data class Suggestion(
-    val attempt: Int,
-    val diff: String,
-)
-
 sealed interface AttemptOutcome {
     /** The attempt made progress and became [commit], with [rationale] as its subject. */
     data class Accepted(
@@ -160,14 +151,23 @@ class FixLoop(
         // The errors the accepted attempts removed. One that comes back was not uncovered.
         private val removed = mutableSetOf<ErrorKey>()
 
+        private val bestRejected = BestRejected()
+
         fun run(): FixLoopResult {
-            while (true) {
-                stopReason()?.let { return FixLoopResult(attempts.all, it, verification) }
+            var stop = stopReason()
+            while (stop == null) {
                 val cluster =
                     clusters(verification.causedByUpdate, adapter).firstOrNull { attempts.on(it.key).size < budgets.attemptsPerCluster }
-                        ?: return FixLoopResult(attempts.all, StopReason.CLUSTER_BUDGETS, verification)
-                attempt(cluster)
+                if (cluster == null) {
+                    stop = StopReason.CLUSTER_BUDGETS
+                } else {
+                    attempt(cluster)
+                    stop = stopReason()
+                }
             }
+            // A run that ends green needs no suggestion.
+            val suggestion = if (verification.causedByUpdate.isEmpty()) null else bestRejected.suggestion
+            return FixLoopResult(attempts.all, stop, verification, suggestion)
         }
 
         private fun stopReason(): StopReason? =
@@ -254,7 +254,7 @@ class FixLoop(
         private fun request(
             cluster: String,
             diagnostics: List<Diagnostic>,
-            note: PreviousAttempt? = null,
+            note: PreviousAttempt?,
             grounded: Boolean = true,
         ): FixRequest {
             val buildFiles = GitWorkingTree.trackedFiles(repo).filter(adapter::isBuildFile)
@@ -366,14 +366,20 @@ class FixLoop(
             val progress =
                 progressAfter < progressBefore ||
                     uncovers(diagnostics, verification.causedByUpdate, after.causedByUpdate, changedLines, removed)
-            if (!progress) return rejected(noProgress(progressBefore, after.causedByUpdate))
+            val files = (edited(repo, proposal.edits) + lockfiles).distinct()
+            if (!progress) {
+                // The diff now: a rejected attempt's edits are gone after the reset.
+                bestRejected.offer(attempts.size + 1, progressAfter) { GitWorkingTree.diff(repo, files) }
+                return rejected(noProgress(progressBefore, after.causedByUpdate))
+            }
             val subject =
                 proposal.rationale
                     .lines()
                     .map { it.trim() }
                     .firstOrNull { it.isNotEmpty() } ?: "Fix $cluster"
             val body = "Addresses:\n" + diagnostics.joinToString("\n", transform = ::describe)
-            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", (edited(repo, proposal.edits) + lockfiles).distinct(), identity)
+            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", files, identity)
+            bestRejected.clear()
             val left = after.causedByUpdate.map { it.key }.toSet()
             removed += verification.causedByUpdate.map { it.key }.filter { it !in left }
             verification = after

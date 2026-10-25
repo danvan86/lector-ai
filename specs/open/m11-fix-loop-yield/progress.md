@@ -11,7 +11,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 | 3 | Progress: unmasked compile errors, the returning-error check (section 1) | ✅ |
 | 4 | Repeated answers asked again; every failed attempt in the history (sections 4, 6) | ✅ |
 | 5 | Build errors checked on the base commit, once per run: `RunBase` (section 2) | ✅ |
-| 6 | The best rejected attempt as a suggestion, in the reports (section 7) | ⬜ |
+| 6 | The best rejected attempt as a suggestion, in the reports (section 7) | ✅ |
 | 7 | Benchmark: `model` input, the 14B image (section 8, configuration) | ⬜ |
 | 8 | Quality gates verified | ⬜ |
 | 9 | Docs in sync | ⬜ |

@@ -5,8 +5,10 @@ import gmbh.vanella.lector.core.AttemptOutcome
 import gmbh.vanella.lector.core.FixLoopResult
 import gmbh.vanella.lector.core.SHORT_COMMIT
 import gmbh.vanella.lector.core.StopReason
+import gmbh.vanella.lector.core.Suggestion
 import gmbh.vanella.lector.core.Violation
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -23,8 +25,20 @@ internal object FixLoopReport {
                 list("Attempts", attempts) +
                 list("Fixes", fixes.map { "- ${it.commit.take(SHORT_COMMIT)} ${it.rationale}" }) +
                 list("Rejections per guardrail", result.rejectionsPerRule().map { (rule, count) -> "- $rule: $count" }) +
+                suggestion(result.suggestion) +
                 "  Tests run in the final verify: ${result.verification.testsRun ?: "unknown"}"
         return lines.joinToString("\n")
+    }
+
+    /** The [suggestion]'s diff, indented, under a line that says it isn't applied. Nothing without one. */
+    private fun suggestion(suggestion: Suggestion?): List<String> {
+        if (suggestion == null) return emptyList()
+        val diff =
+            suggestion.diff
+                .trimEnd('\n')
+                .lines()
+                .map { "    $it" }
+        return listOf("  Suggestion, not applied, needs review: the edits of attempt ${suggestion.attempt}") + diff
     }
 
     private fun line(
@@ -39,8 +53,16 @@ internal object FixLoopReport {
                 "attempts" to JsonArray(result.attempts.map(::json)),
                 "rejectionsPerGuardrail" to JsonObject(result.rejectionsPerRule().mapValues { JsonPrimitive(it.value) }),
                 "testsRun" to JsonPrimitive(result.verification.testsRun),
+                "suggestion" to json(result.suggestion),
             ),
         )
+
+    private fun json(suggestion: Suggestion?) =
+        if (suggestion == null) {
+            JsonNull
+        } else {
+            JsonObject(mapOf("attempt" to JsonPrimitive(suggestion.attempt), "diff" to JsonPrimitive(suggestion.diff)))
+        }
 
     private fun json(attempt: Attempt): JsonObject {
         val accepted = attempt.outcome as? AttemptOutcome.Accepted

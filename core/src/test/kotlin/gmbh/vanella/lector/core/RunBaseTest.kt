@@ -20,7 +20,8 @@ class RunBaseTest : BuildErrorFixture() {
     @Test
     fun `a pre-existing build error is reported with the pre-existing tests`() {
         val failing = Diagnostic(null, null, null, null, "expected: <1>", Severity.ERROR, "surefire", "com.example.AppTest#adds")
-        val adapter = TwoCheckoutAdapter(head = { listOf(gpg, failing) }, base = { listOf(gpg) })
+        // The base's own failing test is no build error.
+        val adapter = TwoCheckoutAdapter(head = { listOf(gpg, failing) }, base = { listOf(gpg, failing) })
 
         val verification = attribute(adapter, repo, RunBase(CountingBase(baseCheckout)))
 

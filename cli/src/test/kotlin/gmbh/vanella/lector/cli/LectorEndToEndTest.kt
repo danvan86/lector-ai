@@ -272,7 +272,9 @@ class LectorEndToEndTest {
             }
 
         assertContains(run.stdout, "- [stubbing] src/main/java/App.java:3: the edits add the placeholder `return null;` in place of logic")
-        assertContains(run.stdout, "  Rejections per guardrail (1):\n    - stubbing: 2\n")
+        // The fake model gives the same answer every time: attempt 2 asks twice and builds nothing.
+        assertContains(run.stdout, "rejected: the first answer repeated attempt 1, and the second repeated attempt 1; neither was built")
+        assertContains(run.stdout, "  Rejections per guardrail (1):\n    - stubbing: 1\n")
         // The rejected edits are in the log: without them, a failed run in CI can't be told from a bad prompt.
         assertContains(run.stderr, "The rejected edits:\n- src/main/java/App.java: \"broken();\" -> \"return null;\"\n")
         assertTrue("WARNING" !in run.stderr, run.stderr)

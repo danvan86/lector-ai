@@ -33,7 +33,7 @@ object GitWorkingTree {
 
     /** The modified and new files, relative to the repository root, sorted. */
     fun changedFiles(repo: Path): List<String> =
-        git(repo, "status", "--porcelain", "-z", "--untracked-files=all")
+        git(repo, listOf("status", "--porcelain", "-z", "--untracked-files=all"))
             .split('\u0000')
             .filter { it.isNotEmpty() }
             .map { it.drop(STATUS_PREFIX) }
@@ -41,13 +41,13 @@ object GitWorkingTree {
 
     /** Restores the tracked files to `HEAD` and removes the new files. */
     fun reset(repo: Path) {
-        git(repo, "reset", "--hard", "--quiet")
-        git(repo, "clean", "-d", "--force", "--quiet")
+        git(repo, listOf("reset", "--hard", "--quiet"))
+        git(repo, listOf("clean", "-d", "--force", "--quiet"))
     }
 
     /** The files Git tracks, relative to the repository root, sorted. */
     fun trackedFiles(repo: Path): List<String> =
-        git(repo, "ls-files", "-z")
+        git(repo, listOf("ls-files", "-z"))
             .split('\u0000')
             .filter { it.isNotEmpty() }
             .sorted()
@@ -70,13 +70,13 @@ object GitWorkingTree {
     }
 
     /** The commit the working tree is on. */
-    fun head(repo: Path): String = git(repo, "rev-parse", "HEAD").trim()
+    fun head(repo: Path): String = git(repo, listOf("rev-parse", "HEAD")).trim()
 
     /** The author's email of [commit]. */
     fun authorEmail(
         repo: Path,
         commit: String,
-    ): String = git(repo, "log", "-1", "--format=%ae", commit).trim()
+    ): String = git(repo, listOf("log", "-1", "--format=%ae", commit)).trim()
 
     /** Whether [commit] is in the repository, e.g. not cut off by a shallow clone. */
     fun hasCommit(
@@ -84,19 +84,20 @@ object GitWorkingTree {
         commit: String,
     ): Boolean = runProcess(listOf("git", "cat-file", "-e", "$commit^{commit}"), repo, GIT_TIMEOUT).exitCode == 0
 
+    /** The uncommitted changes to [files] (relative to the repository root), as a unified diff. */
+    fun diff(
+        repo: Path,
+        files: List<String>,
+    ): String = git(repo, listOf("diff", "--no-color", "--") + files)
+
     /** The changes [commit] made, as a unified diff. */
     fun diff(
         repo: Path,
         commit: String,
-    ): String = git(repo, "show", "--format=", "--no-color", commit)
+    ): String = git(repo, listOf("show", "--format=", "--no-color", commit))
 
     // `XY path`: two status letters and a space.
     private const val STATUS_PREFIX = 3
-
-    private fun git(
-        repo: Path,
-        vararg args: String,
-    ) = git(repo, args.asList())
 
     private fun git(
         repo: Path,

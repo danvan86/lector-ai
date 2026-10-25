@@ -28,6 +28,7 @@ object PrComment {
                 "#### Fixes\n" + fixes(fixLoop).ifEmpty { listOf("- none") }.joinToString("\n"),
                 "The fix loop made ${count(fixLoop.attempts.size, "attempt")} and stopped: ${fixLoop.stopReason.description}.",
                 if (left.isEmpty()) null else "#### Left to fix\n" + DiagnosticItems.items(left),
+                fixLoop.suggestion?.let(::suggestion),
                 DiagnosticItems.notCausedByUpdate(report.verification),
                 fixLoop.rejectionsPerRule().map { (rule, count) -> "- $rule: $count" }.ifEmpty { null }?.let {
                     "#### Guardrail rejections\n" + it.joinToString("\n")
@@ -80,6 +81,14 @@ object PrComment {
                 else -> "**$left problems caused by the update are left to fix.**"
             }
         return "The update of $update broke the build. lector-ai $pushed; $verdict"
+    }
+
+    /** The [suggestion], collapsed: a reviewer opens it to finish the fix by hand. */
+    private fun suggestion(suggestion: Suggestion): String {
+        val fence = fence(suggestion.diff)
+        return "<details>\n<summary>Suggestion, not applied, needs review: the edits of attempt ${suggestion.attempt}</summary>\n\n" +
+            "The rejected attempt that got furthest. lector-ai didn't commit it: it didn't pass the progress check.\n\n" +
+            "${fence}diff\n${suggestion.diff.trimEnd('\n')}\n$fence\n\n</details>"
     }
 
     private fun fixes(fixLoop: FixLoopResult) = fixLoop.fixes.map { "- ${it.commit.take(SHORT_COMMIT)} ${it.rationale}" }
@@ -142,6 +151,14 @@ private object DiagnosticItems {
 }
 
 private fun change(change: DependencyChange) = change.describe()
+
+private val backticks = Regex("`+")
+
+// Markdown's shortest code fence.
+private const val MIN_FENCE = 3
+
+/** A code fence for [text]: longer than any run of backticks in it, so nothing in it closes the fence. */
+private fun fence(text: String) = "`".repeat((backticks.findAll(text).map { it.value.length + 1 } + MIN_FENCE).max())
 
 private fun count(
     number: Int,
