@@ -65,6 +65,7 @@ class MavenAdapterTest {
                     "mvn",
                     "-B",
                     "-fae",
+                    "-Dgpg.skip=true",
                     "--settings",
                     settings.toAbsolutePath().toString(),
                     "org.openrewrite.maven:rewrite-maven-plugin:9.9.9:runNoFork",
@@ -114,7 +115,7 @@ class MavenAdapterTest {
 
         assertEquals(mapOf("org.example:lib" to "1.2.3"), versions)
         assertEquals(
-            listOf("mvn", "-B", "-fae", "org.apache.maven.plugins:maven-help-plugin:8.8.8:effective-pom"),
+            listOf("mvn", "-B", "-fae", "-Dgpg.skip=true", "org.apache.maven.plugins:maven-help-plugin:8.8.8:effective-pom"),
             runs.single().dropLast(1),
         )
         val file = assertNotNull(output)
@@ -146,7 +147,7 @@ class MavenAdapterTest {
         val timeouts = mutableListOf<Pair<String, Duration>>()
         val adapter =
             MavenAdapter(plugins = PLUGINS) { command, _, _, timeout ->
-                timeouts += command[3] to timeout
+                timeouts += command[4] to timeout
                 ProcessResult(0, "")
             }
         val test = Diagnostic(null, null, null, null, "failed", Severity.ERROR, "surefire", "com.example.AppTest#runs")
@@ -210,8 +211,8 @@ class MavenAdapterTest {
         assertEquals(emptyList(), diagnostics)
         assertEquals(
             listOf(
-                listOf("mvn", "-B", "-fae", "clean", "test-compile"),
-                listOf("mvn", "-B", "-fae", "verify"),
+                listOf("mvn", "-B", "-fae", "-Dgpg.skip=true", "clean", "test-compile"),
+                listOf("mvn", "-B", "-fae", "-Dgpg.skip=true", "verify"),
             ),
             runs,
         )
@@ -233,7 +234,12 @@ class MavenAdapterTest {
 
         val diagnostics = MavenAdapter().verify(repo, 1.hours)
 
-        assertEquals(listOf("Failed to execute goal on project app: ran -B -fae clean test-compile"), diagnostics.map { it.message })
+        assertEquals(
+            listOf("Failed to execute goal on project app: ran -B -fae -Dgpg.skip=true clean test-compile"),
+            diagnostics.map {
+                it.message
+            },
+        )
     }
 
     @Test
@@ -244,7 +250,7 @@ class MavenAdapterTest {
         adapter(settings = settings).runTests(repo, listOf(testFailure("com.example.FooTest#bar")), 1.hours)
 
         assertEquals(3, runs.size)
-        runs.forEach { assertContains(it.joinToString(" "), "-B -fae --settings ${settings.toAbsolutePath()} ") }
+        runs.forEach { assertContains(it.joinToString(" "), "-B -fae -Dgpg.skip=true --settings ${settings.toAbsolutePath()} ") }
     }
 
     @Test
@@ -309,6 +315,7 @@ class MavenAdapterTest {
                     "mvn",
                     "-B",
                     "-fae",
+                    "-Dgpg.skip=true",
                     "clean",
                     "test",
                     "-Dtest=com.example.FooTest,com.example.BarTest",
@@ -331,6 +338,7 @@ class MavenAdapterTest {
                     "mvn",
                     "-B",
                     "-fae",
+                    "-Dgpg.skip=true",
                     "clean",
                     "verify",
                     "-Dtest=com.example.FooTest",
@@ -353,6 +361,7 @@ class MavenAdapterTest {
                     "mvn",
                     "-B",
                     "-fae",
+                    "-Dgpg.skip=true",
                     "clean",
                     "verify",
                     "-Dtest=lector.NoUnitTests",

@@ -32,6 +32,9 @@ private const val OUTPUT_TAIL_LINES = 20
 // A surefire filter that matches no test class.
 private const val NO_UNIT_TESTS = "lector.NoUnitTests"
 
+// Signing is never what an update breaks, and it fails wherever `gpg` or its key is missing, like on a CI runner.
+private const val SKIP_SIGNING = "-Dgpg.skip=true"
+
 /**
  * Builds and tests Maven projects. Runs the project's wrapper (`./mvnw`) if it has one, otherwise `mvn` from the
  * environment, with the environment's Maven settings, or [settings] if given. The JDK is the smallest of the installed
@@ -276,7 +279,7 @@ class MavenAdapter(
         val wrapper = root.resolve("mvnw")
         val executable = if (wrapper.isRegularFile()) wrapper.toString() else "mvn"
         val settingsOption = settings?.let { listOf("--settings", it.toAbsolutePath().toString()) }.orEmpty()
-        return listOf(executable, "-B", "-fae") + settingsOption
+        return listOf(executable, "-B", "-fae", SKIP_SIGNING) + settingsOption
     }
 
     private fun testClasses(tests: List<Diagnostic>) =
