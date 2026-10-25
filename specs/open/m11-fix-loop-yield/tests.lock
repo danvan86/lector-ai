@@ -1,0 +1,12 @@
+1cf1d11b87342a14687606138daf14560e2e6594427369dd60190d79f258a238  core/src/test/kotlin/gmbh/vanella/lector/core/FixLoopProgressTest.kt
+65f5afdb7dc7858033596b5b0dabc58d8948641bf3c6f07e754020fa3620d0b4  core/src/test/kotlin/gmbh/vanella/lector/core/BuildErrorAttributionTest.kt
+903f1fb31cca26d1da99aab423693834f2160c47dcff30b2c289e94fa76fc746  core/src/test/kotlin/gmbh/vanella/lector/core/FixLoopRepeatTest.kt
+92dcceb73c2621d0e5e0288b79837fe0535431b48f64042bbdd39e6185d82d5e  core/src/test/kotlin/gmbh/vanella/lector/core/FixLoopFeedbackTest.kt
+1abb5ab1416b0b2106c57a7b09e313946600279c5d76f812ea34c964f84ca497  core/src/test/kotlin/gmbh/vanella/lector/core/FixLoopSuggestionTest.kt
+c84ad92536a7a8cdd96fc838064295a2a889b4d1ce2cb14e297edcde72d6fe0b  core/src/test/kotlin/gmbh/vanella/lector/core/PrCommentSuggestionTest.kt
+1c9cf191f6b7f8142d1ed103468602504246315e2d42f0fe0dcf3f0a57ee0cb2  cli/src/test/kotlin/gmbh/vanella/lector/cli/FixLoopReportSuggestionTest.kt
+4260ab3d810377c5a3df64102a4afcbc84deaf6a899e14ce1cb54f86b8c414d6  cli/src/test/kotlin/gmbh/vanella/lector/cli/SigningIntegrationTest.kt
+62eb2f213f34e70532fbdbd9848cec4f5b83f0efa40266f5a6005a7f28392585  ecosystems/jvm/src/test/kotlin/gmbh/vanella/lector/ecosystems/jvm/MavenSigningTest.kt
+7e0830849b73ff6e40836cce48e9b1eae9a456c472c66c49f00fc47d8cedde30  cli/src/test/resources/fixtures/signed-build/head/pom.xml
+83682237a134f226626670e4d332118698aa02ba2ab83cd1fc6dad071b357a94  cli/src/test/resources/fixtures/signed-build/head/src/main/java/com/example/Greeter.java
+3d19f7e1c95bc1cf9cb393dade12d18dd1007a1554da998497c449c8b01ac99e  cli/src/test/resources/fixtures/signed-build/head/src/test/java/com/example/GreeterTest.java

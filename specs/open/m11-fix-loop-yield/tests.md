@@ -1,6 +1,6 @@
 # M11 – Fix-loop yield · Tests
 
-Spec: [spec.md](spec.md) · Decisions: [brainstorming.md](brainstorming.md) · Evidence: [evidence.md](evidence.md) · Status: **Test code red, awaiting approval**
+Spec: [spec.md](spec.md) · Decisions: [brainstorming.md](brainstorming.md) · Evidence: [evidence.md](evidence.md) · Status: **Approved, frozen (tests.lock)**
 
 ## Test contract
 
@@ -194,7 +194,7 @@ Fidelity check (fresh agent, step 4b): 15 findings, all resolved. Five let a wro
 
 ### Harness (not frozen)
 
-Frozen in commit `(set on approval)`. Repairs and extensions allowed; a change that makes a test easier to pass needs the user's consent (review-spec checks the diff).
+Frozen in commit `996527f`. Repairs and extensions allowed; a change that makes a test easier to pass needs the user's consent (review-spec checks the diff).
 
 | File | Role |
 |---|---|
@@ -227,4 +227,4 @@ _No question rounds: nothing open._
 
 ## Approval
 
-_Not yet approved._
+Approved on 2026-10-25 by the user, with the agent decisions V1–V6 as presented. 12 files in `tests.lock`: the nine test classes and the three files of the `signed-build` fixture.
