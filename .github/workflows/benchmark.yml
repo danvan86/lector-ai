@@ -1,7 +1,8 @@
 # Runs the benchmark (M6) on demand: every case of the corpus in three modes, on standard GitHub-hosted runners with
-# the 7B model on CPU. One job per case, mode, and repetition, each well within the job time limit. Never on push, pull
-# requests, or a schedule. The artifact holds results.json and report.md. A person adds review.json, generates the report
-# again (`./gradlew :benchmark:report`), and commits the directory under benchmark/results/<date>/.
+# the model of the `model` input on CPU (the 7B by default; M11 compares it with the 14B). One job per case, mode, and
+# repetition, each well within the job time limit. Never on push, pull requests, or a schedule. The artifact holds
+# results.json and report.md; each run's artifact also holds its diff for the review. A person adds review.json,
+# generates the report again (`./gradlew :benchmark:report`), and commits the directory under benchmark/results/<date>/.
 name: Benchmark
 
 on:
@@ -11,12 +12,16 @@ on:
         description: Only these cases, comma-separated (empty for all)
         required: false
         default: ""
+      model:
+        description: The Ollama model, baked into the job's Ollama image
+        required: false
+        default: qwen2.5-coder:7b
 
 permissions:
   contents: read
 
 env:
-  MODEL: qwen2.5-coder:7b
+  MODEL: ${{ inputs.model }}
 
 jobs:
   plan:
@@ -39,7 +44,7 @@ jobs:
         env:
           CASES: ${{ inputs.cases }}
 
-  # The Ollama image with the 7B model baked in (M5), as the jobs' sidecar. Releases publish it, but no release may
+  # The Ollama image with the model baked in (M5), as the jobs' sidecar. Releases publish it, but no release may
   # happen before the MSAL check, so the benchmark builds its own tag.
   ollama-image:
     runs-on: ubuntu-latest
@@ -114,8 +119,10 @@ jobs:
           echo "LECTOR_JEST_JUNIT=$PWD/node_modules/jest-junit" >> "$GITHUB_ENV"
       - name: Run the case
         run: |
+          mkdir -p "$RUNNER_TEMP/work"
           ./gradlew -q :benchmark:run --args="run --case $CASE --mode $MODE --repetition $REPETITION \
-            --output $RUNNER_TEMP/runs/$CASE-$MODE-$REPETITION.json --tool-commit $GITHUB_SHA --model $MODEL"
+            --output $RUNNER_TEMP/runs/$CASE-$MODE-$REPETITION.json --tool-commit $GITHUB_SHA --model $MODEL \
+            --work-dir $RUNNER_TEMP/work"
         env:
           CASE: ${{ matrix.case }}
           MODE: ${{ matrix.mode }}
@@ -125,6 +132,19 @@ jobs:
           LECTOR_JDK_25: ${{ env.JAVA_HOME_25_X64 }}
           # Cluster keys and grounding read the English compiler messages, as in the tool image.
           MAVEN_OPTS: -Duser.language=en -Duser.country=US
+      # What the tool committed on top of the case's head (recipes and fixes), for the manual review.
+      - name: Save the run's diff
+        run: |
+          repo="$RUNNER_TEMP/work/$CASE"
+          if [ -d "$repo/.git" ]; then
+            head="$(jq -r --arg id "$CASE" '.cases[] | select(.id == $id) | .head' \
+              benchmark/src/main/resources/gmbh/vanella/lector/benchmark/corpus.json)"
+            git -C "$repo" diff --no-color "$head" HEAD > "$RUNNER_TEMP/runs/$CASE-$MODE-$REPETITION.diff"
+          fi
+        env:
+          CASE: ${{ matrix.case }}
+          MODE: ${{ matrix.mode }}
+          REPETITION: ${{ matrix.repetition }}
       - uses: actions/upload-artifact@v7
         with:
           name: run-${{ matrix.case }}-${{ matrix.mode }}-${{ matrix.repetition }}

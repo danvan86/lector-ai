@@ -1,0 +1,54 @@
+{
+  "reviewer": "Independent review agent (Claude Code general-purpose subagent, claude-opus-5-5), blind to M11 and to the run",
+  "runs": [
+    {
+      "case": "dropwizard-config-providers-kiwi-5",
+      "mode": "recipe-and-fix-loop",
+      "repetition": 3,
+      "acceptedUnchanged": false,
+      "reason": "Hides the kiwi 5 default change: pins TLSv1.2 in the test's context so the 'provided context as default' test no longer checks the real default; upstream expects TLSv1.3."
+    },
+    {
+      "case": "pdfbox-3",
+      "mode": "fix-loop-only",
+      "repetition": 3,
+      "acceptedUnchanged": false,
+      "reason": "Compiles, but PDFParser.load(File) is @Deprecated in PDFBox 3.0.3 ('use Loader#loadPDF(File) instead'); migrates to a deprecated API instead of Loader.loadPDF(file)."
+    },
+    {
+      "case": "snakeyaml-2",
+      "mode": "fix-loop-only",
+      "repetition": 1,
+      "acceptedUnchanged": true,
+      "reason": "Correct minimal SnakeYAML 2 migration: Constructor(Class, LoaderOptions) with default LoaderOptions keeps behaviour; only nit is non-alphabetical import order, no style gate."
+    },
+    {
+      "case": "snakeyaml-2",
+      "mode": "fix-loop-only",
+      "repetition": 2,
+      "acceptedUnchanged": true,
+      "reason": "Correct minimal SnakeYAML 2 migration: Constructor(Class, LoaderOptions) with default LoaderOptions keeps behaviour; only nit is non-alphabetical import order, no style gate."
+    },
+    {
+      "case": "snakeyaml-2",
+      "mode": "fix-loop-only",
+      "repetition": 3,
+      "acceptedUnchanged": true,
+      "reason": "Correct minimal SnakeYAML 2 migration: Constructor(Class, LoaderOptions) with default LoaderOptions keeps behaviour; only nit is non-alphabetical import order, no style gate."
+    },
+    {
+      "case": "snakeyaml-2",
+      "mode": "recipe-and-fix-loop",
+      "repetition": 1,
+      "acceptedUnchanged": true,
+      "reason": "Correct minimal SnakeYAML 2 migration: Constructor(Class, LoaderOptions) with default LoaderOptions keeps behaviour; only nit is non-alphabetical import order, no style gate."
+    },
+    {
+      "case": "snakeyaml-2",
+      "mode": "recipe-and-fix-loop",
+      "repetition": 2,
+      "acceptedUnchanged": true,
+      "reason": "Correct minimal SnakeYAML 2 migration: Constructor(Class, LoaderOptions) with default LoaderOptions keeps behaviour; only nit is non-alphabetical import order, no style gate."
+    }
+  ]
+}

@@ -134,7 +134,7 @@ class HarnessTest {
     @Test
     fun `a rejection is counted by guardrail rule`() {
         val tooLarge = Edit("App.java", "old(1);\n        old(2);", "\n".repeat(60))
-        val llm = ScriptedLlm(edits(tooLarge), edits(tooLarge))
+        val llm = ScriptedLlm(edits(tooLarge), edits(tooLarge.copy(replace = "\n".repeat(61))))
 
         val metrics = metrics(harness(llm = llm).run(case, Mode.FIX_LOOP_ONLY, 1, work))
 

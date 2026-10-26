@@ -82,7 +82,7 @@ The rule names are the `Violation.rule` values in the report.
 
 | Rule (`Violation.rule`) | Class | Rejects | Passes |
 |---|---|---|---|
-| `scope` | `Scope` | A path outside the repository, a path the adapter's `isEditable` refuses, a file Git doesn't track (ignored or untracked: at attempt time, that is build output) | Tracked, editable files |
+| `scope` | `Scope` | A path outside the repository, a path the adapter's `isEditable` refuses, a file Git doesn't track (ignored or untracked: at attempt time, that is build output). A file that doesn't exist is a failed edit, checked before the scope, not a violation (M11) | Tracked, editable files |
 | `diff-size` | `DiffSize` | More than `--max-changed-lines` (default 50) added plus removed lines over all files | Up to the limit |
 | `build-file` | `BuildFileBlocklist` | An added or changed line of an `isBuildFile` file for which `testDisablingConfig` returns a reason; since M9, each reason `loosening(file, before, after)` returns for the file's whole change (no line) | Removing such config where the safe setting is the default (Maven, Gradle: `loosening` returns nothing); any other line |
 | `parse-errors` | `ParseErrors` | A changed source file with more parse errors (`ERROR` or `MISSING` nodes) after than before | Same or fewer |
@@ -140,7 +140,7 @@ Text report, fix-loop section (after M3's attempts and fixes):
   Tests run in the final verify: 12
 ```
 
-The count per rule is the number of attempts a rule rejected, rules sorted by name. `Tests run` comes from `Verification.testsRun` (JVM: the test cases in the surefire and failsafe reports, or in Gradle's `build/test-results/`), `unknown` if no report was left.
+The count per rule is the number of attempts a rule rejected, rules sorted by name. `Tests run` comes from `Verification.testsRun` (JVM: the test cases in the surefire and failsafe reports, or in Gradle's `build/test-results/`), `unknown` if no report was left, or, for Maven since M11, if the last `verify` skipped a module.
 
 JSON: each attempt gains `violations` (`rule`, `file`, `line`, `reason`, empty unless the guardrails rejected it); `fixLoop` gains `rejectionsPerGuardrail` (rule → count) and `testsRun` (number or `null`).
 

@@ -12,7 +12,7 @@ Milestone: [M10](../features.md#m10--api-diff-as-grounding-) · Spec: [`m10-api-
 
 ## Overview
 
-The full API shows what exists in the new version, not what moved or disappeared. A 7B model guessed a moved class's import twice until the grounding named the new place. `apiChanges` compares the old and the new version's API for the classes the errors refer to and says it in a few plain lines. M11 is meant to turn the unambiguous entries into rewrite rules, so the diff is a typed value first and text second.
+The full API shows what exists in the new version, not what moved or disappeared. A 7B model guessed a moved class's import twice until the grounding named the new place. `apiChanges` compares the old and the new version's API for the classes the errors refer to and says it in a few plain lines. M13 is meant to turn the unambiguous entries into rewrite rules, so the diff is a typed value first and text second.
 
 ```mermaid
 flowchart LR
@@ -164,4 +164,4 @@ The real-model proof (PDFBox 2 → 3, SnakeYAML 1 → 2: red at the milestone ba
 | Public members only, no protected ones, no inherited ones, no nested classes | Matches `javap -public` and today's class selection (R10). A member pulled up into a supertype shows as removed. | If a real case needs it |
 | A package replaced by a package of another group (kotlin-logging 3 → 5) is not diffed | Two changes, not one; the full API finds the moved classes by name. | — |
 | TypeScript has no API changes | Its grounding works on `.d.ts` files (Q1). | A later milestone |
-| How M11 gets the typed diff before the fix loop | The diff types stay in `ecosystems:jvm`; the port returns text. | M11 |
+| How M13 gets the typed diff before the fix loop | The diff types stay in `ecosystems:jvm`; the port returns text. | M13 |

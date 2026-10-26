@@ -235,6 +235,14 @@ class PrCommentTest {
     }
 
     @Test
+    fun `a suggestion's diff without backticks gets a fence of three, and its final line break is dropped`() {
+        val diff = "--- a/App.java\n+++ b/App.java\n@@ -1 +1 @@\n-old();\n+new();\n"
+        val report = fullReport.copy(fixLoop = fullReport.fixLoop.copy(suggestion = Suggestion(3, diff)))
+
+        assertContains(PrComment.render(report), "\n```diff\n${diff.trimEnd()}\n```\n")
+    }
+
+    @Test
     fun `a green run with a closed companion PR says so`() {
         val closed = PrComment.companionClosed(21, "verify is green without it")
 

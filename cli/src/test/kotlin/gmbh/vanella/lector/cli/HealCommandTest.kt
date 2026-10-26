@@ -2,6 +2,7 @@ package gmbh.vanella.lector.cli
 
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.testing.test
+import gmbh.vanella.lector.core.Diagnostic
 import gmbh.vanella.lector.core.Edit
 import gmbh.vanella.lector.core.LlmClient
 import gmbh.vanella.lector.core.Recipe
@@ -9,6 +10,7 @@ import gmbh.vanella.lector.core.RecipeIndex
 import gmbh.vanella.lector.core.RecipeMatch
 import gmbh.vanella.lector.core.RecipeRun
 import gmbh.vanella.lector.core.RecipeSelection
+import gmbh.vanella.lector.core.Severity
 import gmbh.vanella.lector.core.runProcess
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -80,7 +82,7 @@ class HealCommandTest {
             """
             Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
               Attempts (2):
-                1. symbol:broken, 1 diagnostics: rejected: App.java: the search text is not in the file
+                1. symbol:broken, 1 diagnostics: rejected: edit 1 (App.java): the search text is not in the file
                 2. symbol:broken, 1 diagnostics: accepted: 0 build errors, 1 compile errors, 0 test failures -> 0 build errors, 0 compile errors, 0 test failures
               Fixes (1):
                 - $fixCommit Call fixed() instead of broken()
@@ -133,7 +135,7 @@ class HealCommandTest {
         listOf(FakeAdapter { RecipeRun.Failed("plugin crashed") }, FakeAdapter { RecipeRun.Applied }).forEach { adapter ->
             val result =
                 command(
-                    llm = ScriptedLlm(Edit("App.java", "nowhere", "x"), Edit("App.java", "nowhere", "x")),
+                    llm = ScriptedLlm(Edit("App.java", "nowhere", "x"), Edit("App.java", "nowhere", "y")),
                     adapter = adapter,
                 ).test("$repo $args")
 
@@ -153,7 +155,7 @@ class HealCommandTest {
         assertEquals("nothingLeft", loop.getValue("stopReason").jsonPrimitive.content)
         val attempts = loop.getValue("attempts").jsonArray.map { it.jsonObject }
         assertEquals(listOf("rejected", "accepted"), attempts.map { it.getValue("outcome").jsonPrimitive.content })
-        assertEquals("App.java: the search text is not in the file", attempts[0].getValue("reason").jsonPrimitive.content)
+        assertEquals("edit 1 (App.java): the search text is not in the file", attempts[0].getValue("reason").jsonPrimitive.content)
         assertEquals(JsonNull, attempts[0].getValue("commit"))
         assertEquals(git("rev-parse", "HEAD").trim(), attempts[1].getValue("commit").jsonPrimitive.content)
         assertEquals("Call fixed() instead of broken()", attempts[1].getValue("rationale").jsonPrimitive.content)
@@ -241,7 +243,7 @@ class HealCommandTest {
     @Test
     fun `the budgets can be set, and a used-up budget stops the loop`() {
         val miss = Edit("App.java", "nowhere", "x")
-        val llm = ScriptedLlm(miss, miss, miss)
+        val llm = ScriptedLlm(miss, miss.copy(replace = "y"), miss.copy(replace = "z"))
 
         val result =
             command(llm = llm).test(
@@ -349,12 +351,51 @@ class HealCommandTest {
     @Test
     fun `run through the root command, what is left exits with 1`() {
         val run =
-            lector(ScriptedLlm(Edit("App.java", "nowhere", "x"), Edit("App.java", "nowhere", "x")))
+            lector(ScriptedLlm(Edit("App.java", "nowhere", "x"), Edit("App.java", "nowhere", "y")))
                 .executeInProcess("heal", repo.toString(), *args.split(" ").toTypedArray())
 
         assertContains(run.stdout, "Caused by the update (1)")
         assertEquals("", run.stderr)
         assertEquals(1, run.exitCode)
+    }
+
+    @Test
+    fun `a build error the base has too is checked on the base once per run, and doesn't fail the job`() {
+        val gpg =
+            Diagnostic(
+                null,
+                null,
+                null,
+                null,
+                "Failed to execute goal maven-gpg-plugin:sign: Cannot run program \"gpg\"",
+                Severity.ERROR,
+                "maven",
+            )
+        val adapter = FakeAdapter(testsRun = { 12 }, buildErrors = listOf(gpg))
+        val noFix = Edit("App.java", "broken();", "broken(); // still")
+        val llm = ScriptedLlm(noFix, noFix.copy(replace = "broken(); // again"), noFix.copy(replace = "broken(); // once more"))
+
+        val result = command(llm = llm, adapter = adapter).test("$repo $args --base HEAD --max-attempts-without-progress 3 --format json")
+
+        val report = Json.parseToJsonElement(result.stdout).jsonObject
+        assertEquals(
+            3,
+            report
+                .getValue("fixLoop")
+                .jsonObject
+                .getValue("attempts")
+                .jsonArray.size,
+        )
+        assertEquals(1, adapter.verified.count { it != repo }, "the first verify, the recipe's, and three attempts share one")
+        assertContains(
+            report
+                .getValue("verification")
+                .jsonObject
+                .getValue("preExisting")
+                .toString(),
+            "maven-gpg-plugin",
+        )
+        assertEquals(1, result.statusCode, "the compile error is left")
     }
 
     private fun lector(llm: LlmClient = ScriptedLlm()) = LectorCommand("1.2.3").subcommands(command(llm = llm))

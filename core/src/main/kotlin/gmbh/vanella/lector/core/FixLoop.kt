@@ -14,6 +14,9 @@ private val logger = LoggerFactory.getLogger(FixLoop::class.java)
 private const val FIRST_TEMPERATURE = 0.0
 private const val RETRY_TEMPERATURE = 0.3
 
+// A repeated answer is asked again. At 0.3, 12 of 16 retries repeated the attempt before them.
+private const val REPEAT_TEMPERATURE = 0.7
+
 // The errors after an attempt without progress that go back to the model. More would crowd out the code.
 private const val FEEDBACK_ERRORS = 10
 
@@ -78,11 +81,15 @@ enum class StopReason(
     MODEL_UNANSWERED("the model didn't answer in time"),
 }
 
-/** Every attempt, why the loop stopped, and the verification of the last commit. */
+/**
+ * Every attempt, why the loop stopped, and the verification of the last commit. A run that ends with failures caused by
+ * the update left may have a [suggestion] for the reviewer.
+ */
 data class FixLoopResult(
     val attempts: List<Attempt>,
     val stopReason: StopReason,
     val verification: Verification,
+    val suggestion: Suggestion? = null,
 ) {
     /** The accepted attempts, in order. */
     val fixes get() = attempts.map { it.outcome }.filterIsInstance<AttemptOutcome.Accepted>()
@@ -130,7 +137,7 @@ class FixLoop(
         private var verification: Verification,
     ) {
         private val started = timeSource.markNow()
-        private val attempts = mutableListOf<Attempt>()
+        private val attempts = AttemptHistory()
         private var withoutProgress = 0
         private var unanswered = false
         private var versionsBefore: Map<String, String>? = null
@@ -138,14 +145,29 @@ class FixLoop(
         // The lockfiles the adapter updated after the current attempt's build-file edits. They go into its commit.
         private var lockfiles = emptyList<String>()
 
+        // The lines the current attempt's replace texts occupy, per file.
+        private var changedLines = emptyMap<String, Set<Int>>()
+
+        // The errors the accepted attempts removed. One that comes back was not uncovered.
+        private val removed = mutableSetOf<ErrorKey>()
+
+        private val bestRejected = BestRejected()
+
         fun run(): FixLoopResult {
-            while (true) {
-                stopReason()?.let { return FixLoopResult(attempts.toList(), it, verification) }
+            var stop = stopReason()
+            while (stop == null) {
                 val cluster =
-                    clusters(verification.causedByUpdate, adapter).firstOrNull { attemptsOn(it.key).size < budgets.attemptsPerCluster }
-                        ?: return FixLoopResult(attempts.toList(), StopReason.CLUSTER_BUDGETS, verification)
-                attempt(cluster)
+                    clusters(verification.causedByUpdate, adapter).firstOrNull { attempts.on(it.key).size < budgets.attemptsPerCluster }
+                if (cluster == null) {
+                    stop = StopReason.CLUSTER_BUDGETS
+                } else {
+                    attempt(cluster)
+                    stop = stopReason()
+                }
             }
+            // A run that ends green needs no suggestion.
+            val suggestion = if (verification.causedByUpdate.isEmpty()) null else bestRejected.suggestion
+            return FixLoopResult(attempts.all, stop, verification, suggestion)
         }
 
         private fun stopReason(): StopReason? =
@@ -158,8 +180,6 @@ class FixLoop(
                 else -> null
             }
 
-        private fun attemptsOn(key: String) = attempts.filter { it.cluster == key }
-
         private val timeLeft get() = budgets.time - started.elapsedNow()
 
         // Whatever ends the run inside an attempt, a build the edits made hang or a parser that doesn't load, must not
@@ -167,15 +187,12 @@ class FixLoop(
         // is a rejected attempt, and the loop stops on time with its report.
         @Suppress("TooGenericExceptionCaught")
         private fun attempt(cluster: Cluster) {
-            // The first diagnostics that fit into one request, each with its code. The rest come back in a later round:
-            // clusters are rebuilt after every accepted attempt (concept section 6.2). Grounding is trimmed to fit, so the
-            // checks leave it out: it can take a process per change to read.
-            val sent = firstThatFit(cluster.diagnostics) { llm.fits(request(cluster.key, it, grounded = false)) }
-            val proposal = llm.propose(request(cluster.key, sent))
+            val asked = askAvoidingRepeats(cluster)
+            val answer = asked.answer
             lockfiles = emptyList()
-            val outcome =
+            val judged =
                 try {
-                    judge(cluster.key, sent, proposal)
+                    if (asked.unbuilt != null) rejected(asked.unbuilt) else judge(cluster.key, answer.sent, answer.proposal)
                 } catch (e: ProcessTimedOut) {
                     if (timeLeft > Duration.ZERO) {
                         GitWorkingTree.reset(repo)
@@ -186,6 +203,14 @@ class FixLoop(
                     GitWorkingTree.reset(repo)
                     throw e
                 }
+            val outcome =
+                if (asked.repeated != null && asked.unbuilt == null && judged is AttemptOutcome.Rejected) {
+                    judged.copy(
+                        reason = "the first answer repeated attempt ${asked.repeated}, and the second was rejected: ${judged.reason}",
+                    )
+                } else {
+                    judged
+                }
             if (outcome is AttemptOutcome.Accepted) {
                 withoutProgress = 0
             } else {
@@ -193,11 +218,7 @@ class FixLoop(
                 GitWorkingTree.reset(repo)
             }
             logger.info("Attempt {} on {}: {}", attempts.size + 1, cluster.key, outcome)
-            val edits =
-                when (proposal) {
-                    is Proposal.Edits -> proposal.edits
-                    is Proposal.Invalid, is Proposal.Unanswered -> emptyList()
-                }
+            val edits = edits(answer.proposal)
             // An accepted attempt's edits are in its commit. A rejected attempt's are gone after the reset, and the
             // reason alone doesn't tell a weak model from missing grounding.
             if (outcome is AttemptOutcome.Rejected && edits.isNotEmpty()) {
@@ -206,15 +227,44 @@ class FixLoop(
                     edits.joinToString("\n") { "- ${it.file}: ${quoted(it.search)} -> ${quoted(it.replace)}" },
                 )
             }
-            attempts += Attempt(cluster.key, sent, edits, outcome, cluster.diagnostics.size - sent.size)
+            attempts.add(Attempt(cluster.key, answer.sent, edits, outcome, cluster.diagnostics.size - answer.sent.size))
+        }
+
+        /**
+         * Asks the model about [cluster]. A repeat of a rejected attempt is never built: the model is asked once more,
+         * with a note (concept section 6.4), unless the time budget is used up. A model call takes minutes on a CPU
+         * runner, so the loop ends on time instead.
+         *
+         * Each request carries the first diagnostics that fit into it, each with its code. The rest come back in a later
+         * round: clusters are rebuilt after every accepted attempt (concept section 6.2). Grounding is trimmed to fit, so
+         * the checks leave it out: it can take a process per change to read.
+         */
+        private fun askAvoidingRepeats(cluster: Cluster): Asked {
+            fun ask(note: PreviousAttempt?): Answer {
+                val sent = firstThatFit(cluster.diagnostics) { llm.fits(request(cluster.key, it, note, grounded = false)) }
+                return Answer(sent, llm.propose(request(cluster.key, sent, note)))
+            }
+
+            val first = ask(note = null)
+            val repeated = attempts.repeatOf(cluster.key, first.proposal) ?: return Asked(first, null, null)
+            val second = if (timeLeft > Duration.ZERO) ask(attempts.note(repeated)) else null
+            val unbuilt =
+                if (second == null) {
+                    "the first answer repeated attempt $repeated, and no time was left to ask again"
+                } else {
+                    attempts.repeatOf(cluster.key, second.proposal)?.let {
+                        "the first answer repeated attempt $repeated, and the second repeated attempt $it; neither was built"
+                    }
+                }
+            return Asked(second ?: first, repeated, unbuilt)
         }
 
         private fun request(
             cluster: String,
             diagnostics: List<Diagnostic>,
+            note: PreviousAttempt?,
             grounded: Boolean = true,
         ): FixRequest {
-            val earlier = attemptsOn(cluster)
             val buildFiles = GitWorkingTree.trackedFiles(repo).filter(adapter::isBuildFile)
             return FixRequest(
                 changes = context.changes,
@@ -235,11 +285,14 @@ class FixLoop(
                     },
                 releaseNotes = context.releaseNotes,
                 recipeDiff = context.recipeDiff,
-                previousAttempts =
-                    earlier.mapNotNull { attempt ->
-                        (attempt.outcome as? AttemptOutcome.Rejected)?.let { PreviousAttempt(attempt.edits, it.reason) }
+                // Every failed attempt on the cluster, of every kind, and the note: never trimmed (concept section 6.4).
+                previousAttempts = attempts.failedOn(cluster) + listOfNotNull(note),
+                temperature =
+                    when {
+                        note != null -> REPEAT_TEMPERATURE
+                        attempts.on(cluster).isEmpty() -> FIRST_TEMPERATURE
+                        else -> RETRY_TEMPERATURE
                     },
-                temperature = if (earlier.isEmpty()) FIRST_TEMPERATURE else RETRY_TEMPERATURE,
             )
         }
 
@@ -268,7 +321,9 @@ class FixLoop(
          * checked before anything is read or written: a reset doesn't restore ignored files.
          */
         private fun apply(edits: List<Edit>): AttemptOutcome.Rejected? {
-            if (edits.isEmpty()) return rejected("the model proposed no edits")
+            // A guessed path is a failed edit the model can correct, not a guardrail rejection.
+            val failed = if (edits.isEmpty()) "the model proposed no edits" else missingFile(repo, edits, GitWorkingTree.trackedFiles(repo))
+            if (failed != null) return rejected(failed)
             val outOfScope = guardrails.checkScope(repo, edits.map { it.file })
             if (outOfScope.isNotEmpty()) return violated(outOfScope)
             val touchesBuildFile = edited(repo, edits).any(adapter::isBuildFile)
@@ -280,19 +335,15 @@ class FixLoop(
         private fun write(edits: List<Edit>): AttemptOutcome.Rejected? {
             val files = edited(repo, edits)
             val before = files.associateWith { repo.resolve(it).readText() }
-            val failure = applyEdits(repo, edits)
-            val violations =
-                if (failure == null) {
-                    val changes = files.map { FileChange(it, before.getValue(it), repo.resolve(it).readText(), adapter.languageSupport) }
-                    guardrails.check(changes, verification.causedByUpdate)
-                } else {
-                    emptyList()
+            val applied =
+                when (val result = applyEdits(repo, edits)) {
+                    is EditResult.Failed -> return rejected(result.reason)
+                    is EditResult.Applied -> result
                 }
-            return when {
-                failure != null -> rejected(failure)
-                violations.isNotEmpty() -> violated(violations)
-                else -> null
-            }
+            changedLines = applied.changedLines
+            val changes = files.map { FileChange(it, before.getValue(it), repo.resolve(it).readText(), adapter.languageSupport) }
+            val violations = guardrails.check(changes, verification.causedByUpdate)
+            return if (violations.isEmpty()) null else violated(violations)
         }
 
         /** After a build-file edit, the lockfiles follow it. Then nothing may resolve lower than [before]. Returns the rejection, or null. */
@@ -320,14 +371,25 @@ class FixLoop(
             val after = attribute(adapter, repo, base) { timeLeft }
             val progressBefore = Progress.of(verification.causedByUpdate)
             val progressAfter = Progress.of(after.causedByUpdate)
-            if (progressAfter >= progressBefore) return rejected(noProgress(progressBefore, after.causedByUpdate))
+            val progress =
+                progressAfter < progressBefore ||
+                    uncovers(diagnostics, verification.causedByUpdate, after.causedByUpdate, changedLines, removed)
+            val files = (edited(repo, proposal.edits) + lockfiles).distinct()
+            if (!progress) {
+                // The diff now: a rejected attempt's edits are gone after the reset.
+                bestRejected.offer(attempts.size + 1, progressAfter) { GitWorkingTree.diff(repo, files) }
+                return rejected(noProgress(progressBefore, after.causedByUpdate))
+            }
             val subject =
                 proposal.rationale
                     .lines()
                     .map { it.trim() }
                     .firstOrNull { it.isNotEmpty() } ?: "Fix $cluster"
             val body = "Addresses:\n" + diagnostics.joinToString("\n", transform = ::describe)
-            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", (edited(repo, proposal.edits) + lockfiles).distinct(), identity)
+            val commit = GitWorkingTree.commit(repo, "$subject\n\n$body", files, identity)
+            bestRejected.clear()
+            val left = after.causedByUpdate.map { it.key }.toSet()
+            removed += verification.causedByUpdate.map { it.key }.filter { it !in left }
             verification = after
             return AttemptOutcome.Accepted(commit, subject, progressBefore, progressAfter)
         }
@@ -337,6 +399,19 @@ class FixLoop(
             versionsBefore?.let { Result.success(it) } ?: readVersions(adapter, repo).onSuccess { versionsBefore = it }
     }
 }
+
+/** The [answer] to judge, the attempt the first answer [repeated], if it did, and why the answer isn't built, if it isn't. */
+private class Asked(
+    val answer: Answer,
+    val repeated: Int?,
+    val unbuilt: String?,
+)
+
+/** The model's answer to one request, and the diagnostics it was [sent]. */
+private class Answer(
+    val sent: List<Diagnostic>,
+    val proposal: Proposal,
+)
 
 /** The longest start of [all] that [fits], and at least its first element. */
 private fun <T> firstThatFit(

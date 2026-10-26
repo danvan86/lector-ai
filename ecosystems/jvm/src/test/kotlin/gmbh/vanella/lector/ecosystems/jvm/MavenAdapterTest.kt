@@ -65,6 +65,7 @@ class MavenAdapterTest {
                     "mvn",
                     "-B",
                     "-fae",
+                    "-Dgpg.skip=true",
                     "--settings",
                     settings.toAbsolutePath().toString(),
                     "org.openrewrite.maven:rewrite-maven-plugin:9.9.9:runNoFork",
@@ -114,7 +115,7 @@ class MavenAdapterTest {
 
         assertEquals(mapOf("org.example:lib" to "1.2.3"), versions)
         assertEquals(
-            listOf("mvn", "-B", "-fae", "org.apache.maven.plugins:maven-help-plugin:8.8.8:effective-pom"),
+            listOf("mvn", "-B", "-fae", "-Dgpg.skip=true", "org.apache.maven.plugins:maven-help-plugin:8.8.8:effective-pom"),
             runs.single().dropLast(1),
         )
         val file = assertNotNull(output)
@@ -146,7 +147,7 @@ class MavenAdapterTest {
         val timeouts = mutableListOf<Pair<String, Duration>>()
         val adapter =
             MavenAdapter(plugins = PLUGINS) { command, _, _, timeout ->
-                timeouts += command[3] to timeout
+                timeouts += command[4] to timeout
                 ProcessResult(0, "")
             }
         val test = Diagnostic(null, null, null, null, "failed", Severity.ERROR, "surefire", "com.example.AppTest#runs")
@@ -210,8 +211,8 @@ class MavenAdapterTest {
         assertEquals(emptyList(), diagnostics)
         assertEquals(
             listOf(
-                listOf("mvn", "-B", "-fae", "clean", "test-compile"),
-                listOf("mvn", "-B", "-fae", "verify"),
+                listOf("mvn", "-B", "-fae", "-Dgpg.skip=true", "clean", "test-compile"),
+                listOf("mvn", "-B", "-fae", "-Dgpg.skip=true", "verify"),
             ),
             runs,
         )
@@ -233,7 +234,12 @@ class MavenAdapterTest {
 
         val diagnostics = MavenAdapter().verify(repo, 1.hours)
 
-        assertEquals(listOf("Failed to execute goal on project app: ran -B -fae clean test-compile"), diagnostics.map { it.message })
+        assertEquals(
+            listOf("Failed to execute goal on project app: ran -B -fae -Dgpg.skip=true clean test-compile"),
+            diagnostics.map {
+                it.message
+            },
+        )
     }
 
     @Test
@@ -244,7 +250,7 @@ class MavenAdapterTest {
         adapter(settings = settings).runTests(repo, listOf(testFailure("com.example.FooTest#bar")), 1.hours)
 
         assertEquals(3, runs.size)
-        runs.forEach { assertContains(it.joinToString(" "), "-B -fae --settings ${settings.toAbsolutePath()} ") }
+        runs.forEach { assertContains(it.joinToString(" "), "-B -fae -Dgpg.skip=true --settings ${settings.toAbsolutePath()} ") }
     }
 
     @Test
@@ -255,6 +261,47 @@ class MavenAdapterTest {
             .writeText("<testsuite><testcase name=\"a\"/><testcase name=\"b\"/></testsuite>")
 
         assertEquals(2, MavenAdapter(plugins = PLUGINS) { _, _, _, _ -> ProcessResult(0, "") }.testsRun(repo))
+    }
+
+    @Test
+    fun `the tests run are unknown after a verify that skipped a module, until a verify skips none`() {
+        repo
+            .resolve("a/target/surefire-reports/TEST-a.ATest.xml")
+            .createParentDirectories()
+            .writeText("<testsuite><testcase name=\"one\"/></testsuite>")
+        // Real Maven 3.9 output: `a` failed an enforcer rule in `verify`, so `b`, which depends on it, never ran its tests.
+        val skipped =
+            """
+            [INFO] Reactor Summary for parent 1:
+            [INFO]
+            [INFO] parent ............................................. SUCCESS [  0.000 s]
+            [INFO] a .................................................. FAILURE [  0.599 s]
+            [INFO] b .................................................. SKIPPED
+            [INFO] ------------------------------------------------------------------------
+            [INFO] BUILD FAILURE
+            """.trimIndent()
+        var verifyOutput = skipped
+        val adapter =
+            MavenAdapter(plugins = PLUGINS) { command, _, _, _ ->
+                ProcessResult(
+                    0,
+                    if ("verify" in
+                        command
+                    ) {
+                        verifyOutput
+                    } else {
+                        ""
+                    },
+                )
+            }
+
+        adapter.verify(repo, 1.hours)
+        val afterSkip = adapter.testsRun(repo)
+        verifyOutput = skipped.replace("SKIPPED", "SUCCESS [  0.412 s]")
+        adapter.verify(repo, 1.hours)
+
+        assertEquals(null, afterSkip, "a build error before b's tests would hide what the update did to them")
+        assertEquals(1, adapter.testsRun(repo))
     }
 
     @Test
@@ -309,6 +356,7 @@ class MavenAdapterTest {
                     "mvn",
                     "-B",
                     "-fae",
+                    "-Dgpg.skip=true",
                     "clean",
                     "test",
                     "-Dtest=com.example.FooTest,com.example.BarTest",
@@ -331,6 +379,7 @@ class MavenAdapterTest {
                     "mvn",
                     "-B",
                     "-fae",
+                    "-Dgpg.skip=true",
                     "clean",
                     "verify",
                     "-Dtest=com.example.FooTest",
@@ -353,6 +402,7 @@ class MavenAdapterTest {
                     "mvn",
                     "-B",
                     "-fae",
+                    "-Dgpg.skip=true",
                     "clean",
                     "verify",
                     "-Dtest=lector.NoUnitTests",

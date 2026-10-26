@@ -27,6 +27,12 @@ internal object MavenConsole {
     private val projectWithErrors = Regex("""^ {2}The project \S+ \(.+\) has \d+ errors?$""")
     private val helpReference = Regex(""" -> \[Help \d+]$""")
 
+    // A module of the reactor summary that never ran because a module it depends on failed: `[INFO] b ..... SKIPPED`
+    private val skippedModule = Regex("""^\[INFO] \S.* \.+ SKIPPED$""", RegexOption.MULTILINE)
+
+    /** Whether the reactor summary in [output] names a module that Maven skipped after another failed. */
+    fun skippedModule(output: String) = skippedModule.containsMatchIn(output)
+
     fun parse(
         output: String,
         repo: Path,

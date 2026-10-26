@@ -80,7 +80,8 @@ class FixLoopTest : FixLoopFixture() {
     @Test
     fun `an attempt that breaks a guardrail is reset, counted, never verified, and the retry learns what it broke`() {
         val stub = Edit("App.java", "broken();", "return null;")
-        val llm = ScriptedLlm(edits(stub), edits(stub))
+        // Another answer that breaks the same rule in the same line; the same one again would be asked again.
+        val llm = ScriptedLlm(edits(stub), edits(Edit("App.java", "        broken();", "        return null;")))
         val adapter = FakeAdapter()
 
         val result = loop(adapter, llm).run(repo, context, adapter.initial())
@@ -109,11 +110,13 @@ class FixLoopTest : FixLoopFixture() {
     fun `the guardrails see the diagnostics caused by the update before the attempt`() {
         val rename = Edit("App.java", "void run()", "void start()")
         val overrides = Diagnostic("App.java", 2, 5, "override", "method does not override a method", Severity.ERROR, "javac")
+        // The error stays, so the verified attempt makes no progress.
+        val staying = FakeAdapter(problems = { compileErrors(it) + overrides })
         val adapter = FakeAdapter()
 
         val pointedInto =
-            loop(adapter, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, Verification(listOf(overrides)))
-        val verifiedOnce = adapter.verifyCalls
+            loop(staying, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, Verification(listOf(overrides)))
+        val verifiedOnce = staying.verifyCalls
         val elsewhere = loop(adapter, ScriptedLlm(edits(rename)), Budgets(attempts = 1)).run(repo, context, adapter.initial())
 
         assertEquals(emptyList(), (pointedInto.attempts.single().outcome as AttemptOutcome.Rejected).violations, "verified, no progress")
@@ -328,7 +331,7 @@ class FixLoopTest : FixLoopFixture() {
 
         val result = loop(adapter, llm).run(repo, context, adapter.initial())
 
-        val reason = "App.java: the search text is not in the file"
+        val reason = "edit 1 (App.java): the search text is not in the file"
         assertEquals(AttemptOutcome.Rejected(reason), result.attempts.first().outcome)
         assertIs<AttemptOutcome.Accepted>(result.attempts.last().outcome)
         val retry = llm.requests.last()
@@ -341,7 +344,7 @@ class FixLoopTest : FixLoopFixture() {
     fun `an attempt without progress is rejected and the working tree is reset to the last commit`() {
         val worse = Edit("App.java", "broken();", "broken();\n        missing();")
         val adapter = FakeAdapter()
-        val llm = ScriptedLlm(edits(worse), edits(worse))
+        val llm = ScriptedLlm(edits(worse), edits(worse.copy(replace = "broken();\n        missing(); // again")))
 
         val result = loop(adapter, llm).run(repo, context, adapter.initial())
 
@@ -522,7 +525,8 @@ class FixLoopTest : FixLoopFixture() {
         repo.resolve("App.java").writeText(app.replace("broken();", "broken();\n        broken(); // second"))
         git("commit", "--quiet", "-am", "two errors")
         val miss = edits(Edit("App.java", "nowhere", "x"))
-        val llm = ScriptedLlm(miss, edits(Edit("App.java", "broken(); // second", "fixed();")), miss, miss)
+        val llm =
+            ScriptedLlm(miss, edits(Edit("App.java", "broken(); // second", "fixed();")), miss, edits(Edit("App.java", "elsewhere", "x")))
         val adapter = FakeAdapter()
 
         val result = loop(adapter, llm, Budgets(attemptsPerCluster = 5)).run(repo, context, adapter.initial())

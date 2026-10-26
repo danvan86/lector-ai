@@ -122,7 +122,7 @@ class PrPipeline(
     ): PrOutcome {
         val adapter = adapters.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in $repo")
         if (!GitWorkingTree.hasCommit(repo, pr.baseSha)) host.fetch(repo, pr, pr.baseSha)
-        val base = GitBaseCommit.resolve(repo, pr.baseSha)
+        val base = RunBase(GitBaseCommit.resolve(repo, pr.baseSha))
         val context = RepositoryContext(repo, base, adapter)
         val update =
             try {

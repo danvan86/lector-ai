@@ -601,6 +601,38 @@ class PrPipelineTest {
         assertEquals(emptyList(), fork.deleted)
     }
 
+    @Test
+    fun `a build error the base has too is verified on the base once per run, and is not the update's`() {
+        val host = host(pr())
+        val gpg =
+            Diagnostic(
+                null,
+                null,
+                null,
+                null,
+                "Failed to execute goal maven-gpg-plugin:sign: Cannot run program \"gpg\"",
+                Severity.ERROR,
+                "maven",
+            )
+        val adapter = FakeAdapter(buildError = gpg, testsRun = 12)
+        val noFix = Edit("App.java", "broken();", "broken(); // still")
+        val llm =
+            ScriptedLlm(
+                edits(noFix),
+                edits(noFix.copy(replace = "broken(); // again")),
+                edits(noFix.copy(replace = "broken(); // once more")),
+            )
+        budgets = Budgets(attemptsWithoutProgress = 3)
+
+        val outcome = pipeline(host, adapter, llm, recipes = mapOf(lib.`package` to recipe("UpgradeLib"))).run(repo)
+
+        val report = assertIs<PrOutcome.Reported>(outcome).report
+        assertEquals(3, report.fixLoop.attempts.size)
+        assertEquals(listOf(gpg), report.verification.preExisting)
+        assertEquals(1, adapter.verified.count { it != repo }, "the first verify, the recipe's, and three attempts share one")
+        assertTrue(llm.requests.none { gpg in it.diagnostics })
+    }
+
     private fun assertNothingHappened(host: FakeHost) {
         assertEquals(emptyList(), host.comments)
         assertEquals(emptyList(), host.labels)
@@ -845,9 +877,12 @@ class PrPipelineTest {
         private val detects: Boolean = true,
         private val slowWhen: String? = null,
         readsVersions: Boolean = true,
+        private val buildError: Diagnostic? = null,
+        private val testsRun: Int? = null,
     ) : EcosystemAdapter {
         val recipeRuns = mutableListOf<String>()
         var verifies = 0
+        val verified = mutableListOf<Path>()
         val versionReads = mutableListOf<Path>()
 
         override val ecosystem = "test"
@@ -888,6 +923,7 @@ class PrPipelineTest {
             timeout: Duration,
         ): List<Diagnostic> {
             verifies++
+            verified.add(repo)
             val code = repo.resolve("App.java").readText()
             if (slowWhen != null && slowWhen in code) {
                 // Until the timeout has passed on the loop's clock: a sleep in whole milliseconds can end just before it.
@@ -899,10 +935,10 @@ class PrPipelineTest {
                 listOf("broken", "missing").firstOrNull { "$it()" in line }?.let {
                     Diagnostic("App.java", index + 1, 9, "symbol:$it", "cannot find symbol $it", Severity.ERROR, "javac")
                 }
-            }
+            } + listOfNotNull(buildError)
         }
 
-        override fun testsRun(repo: Path): Int? = null
+        override fun testsRun(repo: Path): Int? = testsRun
 
         override fun runTests(
             repo: Path,

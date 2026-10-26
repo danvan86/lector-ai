@@ -10,6 +10,7 @@ import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.path
 import gmbh.vanella.lector.core.BaseCommit
 import gmbh.vanella.lector.core.EcosystemAdapter
+import gmbh.vanella.lector.core.RunBase
 import gmbh.vanella.lector.core.ToolError
 import gmbh.vanella.lector.core.Verification
 import kotlinx.serialization.json.JsonObject
@@ -49,7 +50,7 @@ internal abstract class RepositoryCommand(
     private val base by option(
         "--base",
         metavar = "<git-ref>",
-        help = "The commit before the update. Failing tests are run there too, to tell new failures from old ones.",
+        help = "The commit before the update. Failing tests and build errors are checked there too, to tell new failures from old ones.",
     )
     private val format by option("--format", help = "Report format").choice("text", "json").default("text")
     private val mavenSettings by option("--maven-settings", metavar = "<file>", help = "Maven settings file, passed to Maven").path()
@@ -94,7 +95,7 @@ internal abstract class RepositoryCommand(
         return adapters(BuildConfig(mavenSettings, gradleInit, npmrc, yarnrc)).use { all ->
             val adapter = all.firstOrNull { it.detect(repo) } ?: throw ToolError("No supported ecosystem in $repo. $SUPPORTED")
             // Resolve the base before the build, so a wrong ref fails in seconds, not after a full build.
-            val base = base?.let { baseCommit(repo, it) }
+            val base = base?.let { RunBase(baseCommit(repo, it)) }
             execute(adapter, base)
         }
     }

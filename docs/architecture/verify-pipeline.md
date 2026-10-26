@@ -8,11 +8,12 @@ Milestone: [M1](../features.md#m1--verify-and-report-jvmmaven-no-ai-) · Spec: [
 > - The contract: the report goes to stdout (text, or one line of JSON with `--format json`), logs go to stderr. Exit `0` when nothing is caused by the update, `1` when something is, `2` on a tool error.
 > - `core` knows no build tool: it holds the data model, the port, attribution, the process runner, and the Git worktree for the base commit. Everything specific to Maven or Gradle is in `ecosystems:jvm`, to npm, pnpm, and Yarn in `ecosystems:typescript` (M9). Only `cli` (`adapters()` in `RootCommand.kt`) knows `GradleAdapter`, `MavenAdapter`, and `TypeScriptAdapter`.
 > - A new ecosystem is a new `ecosystems:*` module that implements `EcosystemAdapter` (`detect`, `verify`, `runTests`, both with a `timeout` since M5, plus `ecosystem` and `versionScheme` and the optional recipe capabilities since M2, see [Recipe migration](recipe-migration.md), `ground`, `clusterKey`, `isBuildFile` since M3, see [Fix loop](fix-loop.md), and `languageSupport`, `isEditable`, `testDisablingConfig`, `testsRun` since M4, see [Guardrails](guardrails.md), and `updateLockfiles`, `loosening` since M9, see [TypeScript adapter](typescript-adapter.md)), registered in `adapters()` in `RootCommand.kt`. A second build tool of an existing ecosystem is a second adapter in its module, as Gradle is since M7 ([Gradle adapter](gradle-adapter.md)). What adapters share outside `core` goes into `ecosystems:shared` (M9). Its parsers are tested on output captured from real runs.
+> - Since M11, a build error without a location (`file == null`, `test == null`) that the base commit has too, the checkout's path aside, is pre-existing, but only if the head's verify ran tests (`testsRun > 0`). The base is verified at most once per run: every command wraps its base in `RunBase`, which keeps what the base's verify found, a failure included. Compile errors are never checked on the base.
 > - Easiest rule to break: test failures carry `Diagnostic.test`, everything else has `test == null`, and attribution relies on it. A run with any `test == null` diagnostic says nothing about the tests. Never skip or filter tests in `verify`; `-Dtest` belongs in `runTests` only.
 
 ## Overview
 
-M1 answers one question for a dependency-update PR: did the update break the build or the tests, and where? Compile and build errors always count. A failing test only counts if it fails again on a rerun and passes on the base commit, so flaky and pre-existing failures never fail the job.
+M1 answers one question for a dependency-update PR: did the update break the build or the tests, and where? Compile errors always count; a build error without a location counts unless the base commit has it too and the head's tests ran (M11). A failing test only counts if it fails again on a rerun and passes on the base commit, so flaky and pre-existing failures never fail the job.
 
 ```mermaid
 flowchart LR
@@ -36,7 +37,7 @@ flowchart LR
 | `core` | `Diagnostic.kt` | `Diagnostic(file, line, column, code, message, severity, tool, test)`. `file` is relative to the repository root with `/`. `file`, `line`, `column`, `code`, and `test` are nullable. `Severity` has only `ERROR`: warnings aren't collected. |
 | | `Verification.kt` | The four lists. No classification lives on `Diagnostic`. |
 | | `EcosystemAdapter.kt` | The port: `detect(repo)`, `verify(repo, timeout)`, `runTests(repo, tests: List<Diagnostic>, timeout)`. A run longer than `timeout` is stopped with a `ProcessTimedOut`. M2 added the members for recipes, M3 those for the fix loop, M4 those for the guardrails. |
-| | `Attribution.kt` | `attribute(adapter, repo, base, timeLeft)` and the `BaseCommit` interface. `timeLeft` gives each build and test run its timeout when it starts (default: no limit; the fix loop passes its time budget). |
+| | `Attribution.kt` | `attribute(adapter, repo, base, timeLeft)`, the `BaseCommit` interface, and `RunBase` (M11), the base commit of one run, which verifies the base once for its build errors and reuses the result. `timeLeft` gives each build and test run its timeout when it starts (default: no limit; the fix loop passes its time budget). |
 | | `Processes.kt` | `runProcess(command, workDir, timeout, environment)`, `ToolError`, and `ProcessTimedOut` (a `ToolError`). The process gets a scrubbed environment, see [Processes](#processes). |
 | | `GitBaseCommit.kt` | `GitBaseCommit.resolve(repo, ref)` and `checkout { }` in a temporary worktree. |
 | `ecosystems:jvm` | `MavenAdapter.kt` | Detects `pom.xml` at the root, builds the Maven command lines, runs Maven, collects diagnostics. |
@@ -71,7 +72,12 @@ flowchart TB
 ```mermaid
 flowchart TB
     verify["adapter.verify(repo)"] --> split{"test == null?"}
-    split -- yes --> caused["causedByUpdate"]
+    split -- "yes, with a file" --> caused["causedByUpdate"]
+    split -- "yes, no file (build error)" --> ran{"--base given<br/>and testsRun > 0?"}
+    ran -- no --> caused
+    ran -- yes --> runbase["RunBase.buildErrors()<br/>(base verified once per run)"]
+    runbase -- same error on the base --> pre
+    runbase -- not on the base --> caused
     split -- no --> rerun["adapter.runTests(repo, tests)"]
     rerun -- passes --> flaky["flaky"]
     rerun -- fails again --> hasBase{"--base given?"}
@@ -84,16 +90,18 @@ flowchart TB
 
 | Rule | Where |
 |---|---|
-| Diagnostics without `test` (compile errors, build errors) are caused by the update, listed before test failures. | `attribute()` |
+| Diagnostics without `test` are caused by the update, listed before test failures, except the pre-existing build errors below. | `attribute()` |
+| A build error without a location is pre-existing if the base has the same one (same tool and message, the checkout's root replaced as given and as its real path, e.g. macOS's `/private`) and the head's `testsRun` is above 0. A message with volatile text (the tail of the build output in an unexplained failure) doesn't match, so it stays caused by the update (M11). | `attribute()`, `pathless()` |
+| The base is verified for build errors only when the head has one and its tests ran, and at most once per `RunBase`. A `ToolError` there (a timeout included) is logged, its build errors are none, and the result is reused; it never ends the run. A base that stops earlier (compile errors) has none of the head's later build errors. | `RunBase.buildErrors()` |
 | Tests are matched by `test` name, not by message. | `attribute()` |
 | A rerun with a build problem counts every test as still failing (never flaky). | `failedTests()` |
 | A base run with a build problem leaves the still-failing tests unattributed. | `failedTests()` |
-| The base is checked out only if tests still fail, and runs only those tests. | `attribute()` |
+| For tests, the base is checked out only if tests still fail, and runs only those tests. | `attribute()` |
 | The base worktree lives in a temporary directory and is removed in `finally`, also when the build throws. | `GitBaseCommit.checkout()` |
 
 ## Maven adapter
 
-`MavenAdapter` runs `<repo>/mvnw` if it exists, otherwise `mvn` from `PATH`, in the repository's real path (`toRealPath()`, so macOS `/var` → `/private/var` doesn't break relative paths). Every run gets `-B -fae`, plus `--settings <absolute path>` if `--maven-settings` is given.
+`MavenAdapter` runs `<repo>/mvnw` if it exists, otherwise `mvn` from `PATH`, in the repository's real path (`toRealPath()`, so macOS `/var` → `/private/var` doesn't break relative paths). Every run gets `-B -fae -Dgpg.skip=true` (M11: signing is never what an update breaks, and it fails without `gpg` or a key), plus `--settings <absolute path>` if `--maven-settings` is given.
 
 **JDK selection** (`JdkSelection`, M5): with installed JDKs (`MavenAdapter(jdks = …)`, release → `JAVA_HOME`), each run gets `JAVA_HOME` of the smallest JDK that is at least the release the root `pom.xml` declares in `maven.compiler.release`, else `java.version` (a `${…}` reference to another property is resolved, `1.8` is `8`), else 21. A project that needs a newer JDK than any installed is a `ToolError`. Without installed JDKs (outside the tool image), the environment's `JAVA_HOME` applies. The tool image sets `LECTOR_JDK_17`, `LECTOR_JDK_21`, and `LECTOR_JDK_25`.
 
@@ -105,6 +113,8 @@ flowchart TB
 | `runTests` with failsafe tests | `clean verify -Dtest=<classes> -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=<classes> -Dit.failIfNoSpecifiedTests=false`. Without surefire tests, `-Dtest=lector.NoUnitTests`, a filter that matches no class |
 
 `runTests` reruns whole test classes (fully qualified), because surefire can't select every method by name (parameterized tests). Surefire always gets a filter: `verify` runs surefire before failsafe, and without one it would run every unit test, on the base commit too, and a failing unit test would stop failsafe in its module. After every run, the adapter parses the console output and the test reports. A run that exits non-zero without any parsed diagnostic becomes one `maven` diagnostic with the last 20 lines of output, so a failure never looks green. Each Maven run is stopped after the `timeout` the caller gives, and never runs longer than an hour (`MAVEN_TIMEOUT`); stage 2 of `verify` gets what stage 1 left. Recipe runs and `effective-pom` get the hour.
+
+`testsRun` counts the test cases in the surefire and failsafe reports that the last `verify` left. Since M11 it is unknown (`null`) when that `verify`'s reactor summary names a module as `SKIPPED` (`MavenConsole.skippedModule`): with `-fae`, Maven skips every module that depends on a failed one, so their tests never ran, and a build error elsewhere must not pass as pre-existing.
 
 ### Parsers
 
@@ -166,10 +176,10 @@ sequenceDiagram
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
-| Unit | `test` | Attribution with a fake adapter and a fake base; parsers on captured output; adapter command lines, `JAVA_HOME`, and timeouts with a fake process runner; JDK selection on POMs in temporary directories; the command through Clikt's `test()` and `executeInProcess()` | `AttributionTest`, `MavenConsoleTest`, `TestReportsTest`, `MavenAdapterTest`, `JdkSelectionTest`, `VerifyCommandTest`, `ReportsTest` |
+| Unit | `test` | Attribution with a fake adapter and a fake base; parsers on captured output; adapter command lines, `JAVA_HOME`, and timeouts with a fake process runner; JDK selection on POMs in temporary directories; the command through Clikt's `test()` and `executeInProcess()` | `AttributionTest`, `BuildErrorAttributionTest` and `RunBaseTest` (M11), `MavenConsoleTest`, `TestReportsTest`, `MavenAdapterTest`, `MavenSigningTest` (M11), `JdkSelectionTest`, `VerifyCommandTest`, `ReportsTest` |
 | Unit, real processes | `test` | `runProcess` with `sh` (timeouts, and `env` started with a token, `GITHUB_TOKEN`, and `INPUT_*` sees none of them), `GitBaseCommit` on a temporary Git repository, `MavenAdapter` with a fake `mvnw` script | `ProcessesTest`, `GitBaseCommitTest` |
 | End-to-end | `endToEndTest` (in `check`) | The start script: `verify` exits `2` for invalid usage, for an unsupported repository, and for an invalid `--base` | `LectorEndToEndTest` |
-| Integration | `:cli:integrationTest` (opt-in, not in `check`) | Real Maven on a base/head repository: the head bumps commons-lang3 3.12.0 → 3.18.0. One test breaks, one fails on both commits. Checks the lists, exit `1`, one worktree left, clean `git status`. Needs `mvn` and network. The same with real Gradle since M7 ([Gradle adapter](gradle-adapter.md#tests)), and with real npm, pnpm, and Yarn since M9 (`:ecosystems:typescript:integrationTest`, [TypeScript adapter](typescript-adapter.md#tests)). | `VerifyIntegrationTest`, `GradleIntegrationTest`, `TypeScriptIntegrationTest` |
+| Integration | `:cli:integrationTest` (opt-in, not in `check`) | Real Maven on a base/head repository: the head bumps commons-lang3 3.12.0 → 3.18.0. One test breaks, one fails on both commits. Checks the lists, exit `1`, one worktree left, clean `git status`. Needs `mvn` and network. The same with real Gradle since M7 ([Gradle adapter](gradle-adapter.md#tests)), and with real npm, pnpm, and Yarn since M9 (`:ecosystems:typescript:integrationTest`, [TypeScript adapter](typescript-adapter.md#tests)). | `VerifyIntegrationTest`, `GradleIntegrationTest`, `TypeScriptIntegrationTest`; `SigningIntegrationTest` (M11: a POM that signs in `verify` builds without `gpg`) |
 
 Fixtures: `ecosystems/jvm/src/test/resources/fixtures/` (Maven projects that break in one way each, plus captured reports in `failing-tests/*/target/`), `ecosystems/jvm/src/test/resources/maven-output/` (captured console logs; how they were made is in `fixtures/README.md`), and `cli/src/test/resources/fixtures/dependency-update/` (`base/` and the `head/` overlay). Tests tagged `integration` are excluded from `test`; Kover's instrumentation is disabled for `integrationTest`, otherwise Kover would make `check` depend on it.
 

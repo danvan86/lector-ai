@@ -1,13 +1,14 @@
 # Architecture – Fix loop
 
-Milestone: [M3](../features.md#m3--fix-loop-cli-only-no-ci-yet-) · Spec: [`m3-fix-loop/spec.md`](../../specs/done/m3-fix-loop/spec.md) · Review: [`review.md`](../../specs/done/m3-fix-loop/review.md)
+Milestones: [M3](../features.md#m3--fix-loop-cli-only-no-ci-yet-), [M11](../features.md#m11--fix-loop-yield-) · Specs: [`m3-fix-loop`](../../specs/done/m3-fix-loop/spec.md), [`m11-fix-loop-yield`](../../specs/done/m11-fix-loop-yield/spec.md) · Reviews: [M3](../../specs/done/m3-fix-loop/review.md), [M11](../../specs/done/m11-fix-loop-yield/review.md)
 
 > **Summary for agents**
 >
 > - `lector heal <repo> --package … --from … --to …` runs M2's recipe step, commits the recipe's result, then runs `FixLoop` in `core`: one cluster of diagnostics caused by the update per attempt, a grounded `FixRequest` to the `LlmClient` port, search/replace `Edit`s back, applied, verified, and either committed or reset. The exit code follows the final verification, like `verify`. Since M5, `lector pr` runs the same `FixLoop` for every change of a PR ([PR pipeline](pr-pipeline.md)).
 > - Ports: `LlmClient.propose(FixRequest): Proposal` and, since M6, `LlmClient.fits(FixRequest)` (`LlmClient.kt`), and on `EcosystemAdapter` `ground`, `clusterKey`, `isBuildFile`, since M9 `updateLockfiles`, and since M10 `apiChanges` (default none, [API changes](api-changes.md)). The implementations are `OllamaClient` in the module `llm`, `MavenAdapter` and, since M7, `GradleAdapter`, which share `ClusterKeys` and `JavapGrounding`, and, since M9, `TypeScriptAdapter` ([TypeScript adapter](typescript-adapter.md)). `core` knows no LLM vendor and no language.
-> - An attempt is accepted only if `Progress` (build errors without a location, compile errors, test failures, compared in that order) gets lower. Accepted: one local commit, as the `CommitIdentity` the loop gets (`lector` for `heal`, the GitHub App's bot for `pr`), with the edited, tracked files only, plus the lockfiles that followed a build-file edit (M9). Anything else: `GitWorkingTree.reset()`, also on any exception or error inside the attempt. A rejected attempt's edits are logged (`The rejected edits:`, one quoted line per edit), so a failed run in CI shows what the model proposed. Since M4, every attempt passes the [guardrails](guardrails.md) before it is verified.
+> - An attempt is accepted if `Progress` (build errors without a location, compile errors, test failures, compared in that order) gets lower, or, since M11, if it only uncovered compile errors its sent errors hid (`uncovers()` in `Cluster.kt`). Accepted: one local commit, as the `CommitIdentity` the loop gets (`lector` for `heal`, the GitHub App's bot for `pr`), with the edited, tracked files only, plus the lockfiles that followed a build-file edit (M9). Anything else: `GitWorkingTree.reset()`, also on any exception or error inside the attempt. A rejected attempt's edits are logged (`The rejected edits:`, one quoted line per edit), so a failed run in CI shows what the model proposed. Since M4, every attempt passes the [guardrails](guardrails.md) before it is verified.
 > - The prompt's limits live in `Prompt` (`CONTEXT_TOKENS`, `ANSWER_TOKENS`, `MAX_CHARS`), the answer's structure in `FixSchema`, the budget defaults in `Budgets`, the options and the default model `DEFAULT_MODEL` in `FixLoopOptions.kt` (shared by `heal` and `pr`), and the Ollama image for the real-model test in the `FROM` line of `docker/ollama/Dockerfile`.
+> - Since M11, an answer that repeats a rejected attempt on the same cluster since the last accepted one is never built: the model is asked once more (`AttemptHistory.repeatOf`, `note`). A run that ends red suggests the best built, guardrail-clean rejected attempt on its last commit (`BestRejected`, `Suggestion`), in the reports and the PR comment, never committed.
 > - Easiest rules to break: never send diagnostics that aren't `causedByUpdate` to the model; never cut a diagnostic or its code: a request carries whole diagnostics, as many as fit (M6); never repair an edit that doesn't apply (rule 4); never stage more than the edited files in a fix commit (`git add --all` would take build output).
 
 ## Overview
@@ -34,13 +35,15 @@ flowchart LR
 
 | Module | File | Role |
 |---|---|---|
-| `core` | `Edit.kt` | `Edit(file, search, replace)` and `applyEdits(repo, edits)`: returns the rejection reason, or null when every edit applied. `repoFile()` keeps edits inside the repository and out of `.git`. |
+| `core` | `Edit.kt` | `Edit(file, search, replace)` and `applyEdits(repo, edits)`: `EditResult.Applied(changedLines)` (the lines each file's replace texts occupy after every edit of the answer, M11) or `EditResult.Failed(reason)`. `missingFile(repo, edits, tracked)` (M11): the first edit whose file doesn't exist. `repoFile()` keeps edits inside the repository and out of `.git`. |
 | | `LlmClient.kt` | The port: `propose(FixRequest): Proposal`, and `fits(FixRequest)` (M6), whether the parts that are never trimmed fit into the context; `FixRequest` (with `changes`, one or a group, since M5), `PreviousAttempt`, `Proposal.Edits(edits, rationale)` and `Proposal.Invalid(reason)`. |
 | | `EcosystemAdapter.kt` | Grew by `ground(repo, change, diagnostics)`, `clusterKey(diagnostic)`, and `isBuildFile(file)`; in M9 by `updateLockfiles(repo, timeout): LockfileUpdate` (`Updated(files)` or `Failed(reason)`); in M10 by `apiChanges(repo, change, diagnostics)`, default `""`. |
-| | `Cluster.kt` | `Cluster(key, diagnostics)`, `clusters(diagnostics, adapter)` in fix order, and `Progress`, the stage tuple. |
+| | `Cluster.kt` | `Cluster(key, diagnostics)`, `clusters(diagnostics, adapter)` in fix order, `Progress`, the stage tuple, and since M11 `ErrorKey` (tool, file, test, message: the line doesn't count, an edit above an error moves it) and `uncovers()`, the second progress rule. |
+| | `AttemptHistory.kt` | The run's attempts (M11): `on(cluster)`, `failedOn(cluster)` (every failed attempt for the next request), `repeatOf(cluster, proposal)`, `note(number)`. |
+| | `Suggestion.kt` | `Suggestion(attempt, diff)` and `BestRejected` (M11), the candidate on the current commit. |
 | | `Snippet.kt` | `Snippet(file, firstLine, lastLine, text)` and `codeSnippets(repo, diagnostics, buildFiles, anchors)`: ±40 lines per error, merged per file. |
-| | `FixLoop.kt` | `FixLoop(adapter, llm, base, budgets, identity).run(repo, context, initial)`, `Budgets`, `FixContext(changes, releaseNotes, recipeDiff)`, `Attempt` (with `diagnosticsLeftOut`, M6), `AttemptOutcome` (`Accepted`, `Rejected`), `StopReason` (with its `description`), `FixLoopResult` (with `fixes`, `rejectionsPerRule()`, and `requestsWithDiagnosticsLeftOut`). |
-| | `GitWorkingTree.kt` | Grew by `trackedFiles`, `commit(repo, message, files, identity)`, and `diff(repo, commit)`. `CommitIdentity.TOOL` (`lector`, `lector@localhost`) is the default identity; `SHORT_COMMIT` (7) is the hash length in reports. |
+| | `FixLoop.kt` | `FixLoop(adapter, llm, base, budgets, identity).run(repo, context, initial)`, `Budgets`, `FixContext(changes, releaseNotes, recipeDiff)`, `Attempt` (with `diagnosticsLeftOut`, M6), `AttemptOutcome` (`Accepted`, `Rejected`), `StopReason` (with its `description`), `FixLoopResult` (with `fixes`, `rejectionsPerRule()`, `requestsWithDiagnosticsLeftOut`, and since M11 `suggestion`). |
+| | `GitWorkingTree.kt` | Grew by `trackedFiles`, `commit(repo, message, files, identity)`, `diff(repo, commit)`, and since M11 `diff(repo, files)`, the uncommitted changes for the suggestion. `CommitIdentity.TOOL` (`lector`, `lector@localhost`) is the default identity; `SHORT_COMMIT` (7) is the hash length in reports. |
 | | `RecipeStep.kt` | `versionChanges()` and `downgrades()` are shared with the loop's downgrade check. |
 | `llm` | `OllamaClient.kt` | The `LlmClient`: one `POST /api/chat` per attempt with the JDK `HttpClient`. Connect timeout 30 s, answer timeout 15 min. `fits()` builds the prompt and checks it against `Prompt.fits`, without a request. |
 | | `Prompt.kt` | The system prompt, the user prompt with trimming, and the context limits. |
@@ -54,7 +57,7 @@ flowchart LR
 | `cli` | `HealCommand.kt` | The `heal` subcommand: clean check, recipe, recipe commit, fix loop, report. |
 | | `FixLoopOptions.kt` | The Ollama and budget options, shared by `heal` and `pr`; `DEFAULT_MODEL`; `httpUrl()`, the URL check. |
 | | `UpdateCommand.kt` | `--package`, `--from`, `--to`, and `change(adapter)`, shared by `migrate` and `heal`. Extends `RepositoryCommand`. |
-| | `FixLoopReport.kt` | The fix-loop section in text and JSON. |
+| | `FixLoopReport.kt` | The fix-loop section in text and JSON, with the suggestion since M11. |
 | | `RootCommand.kt` | Wires `HealCommand` with `adapters()` (`GradleAdapter`, `MavenAdapter`, `TypeScriptAdapter`) and `BundledRecipeIndex.load()`; the `LlmClient` factory defaults to `::OllamaClient`. |
 
 ```mermaid
@@ -96,7 +99,7 @@ sequenceDiagram
         L->>L: apply, guardrails, lockfiles, downgrade check, attribute(), Progress
         L->>W: commit(edited files + lockfiles) or reset
     end
-    L-->>H: FixLoopResult(attempts, stopReason, verification)
+    L-->>H: FixLoopResult(attempts, stopReason, verification, suggestion)
     H-->>P: recipe + fix loop + final verification, exit 0 / 1
 ```
 
@@ -113,7 +116,10 @@ The recipe commit's subject is `Apply recipe <recipe name>`, its body `For <pack
 ```mermaid
 flowchart TB
     req["FixRequest: the cluster's diagnostics that fit<br/>(temperature 0, or 0.3 on a retry)"] --> propose["llm.propose()"]
-    propose --> invalid{"Proposal.Invalid<br/>or no edits?"}
+    propose --> repeat{"repeats a rejected attempt<br/>since the last accepted one? (M11)"}
+    repeat -- "yes: ask again at 0.7 with a note" --> propose
+    repeat -- "second repeat" --> rej
+    repeat -- no --> invalid{"Proposal.Invalid,<br/>no edits, or a missing file?"}
     invalid -- yes --> rej["Rejected<br/>GitWorkingTree.reset()"]
     invalid -- no --> scope{"scope guardrail<br/>(M4)"}
     scope -- violation --> rej
@@ -127,21 +133,23 @@ flowchart TB
     lock -- ok --> down{"build file touched:<br/>any package lower?"}
     down -- yes --> rej
     down -- no --> verify["attribute(adapter, repo, base)"]
-    verify --> prog{"Progress lower?"}
-    prog -- no --> rej
+    verify --> prog{"Progress lower,<br/>or uncovers()? (M11)"}
+    prog -- no --> best["BestRejected.offer()<br/>(the diff, M11)"] --> rej
     prog -- yes --> acc["Accepted<br/>GitWorkingTree.commit(edited tracked files + lockfiles)"]
 ```
 
 | Step | Rule | Rejection reason (also the retry's feedback) |
 |---|---|---|
-| Answer | `Proposal.Invalid` or an empty edit list | `the model's answer is invalid: …`, `the model proposed no edits` |
+| Repeat (M11) | The answer has the same edits (file, search, replace) as a rejected attempt on the cluster since the run's last accepted attempt: a multiset, any order, whitespace at line ends ignored. It isn't built: the model is asked once more, at temperature 0.7, with a note (`your answer repeated attempt N exactly, which was rejected: …`, never trimmed, counted by the fit check). An answer without edits is never a repeat. No time left, or a second repeat: rejected without a build. Either way it is one attempt. | `the first answer repeated attempt N, and the second was rejected: …`, `… and the second repeated attempt M; neither was built`, `… and no time was left to ask again` |
+| Answer | `Proposal.Invalid` or an empty edit list; `Proposal.Unanswered` (no reply within the client's timeout) rejects the attempt and stops the loop with `MODEL_UNANSWERED` | `the model's answer is invalid: …`, `the model proposed no edits`, `the model didn't answer: …` |
+| Missing file (M11) | Before the scope: the first edit whose file doesn't exist (inside the repository, outside `.git`) is a failed edit, not a guardrail violation. A file that exists but Git doesn't track stays a scope violation. | `edit N (<file>): no such file in the repository`, plus `; the repository's file of that name is <path>` if exactly one tracked file has that name |
 | Versions before | Read with `resolvedVersions` before the loop's first build-file edit, then kept | `the resolved versions can't be read, so a downgrade can't be ruled out: …` |
-| Apply | Each `search` matches exactly once: first exactly, then line by line with whitespace ignored (indentation, trailing blanks, runs of spaces). The file must exist in the repository. Edits apply in order; if one fails, nothing is written. | `<file>: no such file in the repository`, `<file>: the search text is not in the file`, `… matches n times …`, `the edits change nothing` |
+| Apply | Each `search` matches exactly once: first exactly, then line by line with whitespace ignored (indentation, trailing blanks, runs of spaces). Edits apply in order; if one fails, nothing is written. A near match is never applied (rule 4). Since M11 the reason names the edit and shows the committed file's lines, so the numbers match the code the request showed. | `edit N (<file>): the search text is not in the file. The most similar lines of the file:` and the window (as long as the search text, at most 20 lines) where the most lines equal the search's at the same position, indentation and trailing blanks ignored, earliest of a tie, none if no line equals; `edit N (<file>): the search text matches n times, at lines a, b, … and k more; it must match exactly once` (the first five); `the edits change nothing` |
 | Guardrails | Scope on the edits' paths before anything is read or written, the other rules on the written files. See [Guardrails](guardrails.md). | `the edits break the guardrails:` and one `- [rule] file:line: reason` line per violation |
 | Lockfiles | Only if an edit touched a build file (M9): `adapter.updateLockfiles(repo, timeLeft)`, before the downgrade check, so the check reads what the lockfile now resolves. The files it reports changed go into the commit. | `the lockfile can't follow the edits: …` |
 | Downgrades | Only if an edit touched a build file. `downgrades(versionChanges(before, after))`, the PR's own package included. Removing a package is not a downgrade (review D2). | `the edits move packages to lower versions: …` |
 | Verify | M1's `attribute()` with the base commit: compile stage first, tests only once compile is clean. | — |
-| Progress | `Progress.of(after) < Progress.of(before)`, stage by stage. 1/0/0 → 0/50/0 is progress; 0/0/3 → 0/1/0 is not. | `no progress: <before> -> <after>` plus the first ten errors after the edits, with their whole message |
+| Progress | `Progress.of(after) < Progress.of(before)`, stage by stage. 1/0/0 → 0/50/0 is progress; 0/0/3 → 0/1/0 is not. Since M11 also `uncovers()`: every sent error is a compile error and gone, no new error lies in a line the edits wrote (`changedLines`), no new build error without a location, no count higher, and no error an earlier accepted attempt removed is back. Test failures keep the counts-only rule. | `no progress: <before> -> <after>` plus the first ten errors after the edits, with their whole message |
 | Commit | Subject: the rationale's first non-blank line, else `Fix <cluster>`. Body: `Addresses:` and the diagnostics the request carried. Staged: the edited files that Git tracks (an edit to an ignored file is applied but not committed) and the lockfiles `updateLockfiles` changed. | — |
 
 Any `Throwable` inside `judge` (Maven's own one-hour timeout, a failing `git`, a parser that doesn't load) resets the tree and is rethrown: `heal` exits `2`, and the commits made so far stay. The one exception is a `ProcessTimedOut` when the time budget is used up: the attempt is rejected (`the builds ran past the time budget: …`), the tree reset, and the loop stops with `TIME_BUDGET`. A `ToolError` from `propose` (Ollama unreachable) happens before any edit.
@@ -153,6 +161,7 @@ Any `Throwable` inside `judge` (Maven's own one-hour timeout, a failing `git`, a
 | `StopReason` | When | Default | Option |
 |---|---|---|---|
 | `NOTHING_LEFT` | `causedByUpdate` is empty | — | — |
+| `MODEL_UNANSWERED` | The model didn't answer within the client's timeout (`Proposal.Unanswered`) | 15 min (`OllamaClient`) | — |
 | `ATTEMPT_BUDGET` | Attempts in total reached | 20 | `--max-attempts` |
 | `TIME_BUDGET` | Time since the loop started reached | 30 min | `--time-limit` (minutes) |
 | `NO_PROGRESS` | Rejected attempts in a row reached; an accepted one resets the count | 2 | `--max-attempts-without-progress` |
@@ -162,7 +171,7 @@ The time budget is also the deadline of an attempt's builds and test runs (M5): 
 
 ## The fix request
 
-`FixRequest` carries the changes (one for `heal`, every change of the PR for `pr`), the cluster's diagnostics that fit (below), `grounding` (since M10 every change's `apiChanges`, then every change's `ground`, empty texts dropped, each distinct text once, joined by a blank line), `snippets`, `releaseNotes` (`--release-notes <file>`, or the release notes in the PR body), `recipeDiff` (the diff of the recipe commits), `previousAttempts` (the rejected attempts on this cluster with their reason), and the temperature: `0.0` on a cluster's first attempt, `0.3` on a retry, because the same prompt at temperature 0 gives the same answer.
+`FixRequest` carries the changes (one for `heal`, every change of the PR for `pr`), the cluster's diagnostics that fit (below), `grounding` (since M10 every change's `apiChanges`, then every change's `ground`, empty texts dropped, each distinct text once, joined by a blank line), `snippets`, `releaseNotes` (`--release-notes <file>`, or the release notes in the PR body), `recipeDiff` (the diff of the recipe commits), `previousAttempts` (since M11 every failed attempt on this cluster, of every kind, with its edits and its reason, plus the repeat note if there is one: `AttemptHistory.failedOn`), and the temperature: `0.0` on a cluster's first attempt, `0.3` on a retry, because the same prompt at temperature 0 gives the same answer, `0.7` when the model is asked again after a repeat (M11: at 0.3, 12 of 16 retries repeated the attempt before them).
 
 **Snippets** (`codeSnippets`): ±40 lines around each error, overlapping windows in a file merged; an error without a line gets the first 81 lines. A build error without a location gets, from every tracked build file, the window around the first line that contains one of the new versions. The enclosing method is not detected (that needs tree-sitter, M4).
 
@@ -171,6 +180,16 @@ The time budget is also the deadline of an attempt's builds and test runs (M5): 
 **Diagnostics that fit** (M6, M3 review D3): before each attempt, `FixLoop` asks `llm.fits()` for the whole cluster, and if that doesn't fit, for its first 2, 3, … diagnostics (`firstThatFit`), each with its snippets and the earlier attempts, but without grounding, which the client trims anyway and which can take a process per change to build. The request carries the longest start that fits, at least the first diagnostic. The rest come back in a later round, because clusters are rebuilt after every accepted attempt. `Attempt.diagnosticsLeftOut` counts what was left out; the benchmark reports `requestsWithDiagnosticsLeftOut`, the `heal` and `pr` reports don't show it. If a single diagnostic with its code doesn't fit, `OllamaClient` logs a warning and sends it anyway; Ollama then cuts it.
 
 **Ollama request** (`OllamaClient`): `POST <url>/api/chat` with `model`, `stream: false`, `format` = `FixSchema.SCHEMA`, `options` `num_ctx` 16384, `num_predict` 3072, and the temperature, and two messages: `Prompt.SYSTEM` and the user prompt. A status other than 200, a timeout, or a connection error is a `ToolError`. A body without `message.content`, or content that doesn't match the schema, is `Proposal.Invalid`. The schema puts `analysis` first, so the model reasons before it writes edits; the loop ignores it.
+
+## The suggestion
+
+A run that ends with failures caused by the update left (M11) suggests one rejected attempt to the reviewer. The candidates are the attempts on the run's last commit (after its last accepted attempt) that passed the guardrails and were built: `verify` offers each one without progress to `BestRejected` with its counts, and the one with the lowest counts, stage by stage, wins; of a tie, the later one. Its diff (`GitWorkingTree.diff(repo, files)`) is taken before the reset. An accepted attempt clears the candidate: counts on different commits aren't comparable, and an older attempt may not apply to the pushed head. A run that ends green has none, and an attempt that broke a guardrail, couldn't be applied, or wasn't built is never suggested. It is never committed or pushed.
+
+| Where | Shape |
+|---|---|
+| `heal` text report | `  Suggestion, not applied, needs review: the edits of attempt <n>`, then the diff indented by four spaces, before `Tests run in the final verify` |
+| `heal` JSON report | `fixLoop.suggestion`: `{"attempt": <n>, "diff": "…"}` or `null` |
+| PR comment (also `pr`'s stdout and the companion PR's description) | After `#### Left to fix`, collapsed in `<details>`, the diff in a fence longer than any run of backticks in it ([PR pipeline](pr-pipeline.md)) |
 
 ## JVM adapter
 
@@ -196,7 +215,8 @@ Defaults: `--ollama-url http://localhost:11434`, `--model qwen2.5-coder:7b`, bud
 |---|---|---|---|
 | Nothing caused by the update left after the loop | Report | Logs | `0` |
 | Something caused by the update left | Report | Logs | `1` |
-| Ollama not reachable, answers non-200, or times out | empty | `Error: Ollama is not reachable at <url>: …` (or the status, or the timeout) | `2` |
+| Ollama not reachable, or answers non-200 | empty | `Error: Ollama is not reachable at <url>: …` (or the status) | `2` |
+| The model doesn't answer within 15 minutes | Report, stop reason `the model didn't answer in time` | Logs | `0` / `1` as above |
 | `--ollama-url` not `http`/`https` with a host, a budget below 1, `--release-notes` not a readable file | empty | Usage and `Error: invalid value for …` | `2` |
 | Dirty working tree, and every other error as for [`migrate`](recipe-migration.md#cli-contract) | empty | `Error: …` | `2` |
 
@@ -218,7 +238,7 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
   Tests run in the final verify: unknown
 ```
 
-**JSON report:** one line, `{"recipe": {...}, "recipeCommit": "<sha>" | null, "fixLoop": {...}, "verification": {...}}`. `fixLoop` has `stopReason` (`nothingLeft`, `attemptBudget`, `timeBudget`, `noProgress`, `clusterBudgets`) and `attempts`, each with `cluster`, `diagnostics`, `edits` (`file`, `search`, `replace`), `outcome` (`accepted` / `rejected`), `reason`, `violations` (M4), `commit`, and `rationale` (both `null` when rejected). Since M4, `fixLoop` also has `rejectionsPerGuardrail` and `testsRun` ([Guardrails](guardrails.md#report-and-cli)). `recipe` and `verification` are M2's and M1's.
+**JSON report:** one line, `{"recipe": {...}, "recipeCommit": "<sha>" | null, "fixLoop": {...}, "verification": {...}}`. `fixLoop` has `stopReason` (`nothingLeft`, `attemptBudget`, `timeBudget`, `noProgress`, `clusterBudgets`, `modelUnanswered`) and `attempts`, each with `cluster`, `diagnostics`, `edits` (`file`, `search`, `replace`), `outcome` (`accepted` / `rejected`), `reason`, `violations` (M4), `commit`, and `rationale` (both `null` when rejected). Since M4, `fixLoop` also has `rejectionsPerGuardrail` and `testsRun` ([Guardrails](guardrails.md#report-and-cli)), since M11 `suggestion` ([above](#the-suggestion)). `recipe` and `verification` are M2's and M1's.
 
 ## Git
 
@@ -232,10 +252,10 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
 
 | Level | Task | What runs | Examples |
 |---|---|---|---|
-| Unit, `core` | `test` | The loop with a fake `LlmClient` and a fake adapter on a temporary Git repository: accept and commit, reject and reset, downgrades, progress tuple, cluster order, every budget, a build stopped by the time budget, a cluster that doesn't fit, several changes and the commit identity, temperatures, retry feedback, build output kept out of commits, reset on a `ToolError`, the API changes before the full APIs (M10). Edit application and snippets on temp files. | `FixLoopTest`, `FixLoopBuildFileTest` (lockfiles and downgrades after a build-file edit, M9), `FixLoopApiChangesTest` (M10), `ClusterTest`, `EditTest`, `SnippetTest`, `GitWorkingTreeTest` |
+| Unit, `core` | `test` | The loop with a fake `LlmClient` and a fake adapter on a temporary Git repository: accept and commit, reject and reset, downgrades, progress tuple, cluster order, every budget, a build stopped by the time budget, a cluster that doesn't fit, several changes and the commit identity, temperatures, retry feedback, build output kept out of commits, reset on a `ToolError`, the API changes before the full APIs (M10). Edit application and snippets on temp files. | `FixLoopTest`, `FixLoopBuildFileTest` (lockfiles and downgrades after a build-file edit, M9), `FixLoopApiChangesTest` (M10), `ClusterTest`, `EditTest`, `SnippetTest`, `GitWorkingTreeTest`; since M11 `FixLoopProgressTest` and `UnmaskingTest` (the uncovering rule), `FixLoopRepeatTest` and `FixLoopReaskTest` (repeats), `FixLoopFeedbackTest` (edit feedback and the history), `FixLoopSuggestionTest` and `BestRejectedTest`, `BuildErrorAttributionTest` and `RunBaseTest` ([Verify pipeline](verify-pipeline.md#attribution)) |
 | Unit, `llm` | `test` | The client against a JDK `HttpServer`: endpoint, `format`, `num_ctx`, temperature, fences, invalid answers, status and connection errors; `fits` without a request. Prompt layout and trimming. | `OllamaClientTest`, `PromptTest` |
 | Unit, `ecosystems:jvm` | `test` | Cluster keys on captured javac, kotlinc 2 and 1.9, and Maven output (`maven-output/*.log`); grounding with the real `javap` on JARs compiled in the test (`TestJars`); the API changes ([API changes](api-changes.md#tests)). | `ClusterKeysTest`, `JavapGroundingTest`, `GroundingFailuresTest` |
-| Unit, `cli` | `test` | `heal` through Clikt's `test()` with a fake `LlmClient` factory: commit order, text and JSON reports, exit codes, options and their validation. | `HealCommandTest`, `FixLoopReportTest` |
+| Unit, `cli` | `test` | `heal` through Clikt's `test()` with a fake `LlmClient` factory: commit order, text and JSON reports, exit codes, options and their validation. | `HealCommandTest`, `FixLoopReportTest`, `FixLoopReportSuggestionTest` (M11) |
 | End-to-end | `endToEndTest` | The start script: `--help` lists `verify`, `migrate`, `heal`, and `pr`; `heal` without `--package` exits `2`; a green project prints one JSON object without asking the model; an unreachable Ollama exits `2`. | `LectorEndToEndTest` |
 | Real model | `:cli:realModelTest` (opt-in) | Tag `real-model`. Testcontainers starts the `ollama/ollama` image of `docker/ollama/Dockerfile`'s `FROM` line (system property `lector.ollamaImage`), pulls the model (`-Plector.model=<name>`, else `DEFAULT_MODEL`), and runs `heal` on `cli/src/test/resources/fixtures/guava-update` (Guava 18.0 → 21.0, no recipe): green, fixes by `lector`, tests untouched, the update kept. Sets `MAVEN_OPTS=-Duser.language=en`. Needs Docker, Maven, and network. | `RealModelTest` |
 
@@ -249,9 +269,14 @@ Fix loop (2 attempts, 1 accepted; stopped: nothing caused by the update is left)
 | `num_ctx` fixed at 16k, answer capped at 3072 tokens, 3 characters per token | Predictable memory on the runner; the estimate is conservative for code. | M6 benchmark |
 | `analysis` field first in the schema | Measured: without it, `qwen2.5-coder:7b` never added the import of a moved method's class. | M6 |
 | Feedback after no progress names the errors after the edits | With only the counts, the model repeated its edit. | — |
+| Equal counts are progress when an attempt only uncovered compile errors (M11) | javac reports one error per call chain, so a correct fix can bring up the next error with the count unchanged (flyway-9). Test failures don't qualify: one fixed and another broken is a regression. | — |
+| A repeated answer is asked again, not built (M11) | A model call is far cheaper than a build. A rejection holds for one commit: after an accepted attempt, the same edit may succeed. M11's benchmark: the 7B's fix loop took 1.5–2 minutes longer per run, and 8 of 129 fix-loop runs stopped because the model didn't answer in time. | Budget defaults |
+| Edit feedback shows the committed file's lines; a near match is never applied | Line numbers must match the code the request showed; repairing an edit breaks rule 4. | — |
+| The suggestion comes only from the run's last commit | Counts on different commits aren't comparable, and an attempt on an older commit may not apply to the pushed head. | — |
 | Clusters by the adapter's key, from English compiler messages | Error messages are language- and locale-specific. The tool image sets `LANG=C.UTF-8`, so the JDK runs in English. | — |
 | Maven grounding reads `~/.m2/repository` only | A `localRepository` in the Maven settings is not followed; the old JARs for the API changes are fetched into the same directory (`-Dmaven.repo.local`). | When a user's setup needs it |
 | Snippets are ±40 lines, not the enclosing method | Needs a parser; M4's `LanguageSupport` reports methods, but snippets don't use it yet. | Open |
+| Known bug: the anchor snippets of a build error without a location read every build file as UTF-8 text, Maven's binary `.mvn/wrapper/maven-wrapper.jar` included, and the loop throws (`MalformedInputException`, exit `2`) | Found in M11's benchmark (12 errored runs per run, older than M11) | Follow-up in [features.md](../features.md#m11--fix-loop-yield-) |
 | The time budget bounds builds and test runs, not the model's answer | An Ollama request has its own 15-minute timeout; the budget is checked again before the next one. | — |
 | Removing the PR's own package is not a downgrade | Open decision (review D2); M4 left the rule as it is. | Open |
 | A request carries as many whole diagnostics as fit, not every diagnostic cut short | A request Ollama cuts silently shows the model part of the errors, and nobody knows which part (M3 review D3, decided in M6). Linear search: it stops at the first diagnostic that doesn't fit. | — |

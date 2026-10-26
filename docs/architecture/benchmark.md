@@ -1,6 +1,6 @@
 # Architecture – Benchmark
 
-Milestone: [M6](../features.md#m6--benchmark-) · Spec: [`m6-benchmark/spec.md`](../../specs/done/m6-benchmark/spec.md) · Review: [`review.md`](../../specs/done/m6-benchmark/review.md)
+Milestones: [M6](../features.md#m6--benchmark-), [M11](../features.md#m11--fix-loop-yield-) · Spec: [`m6-benchmark/spec.md`](../../specs/done/m6-benchmark/spec.md) · Review: [`review.md`](../../specs/done/m6-benchmark/review.md)
 
 > **Summary for agents**
 >
@@ -12,7 +12,7 @@ Milestone: [M6](../features.md#m6--benchmark-) · Spec: [`m6-benchmark/spec.md`]
 
 ## Overview
 
-The benchmark answers whether the JVM/Maven path works and which part does the work: the recipe or the fix loop; since M9 also how the fix loop does on TypeScript, reported apart ([concept section 11](../concept.md#11-success-measurement)). Each case is a real dependency update whose head commit breaks something. Each run starts from a fresh checkout of that head, verifies it against the base, and then runs one mode. The workflow runs one job per case, mode, and repetition, merges whatever the jobs left, and uploads the report. A person reviews a sample of green runs and commits the results under `benchmark/results/<date>/`.
+The benchmark answers whether the JVM/Maven path works and which part does the work: the recipe or the fix loop; since M9 also how the fix loop does on TypeScript, reported apart ([concept section 11](../concept.md#11-success-measurement)). Each case is a real dependency update whose head commit breaks something. Each run starts from a fresh checkout of that head, verifies it against the base, and then runs one mode. The workflow runs one job per case, mode, and repetition, merges whatever the jobs left, and uploads the report. A reviewer checks a sample of green runs from their diffs and the results are committed under `benchmark/results/<date>[-<label>]/`. M11's runs are the first on record: `2026-10-26-7b-before`, `2026-10-26-7b-after`, `2026-10-26-14b-after`.
 
 ```mermaid
 flowchart LR
@@ -23,7 +23,9 @@ flowchart LR
     harness --> runs["run JSON files<br/>(artifacts run-*)"]
     runs --> merge["merge"] --> results["results.json"]
     results --> report["report"] --> md["report.md"]
-    review["review.json<br/>(added by a person)"] --> report
+    jobs --> diffs["run diffs<br/>(artifacts run-*)"]
+    diffs --> review["review.json<br/>(added by the reviewer)"]
+    review --> report
 ```
 
 ## Module and files
@@ -118,13 +120,13 @@ Invalid input from Clikt's own checks (an unknown option, a bad `--date`, a miss
 
 ## Workflow
 
-`.github/workflows/benchmark.yml`, `workflow_dispatch` with an optional `cases` input (passed through the environment):
+`.github/workflows/benchmark.yml`, `workflow_dispatch` with two optional inputs: `cases` (passed through the environment) and, since M11, `model` (default `qwen2.5-coder:7b`, the workflow's `MODEL`):
 
 | Job | What it does |
 |---|---|
 | `plan` | `matrix` → the job matrix |
-| `ollama-image` | Builds `docker/ollama` with `MODEL=qwen2.5-coder:7b` and pushes `ghcr.io/<owner>/lector-ollama:benchmark-qwen2.5-coder-7b`: releases can't publish it before the MSAL check |
-| `run` | Matrix, `fail-fast: false`, 120-minute timeout, the Ollama image as `services: ollama` on port 11434. JDKs 17, 21, and 25 from `setup-java` as `LECTOR_JDK_*`, Node 22 and 24 from `setup-node` as `LECTOR_NODE_*` with Corepack and `jest-junit` from `docker/lector/node` (M9), `MAVEN_OPTS=-Duser.language=en -Duser.country=US`, the runner's Maven. Uploads the run file as `run-<case>-<mode>-<repetition>` |
+| `ollama-image` | Builds `docker/ollama` with `MODEL` from the `model` input (M11, default `qwen2.5-coder:7b`) and pushes `ghcr.io/<owner>/lector-ollama:benchmark-<model, `:` as `-`>`: releases can't publish it before the MSAL check. The package needs Actions write access for the repository |
+| `run` | Matrix, `fail-fast: false`, 120-minute timeout, the Ollama image as `services: ollama` on port 11434. JDKs 17, 21, and 25 from `setup-java` as `LECTOR_JDK_*`, Node 22 and 24 from `setup-node` as `LECTOR_NODE_*` with Corepack and `jest-junit` from `docker/lector/node` (M9), `MAVEN_OPTS=-Duser.language=en -Duser.country=US`, the runner's Maven. Checks the case out under `$RUNNER_TEMP/work` and saves what the tool committed on top of the head as `<case>-<mode>-<repetition>.diff` for the manual review. Uploads the run file and the diff as `run-<case>-<mode>-<repetition>` |
 | `report` | `if: always()` after `plan` succeeded: downloads `run-*`, `merge` with the runner's description and today's date, `:benchmark:report`, uploads `benchmark-<date>` |
 
 ## Tests
@@ -142,7 +144,8 @@ No test runs Maven, Ollama, or the network. A change to the report changes `fixt
 |---|---|---|
 | A Gradle module run through `JavaExec`, no start script, not in the image | Shares the product's code without shipping anything (spec Q6). | — |
 | One job per run, merged at the end | Each job stays well within the job time limit; a lost job becomes `missing` instead of losing the report. | — |
-| `qwen2.5-coder:7b` only, standard runners | The product default; larger models on CPU would mostly measure the time budget (Q10, Q12). | GPU runners |
+| `qwen2.5-coder:7b` by default, standard runners; another model through the `model` input (M11) | The product default. M11 ran `qwen2.5-coder:14b` too: valid in 151 of 177 runs on a 4-CPU runner, so it fits, but 25 of its fix-loop runs stopped because the model didn't answer in time. | GPU runners |
+| The reviewer judges each sampled run from its case and diff only | M11's review was blind to the milestone and to which run a sample came from, so a looser loop can't grade itself. | — |
 | No release notes in the fix requests | The product reads none from Dependabot PRs before M8, and 12 of 16 PRs are Dependabot's; the report says so (review F4). | M8 |
 | The runner's Maven, not the tool image's | The tool image isn't published before the MSAL check (review F5). | When releases publish it |
 | Changed lines as the 90/10 measure | Language-neutral and straight from the commits (Q11). Green rates are reported, but aren't the verdict. | — |
