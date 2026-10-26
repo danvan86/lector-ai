@@ -86,7 +86,7 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 
 **Done when:** a real Renovate PR in a test repo gets a fix commit and a report, with no manual steps.
 
-## M6 – Benchmark 🟨
+## M6 – Benchmark ✅
 
 **Goal:** measure instead of guessing.
 
@@ -95,7 +95,8 @@ Status: ⬜ open · 🟨 in progress · ✅ done
 - `report.md` from `results.json` and a manual review: green rates with spread, the 90/10 verdict (the recipe's mean share of changed lines on green recipe + fix-loop runs, holds at 90%), rejections, runtime
 - `Benchmark` workflow: `workflow_dispatch` on standard runners with `qwen2.5-coder:7b`, one job per case, mode, and repetition
 - Fix requests carry only the diagnostics that fit into the context, each with its code; the rest come in the next round
-- Still open: the first run, its review, and the results under `benchmark/results/<date>/`
+- First numbers from M11's runs (`benchmark/results/2026-10-26-*`): the 90/10 assumption doesn't hold. On every green
+  recipe + fix-loop run the recipes changed 0 % of the lines, and recipe only made no case green
 
 **Done when:** we have first numbers for JVM/Maven and know whether the 90/10 assumption holds.
 
@@ -170,7 +171,7 @@ opt-in.
 
 **Done when:** the two proof cases go from red to green through the API changes alone.
 
-## M11 – Fix-loop yield 🟨
+## M11 – Fix-loop yield ✅
 
 **Goal:** the fix loop keeps correct partial fixes, doesn't count environment failures against the update, and stops
 spending builds on answers it already rejected. A local comparison of 7B, 14B, and 30B models found the model's size
@@ -191,12 +192,29 @@ before them.
 - A run that ends red suggests the built, guardrail-clean rejected attempt on its last commit with the lowest counts,
   as a diff marked "not applied, needs review": in `heal`'s text and JSON reports and in the PR comment, never committed
 - The Benchmark workflow takes a `model` input (default `qwen2.5-coder:7b`)
-- Still open: the benchmark runs `7b-before` (tool commit `2f543e1`), `7b-after`, and `14b-after` on GitHub-hosted
-  runners, the review of both 7B runs, and the 14B's outcome for the default-model choice
+- Each benchmark run's artifact holds its diff, for the review
 
 **Done when:** on the cases valid in both 7B runs, the fix-loop modes have more green runs after than before, no case
 and mode green before is red in all three repetitions after, and the share of reviewed runs accepted unchanged is not
 lower.
+
+**Result** (`benchmark/results/2026-10-26-{7b-before,7b-after,14b-after}/`, GitHub-hosted runners, 4 CPUs): the green
+runs didn't rise. With the 7B, 8 fix-loop runs were green before and 7 after, on the same three cases; dledger, the case
+behind the milestone, stays red with every model, because no run produced its fix. No case lost all its green runs, and
+the independent reviewer accepted 5 of 8 green runs unchanged before and 5 of 7 after. The user accepted M11 with its
+first criterion not met (2026-10-26): its changes are correctness fixes, and the model, not the loop, limits the 7B.
+The 14B, on the same tool commit, was green in 18 runs on four cases and valid in 151 of 177 runs, so it fits CPU
+runners; it is the lead for the default-model choice. Its cost: 25 of its fix-loop runs stopped because the model didn't
+answer in time.
+
+**Follow-ups:**
+
+- Bug, older than M11: for a build error without a location, the code snippets read every build file as text, Maven's
+  binary `.mvn/wrapper/maven-wrapper.jar` included, and the run ends with exit `2` (12 errored runs per benchmark run:
+  javaparser-junit-6, petclinic-spring-boot-3)
+- Asking the model again after a repeated answer made the 7B's fix loop 1.5–2 minutes slower per run, and 8 runs stopped
+  because the model didn't answer in time
+- The benchmark records no model answers, so why a case stays red can't be read from its results
 
 ## M12 – Simple setup 🟨
 

@@ -48,7 +48,7 @@ route probe was needed.
 | AC25 | met | `model` input with default `qwen2.5-coder:7b`; `MODEL: ${{ inputs.model }}` |
 | AC26 | met | `benchmark/results/2026-10-26-{7b-before,7b-after,14b-after}/`; tool commits `2f543e1` and `f1fdba6` (both after runs); runner "GitHub-hosted ubuntu24, 4 CPUs, 15 GB, CPU only"; `git diff --exit-code f1fdba6 HEAD -- '*/src/main/**'` exits 0 |
 | AC27 | met | Both 7B directories have `review.json` by a blind review agent (15 samples shuffled under anonymous IDs, case and diff only); `:benchmark:report` accepts both |
-| AC28 | **not met** | On the 25 cases valid in both: green fix-loop runs 8 before, 7 after (fix-loop-only 5 → 4, recipe + fix loop 3 → 3). Green cases are the same three in both: snakeyaml-2, pdfbox-3, dropwizard-config-providers-kiwi-5; dledger stays red |
+| AC28 | **not met** (accepted by the user, 2026-10-26) | On the 25 cases valid in both: green fix-loop runs 8 before, 7 after (fix-loop-only 5 → 4, recipe + fix loop 3 → 3). Green cases are the same three in both: snakeyaml-2, pdfbox-3, dropwizard-config-providers-kiwi-5; dledger stays red |
 | AC29 | met | No case and fix-loop mode green before is red in all three repetitions after (pdfbox-3 fix-loop-only 2/3 → 1/3) |
 | AC30 | met | Accepted unchanged 5 of 8 (62.5 %) before, 5 of 7 (71.4 %) after |
 | AC31 | met | `git diff --exit-code 2f543e1 -- ecosystems/typescript …Gradle* …*.gradle` exits 0; `Budgets` and `DEFAULT_MODEL` unchanged |
@@ -97,5 +97,5 @@ route probe was needed.
 
 ## Open
 
-- AC28 not met: the user decides whether M11 ships with this result.
+- None. AC28 is not met; the user accepted M11 with this result on 2026-10-26 (`features.md`, M11 result and follow-ups).
 - `features.md` gets M11's result and the 14B's outcome after the runs.
