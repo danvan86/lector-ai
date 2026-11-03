@@ -25,7 +25,7 @@ rewrite-recipe-bom = "3.37.0"
 rewrite-maven-plugin = "6.46.1"
 # The OpenRewrite Gradle plugin, shipped in the tool image for recipes in Gradle builds. It must be built on the BOM's
 # OpenRewrite version, too (`:recipes:checkRewriteGradlePluginVersion`).
-rewrite-gradle-plugin = "7.39.0"
+rewrite-gradle-plugin = "7.41.0"
 maven-help-plugin = "3.5.2"
 maven-dependency-plugin = "3.11.0"
 testcontainers = "2.0.5"
